@@ -33,7 +33,7 @@ recorded() {
 
 # The app used when no original app is known.
 fallback_app() {
-  if extensions_of image | grep -qx "$1"; then
+  if extensions_of image | grep -qxF "$1"; then
     echo com.apple.Preview
   else
     echo com.apple.TextEdit

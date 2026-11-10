@@ -1,7 +1,7 @@
 // node --test: takeover.sh and open-original.sh against a fake router command, a fake `open`,
 // and a throwaway data folder. Nothing here touches the real default apps.
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,12 +13,17 @@ const ROUTER_ID = "test.side-viewer-router";
 
 // Stands in for the router binary: default apps live in one file per file type.
 // `type-<ext>` makes an extension share another one's file type, as jpg and jpeg do on macOS.
+// `keep-<ext>` plays the person choosing "keep" in the macOS confirmation window: the request
+// ends with exit 1 and nothing changes. `fail-<ext>` holds the exit code of any other failure.
 const FAKE_ROUTER = `#!/bin/sh
 key() { cat "$FAKE_STATE/type-$1" 2>/dev/null || printf '%s' "$1"; }
 case "$1" in
   --default-app) cat "$FAKE_STATE/app-$(key "$2")" 2>/dev/null; exit 0 ;;
+  --type-of) printf 'type.%s\\n' "$(key "$2")"; exit 0 ;;
   --set-default-app)
-    [ -e "$FAKE_STATE/refuse-$2" ] && exit 1
+    [ -e "$FAKE_STATE/quiet" ] || printf '%s %s\\n' "$2" "$3" >> "$FAKE_STATE/requests.log"
+    [ -e "$FAKE_STATE/keep-$2" ] && { echo "The file couldn't be opened." >&2; exit 1; }
+    [ -e "$FAKE_STATE/fail-$2" ] && exit "$(cat "$FAKE_STATE/fail-$2")"
     printf '%s\\n' "$3" > "$FAKE_STATE/app-$(key "$2")" ;;
 esac
 `;
@@ -60,17 +65,24 @@ function world({ extensions, defaults = {}, sameType = {}, record } = {}) {
     setDefault: (ext, id) => execFileSync(join(dir, "router"), ["--set-default-app", ext, id], { env }),
     defaultOf: (ext) => execFileSync(join(dir, "router"), ["--default-app", ext], { env, encoding: "utf8" }).trim(),
     record: () => (existsSync(recordFile) ? readFileSync(recordFile, "utf8") : ""),
-    takeover: (cmd) => spawnSync("/bin/sh", [join(here, "takeover.sh"), cmd], { env, encoding: "utf8" }),
+    takeover: (...args) => spawnSync("/bin/sh", [join(here, "takeover.sh"), ...args], { env, encoding: "utf8" }),
+    // The confirmation windows asked for: one line per request sent to macOS.
+    requests: () => (existsSync(join(state, "requests.log")) ? readFileSync(join(state, "requests.log"), "utf8").trim().split("\n") : []),
+    keep: (ext) => writeFileSync(join(state, `keep-${ext}`), ""),
+    fail: (ext, code) => writeFileSync(join(state, `fail-${ext}`), String(code)),
     openOriginal: (file) => spawnSync("/bin/sh", [join(here, "open-original.sh"), file], { env, encoding: "utf8" }),
     opened: () => (existsSync(join(state, "open.log")) ? readFileSync(join(state, "open.log"), "utf8") : ""),
   };
+  // Setting the scene is not a request the person would be asked about.
+  writeFileSync(join(state, "quiet"), "");
   for (const [ext, id] of Object.entries(defaults)) w.setDefault(ext, id);
+  rmSync(join(state, "quiet"));
   return w;
 }
 
 test("make-default records each extension's original app, then makes the router the default", () => {
   const w = world({ defaults: { md: "com.example.Notes", png: "com.apple.Preview", jpg: "com.apple.Preview", txt: "com.apple.TextEdit", py: "com.example.Editor" }, sameType: { jpeg: "jpg" } });
-  const r = w.takeover("make-default");
+  const r = w.takeover("make-default", "code");
   assert.equal(r.status, 0, r.stderr);
   assert.equal(
     w.record(),
@@ -110,14 +122,104 @@ test("make-default keeps the record of an extension that has left the list, so r
   assert.equal(w.record(), "md\tcom.example.Notes\nts\tcom.example.Player\n");
 });
 
-test("make-default reports the extensions it could not take over and exits non-zero", () => {
+test("make-default reports the extensions it could not take over and exits 1", () => {
   const w = world({ extensions: { markdown: ["md"], image: [], code: ["ts"] }, defaults: { md: "com.example.Notes", ts: "com.example.Player" } });
-  writeFileSync(join(w.state, "refuse-ts"), "");
-  const r = w.takeover("make-default");
-  assert.notEqual(r.status, 0);
-  assert.match(r.stdout + r.stderr, /ts/);
+  w.fail("ts", 5);
+  const r = w.takeover("make-default", "code");
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /실패: ts \(시간 초과\)/);
+  assert.doesNotMatch(r.stdout, /유지를 선택함/);
   assert.equal(w.defaultOf("md"), ROUTER_ID);
   assert.equal(w.defaultOf("ts"), "com.example.Player");
+});
+
+test("make-default without a bundle takes over markdown and image only", () => {
+  const w = world({ defaults: { md: "com.example.Notes", png: "com.apple.Preview", txt: "com.apple.TextEdit", py: "com.example.Editor" } });
+  const r = w.takeover("make-default");
+  assert.equal(r.status, 0, r.stderr);
+  for (const ext of ["md", "png", "jpg", "jpeg"]) assert.equal(w.defaultOf(ext), ROUTER_ID, ext);
+  assert.equal(w.defaultOf("txt"), "com.apple.TextEdit");
+  assert.equal(w.defaultOf("py"), "com.example.Editor");
+  assert.equal(w.record(), "md\tcom.example.Notes\npng\tcom.apple.Preview\n");
+});
+
+test("make-default code adds the code bundle and keeps the earlier record", () => {
+  const w = world({ defaults: { md: "com.example.Notes", py: "com.example.Editor" } });
+  w.takeover("make-default");
+  const r = w.takeover("make-default", "code");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(w.defaultOf("py"), ROUTER_ID);
+  assert.equal(w.record(), "md\tcom.example.Notes\npy\tcom.example.Editor\n");
+});
+
+test("make-default without a bundle keeps the record of code extensions taken over earlier", () => {
+  const w = world({ defaults: { md: "com.example.Notes", py: "com.example.Editor" } });
+  w.takeover("make-default", "code");
+  w.takeover("make-default");
+  assert.match(w.record(), /^py\tcom\.example\.Editor$/m);
+});
+
+test("make-default rejects a bundle it does not know", () => {
+  const w = world();
+  const r = w.takeover("make-default", "everything");
+  assert.equal(r.status, 2);
+  assert.deepEqual(w.requests(), []);
+});
+
+test("make-default says how many confirmation windows to expect: one per file type that will change", () => {
+  // jpg and jpeg are one file type, and md is already the router's: png, jpg+jpeg, txt, py.
+  const w = world({ defaults: { md: ROUTER_ID, png: "com.apple.Preview", jpg: "com.apple.Preview" }, sameType: { jpeg: "jpg" } });
+  const r = w.takeover("make-default", "code");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^macOS 확인 창이 4번 뜹니다\./);
+  assert.deepEqual(w.requests(), [`png ${ROUTER_ID}`, `jpg ${ROUTER_ID}`, `txt ${ROUTER_ID}`, `py ${ROUTER_ID}`]);
+});
+
+test("make-default asks for nothing when the router already holds everything", () => {
+  const w = world({ extensions: { markdown: ["md"], image: ["png"], code: [] } });
+  w.takeover("make-default");
+  const r = w.takeover("make-default");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, "바꿀 것이 없습니다.\n");
+  assert.equal(w.requests().length, 2);
+});
+
+test("make-default reports the extensions the person chose to keep, apart from failures, and exits 3", () => {
+  const w = world({ extensions: { markdown: ["md", "markdown"], image: ["png"], code: [] }, defaults: { md: "com.example.Notes", png: "com.apple.Preview" }, sameType: { markdown: "md" } });
+  w.keep("md");
+  const r = w.takeover("make-default");
+  assert.equal(r.status, 3);
+  assert.match(r.stdout, /^유지를 선택함: md markdown$/m);
+  assert.match(r.stdout, /^바뀜: png$/m);
+  assert.equal(r.stderr, "");
+  assert.equal(w.defaultOf("md"), "com.example.Notes");
+  assert.equal(w.defaultOf("png"), ROUTER_ID);
+});
+
+test("a failure outranks a kept extension in the exit code, and each is reported as what it is", () => {
+  const w = world({ extensions: { markdown: ["md"], image: ["png", "gif"], code: [] }, defaults: { md: "com.example.Notes", png: "com.apple.Preview", gif: "com.apple.Preview" } });
+  w.keep("md");
+  w.fail("png", 3);
+  const r = w.takeover("make-default");
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /^유지를 선택함: md$/m);
+  assert.match(r.stderr, /^실패: png \(앱 없음: /m);
+  assert.doesNotMatch(r.stderr, /md/);
+  assert.equal(w.defaultOf("gif"), ROUTER_ID);
+});
+
+test("restore says how many confirmation windows to expect and reports what the person kept", () => {
+  const w = world({ defaults: { md: "com.example.Notes", png: "com.apple.Preview", jpg: "com.apple.Preview" }, sameType: { jpeg: "jpg" } });
+  w.takeover("make-default");
+  w.keep("png");
+  const before = w.requests().length;
+  const r = w.takeover("restore");
+  assert.equal(r.status, 3);
+  assert.match(r.stdout, /^macOS 확인 창이 3번 뜹니다\./);
+  assert.match(r.stdout, /^유지를 선택함: png$/m);
+  assert.deepEqual(w.requests().slice(before), ["md com.example.Notes", "png com.apple.Preview", "jpg com.apple.Preview"]);
+  assert.equal(w.defaultOf("png"), ROUTER_ID);
+  assert.equal(w.defaultOf("jpeg"), "com.apple.Preview");
 });
 
 test("restore gives every recorded extension back to its original app", () => {
