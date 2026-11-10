@@ -5,7 +5,8 @@
 # Herdr in front (a cmd-click on a path in a terminal): the file opens in a side viewer pane.
 # Anything else, or any failure on the way: the file goes to its original app.
 # Environment, all optional: SIDE_VIEWER_HERDR_APP (the herdr-app program), SIDE_VIEWER_DATA
-# (the data folder), HERDR_APP_HOME.
+# (the data folder), HERDR_APP_HOME (Herdr's folder, where the mod is installed),
+# SIDE_VIEWER_TIMEOUT (whole seconds to wait for herdr-app, 5 by default).
 set -u
 file="${1:?usage: open.sh <file> <front app>}"
 front="${2:-}"
@@ -26,6 +27,8 @@ case "$front" in
 esac
 
 [ -x "$herdr" ] || original
+# Without the mod in Herdr's folder a split would only leave a broken pane behind.
+[ -f "${HERDR_APP_HOME:-$HOME/.config/herdr-app}/mods/side-viewer/main.js" ] || original
 
 # The path travels as JSON. A control character (a newline in a name) is not worth escaping.
 case "$file" in *[[:cntrl:]]*) original ;; esac

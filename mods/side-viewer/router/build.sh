@@ -14,7 +14,7 @@ buddy=/usr/libexec/PlistBuddy
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 swiftc -O -o "$app/Contents/MacOS/SideViewerRouter" "$here/main.swift"
-cp "$here/takeover.sh" "$here/open-original.sh" "$here/lib.sh" "$list" "$app/Contents/Resources/"
+cp "$here/takeover.sh" "$here/open-original.sh" "$here/lib.sh" "$here/../open.sh" "$list" "$app/Contents/Resources/"
 
 cat > "$plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

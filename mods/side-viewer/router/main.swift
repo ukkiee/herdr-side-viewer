@@ -6,7 +6,7 @@
 //   SideViewerRouter --make-default code   the same, plus the code extensions
 //   SideViewerRouter --restore        give every extension back to its original app
 //   SideViewerRouter --status         extension, current default app, recorded original app
-// The decisions live in takeover.sh and open-original.sh (bundled in Resources). This file
+// The decisions live in open.sh, takeover.sh and open-original.sh (bundled in Resources). This file
 // only talks to macOS.
 import Cocoa
 import UniformTypeIdentifiers
@@ -78,9 +78,12 @@ func fail(_ message: String, code: Int32 = 1) -> Never {
 }
 
 // The one place that knows both the opened file and the app that was in front.
-// Ticket 02 puts the branch to the side viewer here; until then every file goes to its original app.
+// open.sh decides between the side viewer and the original app, and falls back to the original
+// app itself. 127 means the script could not be run at all, so the file still has to go somewhere.
 func route(file: String, frontApp: String) {
-  runScript("open-original.sh", [file])
+  if runScript("open.sh", [file, frontApp]) == 127 {
+    runScript("open-original.sh", [file])
+  }
 }
 
 final class Router: NSObject, NSApplicationDelegate {

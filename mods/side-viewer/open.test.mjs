@@ -1,7 +1,7 @@
 // node --test: open.sh against a fake `herdr-app`, a fake `open` and a throwaway data folder.
 // Nothing here reaches the real Herdr window or the real default apps.
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,12 +24,17 @@ const FAKE_OPEN = `#!/bin/sh
 for a in "$@"; do printf '%s\\n' "$a"; done >> "$FAKE_STATE/open.log"
 `;
 
-function world({ herdr = true, record } = {}) {
+function world({ herdr = true, installed = true, record } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "side-viewer-open-"));
   const state = join(dir, "state");
   const data = join(dir, "data");
   const bin = join(dir, "bin");
-  for (const d of [state, data, bin]) mkdirSync(d);
+  const appHome = join(dir, "herdr-home");
+  for (const d of [state, data, bin, appHome]) mkdirSync(d);
+  if (installed) {
+    mkdirSync(join(appHome, "mods", "side-viewer"), { recursive: true });
+    writeFileSync(join(appHome, "mods", "side-viewer", "main.js"), "");
+  }
   writeFileSync(join(bin, "open"), FAKE_OPEN);
   chmodSync(join(bin, "open"), 0o755);
   const herdrApp = join(dir, "herdr-app");
@@ -42,11 +47,14 @@ function world({ herdr = true, record } = {}) {
     PATH: `${bin}:/usr/bin:/bin`,
     FAKE_STATE: state,
     SIDE_VIEWER_DATA: data,
+    HERDR_APP_HOME: appHome,
     SIDE_VIEWER_HERDR_APP: herdrApp,
     SIDE_VIEWER_ROUTER_ID: "test.side-viewer-router",
   };
   const lines = (name) => (existsSync(join(state, name)) ? readFileSync(join(state, name), "utf8").trimEnd().split("\n") : []);
   return {
+    dir,
+    env,
     open: (file, front, extra = {}) => spawnSync("/bin/sh", [join(here, "open.sh"), file, front], { env: { ...env, ...extra }, encoding: "utf8" }),
     herdrSays: (out, code = 0) => {
       writeFileSync(join(state, "herdr-out"), out);
@@ -86,6 +94,28 @@ test("without a herdr-app program, the file goes to its original app", () => {
   const w = world({ herdr: false, record: "md\tcom.example.Notes\n" });
   const r = w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(w.openArgs(), ["-b", "com.example.Notes", "/work/notes/plan.md"]);
+});
+
+test("while the side viewer mod is not installed in Herdr, the file goes to its original app", () => {
+  const w = world({ installed: false });
+  const r = w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(w.herdrArgs(), []);
+  assert.deepEqual(w.openArgs(), ["-b", "com.apple.TextEdit", "/work/notes/plan.md"]);
+});
+
+test("inside the built router app, where every script sits in one folder, both ways still work", () => {
+  const w = world({ record: "md\tcom.example.Notes\n" });
+  const resources = join(w.dir, "Resources");
+  mkdirSync(resources);
+  copyFileSync(join(here, "open.sh"), join(resources, "open.sh"));
+  for (const name of ["open-original.sh", "lib.sh"]) copyFileSync(join(here, "router", name), join(resources, name));
+  copyFileSync(join(here, "extensions.json"), join(resources, "extensions.json"));
+  const run = (front) => spawnSync("/bin/sh", [join(resources, "open.sh"), "/work/notes/plan.md", front], { env: w.env, encoding: "utf8" });
+  assert.equal(run(HERDR_FRONT).status, 0);
+  assert.equal(w.herdrArgs()[1], "pane.split");
+  assert.equal(run("Finder").status, 0);
   assert.deepEqual(w.openArgs(), ["-b", "com.example.Notes", "/work/notes/plan.md"]);
 });
 
