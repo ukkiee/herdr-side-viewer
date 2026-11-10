@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** integrated
 
 **명세:** `docs/features/side-viewer/spec.md` (AC-1, AC-4, AC-11)
 
@@ -37,3 +37,11 @@
 - **Herdr 판별(명세의 `미확인`).** 이 머신에서 실행 중인 Herdr는 `lsappinfo` 기준 번들 경로 `/Users/…/Applications/Herdr.app`, 번들 ID `dev.herdr.app`을 보고한다. 경로 판별(`*Herdr.app*`)과 맞는다. 라우터가 실제 cmd-클릭 때 받는 값은 경계 4에서 확인해야 한다.
 - **`herdr-app check`의 한계.** 첫 그리기만 본다. 파일 없이 뜨므로 "열 파일이 없습니다." 화면만 검사된다. 마크다운 그리기 경로는 첫 그리기에 마크다운을 넣은 임시 사본으로 따로 check를 통과시켜 확인했다(저장소에는 남기지 않음).
 - **미검증.** 경계 4(실제 cmd-클릭, 새 pane의 모습, "불러오는 중…"이 실제로 보이는지, 1 MiB를 넘는 파일을 `readTextFile`이 어떻게 돌려주는지).
+
+### 통합 기록 (2026-11-11)
+
+- 결과 SHA `35dded6`(`ticket/02-open-markdown`), `feat/side-viewer`에 fast-forward로 통합.
+- 전체 오프라인 검사(통합 브랜치, 주 진행자 실행): `node --test mods/side-viewer/` 통과 42, 실패 0, skip 0. `herdr-app check mods/side-viewer` 통과.
+- 완료 조건 근거: 경계 2(Herdr가 앞이면 분할 명령, 다른 앱·`herdr-app` 없음·명령 오류·무응답이면 원래 앱)와 경계 3 통과.
+- 미검증·이월: 경계 4(실제 cmd-클릭으로 새 pane에 렌더링, "불러오는 중…" 표시)는 사용자 확인 대기이며 티켓 06의 통합 검증에서 다시 본다.
+- 명세 밖 추가: mod가 앱 홈에 설치돼 있지 않으면 원래 앱으로 넘긴다. `herdr-app` 응답을 5초까지만 기다린다(`SIDE_VIEWER_TIMEOUT`).
