@@ -1,10 +1,11 @@
 {
   "markdown": ["md", "markdown", "mdx"],
-  "image": ["png", "gif", "webp"],
+  "image": ["png", "jpg", "jpeg", "jpe", "gif", "webp", "svg", "svgz"],
   "code": [
     "log", "json", "jsonc", "yaml", "yml", "toml",
-    "cjs", "jsx", "ts", "tsx", "css", "scss",
-    "py", "go", "rs", "kt", "swift", "c", "h",
+    "js", "mjs", "jscript", "javascript", "cjs", "jsx", "ts", "tsx", "css", "scss",
+    "py", "go", "rs", "rb", "rbw", "java", "jav", "kt", "swift",
+    "c", "h", "cpp", "cp", "c++", "cc", "cxx",
     "sh", "zsh", "sql", "xml", "csv"
   ]
 }
