@@ -37,7 +37,8 @@ make_default() {
 
   failed=""
   for ext in $(all_extensions); do
-    "$router" --set-default-app "$ext" "$router_id" >/dev/null 2>&1 || failed="$failed $ext"
+    # The router's own error text stays visible: it is the only clue to why macOS refused.
+    "$router" --set-default-app "$ext" "$router_id" >/dev/null || failed="$failed $ext"
   done
   if [ -n "$failed" ]; then
     echo "could not take over:$failed" >&2
@@ -64,7 +65,7 @@ restore() {
       app=$(fallback_app "$ext")
       echo "$ext: no original app recorded, using $app"
     fi
-    "$router" --set-default-app "$ext" "$app" >/dev/null 2>&1 || failed="$failed $ext"
+    "$router" --set-default-app "$ext" "$app" >/dev/null || failed="$failed $ext"
   done
   if [ -n "$failed" ]; then
     echo "could not restore:$failed" >&2

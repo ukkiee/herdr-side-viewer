@@ -36,8 +36,17 @@ func runScript(_ name: String, _ arguments: [String]) -> Int32 {
 // macOS keeps default apps per file type, not per extension.
 func fileType(_ ext: String) -> UTType? { UTType(filenameExtension: ext) }
 
+// Asked about a real file, not the file type: two extensions of one type can open in different
+// apps (js in an IDE, mjs in a terminal), and the type-level answer hides that.
 func defaultApp(_ ext: String) -> String? {
-  guard let type = fileType(ext), let app = NSWorkspace.shared.urlForApplication(toOpen: type) else { return nil }
+  let folder = FileManager.default.temporaryDirectory.appendingPathComponent("side-viewer-router-\(getpid())")
+  let file = folder.appendingPathComponent("file." + ext)
+  defer { try? FileManager.default.removeItem(at: folder) }
+  do {
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    try Data("\n".utf8).write(to: file)
+  } catch { return nil }
+  guard let app = NSWorkspace.shared.urlForApplication(toOpen: file) else { return nil }
   return Bundle(url: app)?.bundleIdentifier
 }
 
@@ -67,20 +76,28 @@ func route(file: String, frontApp: String) {
 }
 
 final class Router: NSObject, NSApplicationDelegate {
-  var handled = false
+  var quit: DispatchWorkItem?
 
   func application(_ application: NSApplication, open urls: [URL]) {
-    handled = true
     // The router never comes to the front, so this is still the app the click happened in.
     let front = NSWorkspace.shared.frontmostApplication
     let frontApp = front?.bundleURL?.path ?? front?.localizedName ?? ""
     for url in urls { route(file: url.path, frontApp: frontApp) }
-    NSApp.terminate(nil)
+    quitWhenIdle()
   }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     // Launched without a file (a double-click on the app): nothing to do.
-    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if !self.handled { NSApp.terminate(nil) } }
+    quitWhenIdle()
+  }
+
+  // Quitting right after a file loses a second file that macOS sent while the first was being
+  // handled, so wait until no more have arrived for a moment.
+  func quitWhenIdle() {
+    quit?.cancel()
+    let item = DispatchWorkItem { NSApp.terminate(nil) }
+    quit = item
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: item)
   }
 }
 

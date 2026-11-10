@@ -1,7 +1,8 @@
 #!/bin/sh
 # macOS only. Builds ~/Applications/Side Viewer Router.app (needs Xcode's command line tools).
-# Building registers the app with macOS but does not make it the default app for anything:
-# that is `SideViewerRouter --make-default`.
+# Building registers the app with macOS. Extensions that some other app already opens keep
+# that app until `SideViewerRouter --make-default`; an extension that no app opens (mdx and
+# jsonc on a plain Mac) goes to the router straight away, as its only candidate.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/lib.sh"
