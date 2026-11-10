@@ -2,6 +2,8 @@
 
 Status: ready-for-agent
 
+통합 기준: 브랜치 `feat/side-viewer`, 기준 SHA `e22ae7babba5a54ba0ba6c048754b8f62fac0488` (`main`)
+
 용어는 루트 `GLOSSARY.md`를 따른다. 여는 방법의 결정 근거는 `docs/adr/0001-cmd-click-through-a-default-app-router.md`다.
 
 ## 문제
