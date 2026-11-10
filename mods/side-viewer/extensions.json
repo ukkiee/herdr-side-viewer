@@ -1,0 +1,10 @@
+{
+  "markdown": ["md", "markdown", "mdx"],
+  "image": ["png", "jpg", "jpeg", "gif", "webp", "svg"],
+  "code": [
+    "txt", "log", "json", "jsonc", "yaml", "yml", "toml",
+    "js", "mjs", "cjs", "jsx", "ts", "tsx", "css", "scss",
+    "py", "go", "rs", "rb", "java", "kt", "swift", "c", "h", "cpp",
+    "sh", "zsh", "sql", "xml", "csv", "diff", "patch"
+  ]
+}

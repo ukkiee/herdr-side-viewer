@@ -1,0 +1,191 @@
+// node --test: takeover.sh and open-original.sh against a fake router command, a fake `open`,
+// and a throwaway data folder. Nothing here touches the real default apps.
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const ROUTER_ID = "test.side-viewer-router";
+
+// Stands in for the router binary: default apps live in one file per file type.
+// `type-<ext>` makes an extension share another one's file type, as jpg and jpeg do on macOS.
+const FAKE_ROUTER = `#!/bin/sh
+key() { cat "$FAKE_STATE/type-$1" 2>/dev/null || printf '%s' "$1"; }
+case "$1" in
+  --default-app) cat "$FAKE_STATE/app-$(key "$2")" 2>/dev/null; exit 0 ;;
+  --set-default-app)
+    [ -e "$FAKE_STATE/refuse-$2" ] && exit 1
+    printf '%s\\n' "$3" > "$FAKE_STATE/app-$(key "$2")" ;;
+esac
+`;
+
+// Stands in for /usr/bin/open: logs its arguments, and fails for bundle ids listed in `missing`.
+const FAKE_OPEN = `#!/bin/sh
+printf '%s\\n' "$*" >> "$FAKE_STATE/open.log"
+[ "$1" = "-b" ] && grep -qx "$2" "$FAKE_STATE/missing" 2>/dev/null && exit 1
+exit 0
+`;
+
+function world({ extensions, defaults = {}, sameType = {}, record } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "side-viewer-router-"));
+  const state = join(dir, "state");
+  const data = join(dir, "data");
+  const bin = join(dir, "bin");
+  for (const d of [state, data, bin]) mkdirSync(d);
+  writeFileSync(join(dir, "router"), FAKE_ROUTER);
+  writeFileSync(join(bin, "open"), FAKE_OPEN);
+  chmodSync(join(dir, "router"), 0o755);
+  chmodSync(join(bin, "open"), 0o755);
+  writeFileSync(
+    join(dir, "extensions.json"),
+    JSON.stringify(extensions ?? { markdown: ["md"], image: ["png", "jpg", "jpeg"], code: ["txt", "py"] }),
+  );
+  for (const [ext, other] of Object.entries(sameType)) writeFileSync(join(state, `type-${ext}`), other);
+  const recordFile = join(data, "original-apps.tsv");
+  if (record) writeFileSync(recordFile, record);
+  const env = {
+    PATH: `${bin}:/usr/bin:/bin`,
+    FAKE_STATE: state,
+    SIDE_VIEWER_DATA: data,
+    SIDE_VIEWER_EXTENSIONS: join(dir, "extensions.json"),
+    SIDE_VIEWER_ROUTER: join(dir, "router"),
+    SIDE_VIEWER_ROUTER_ID: ROUTER_ID,
+  };
+  const w = {
+    state,
+    setDefault: (ext, id) => execFileSync(join(dir, "router"), ["--set-default-app", ext, id], { env }),
+    defaultOf: (ext) => execFileSync(join(dir, "router"), ["--default-app", ext], { env, encoding: "utf8" }).trim(),
+    record: () => (existsSync(recordFile) ? readFileSync(recordFile, "utf8") : ""),
+    takeover: (cmd) => spawnSync("/bin/sh", [join(here, "takeover.sh"), cmd], { env, encoding: "utf8" }),
+    openOriginal: (file) => spawnSync("/bin/sh", [join(here, "open-original.sh"), file], { env, encoding: "utf8" }),
+    opened: () => (existsSync(join(state, "open.log")) ? readFileSync(join(state, "open.log"), "utf8") : ""),
+  };
+  for (const [ext, id] of Object.entries(defaults)) w.setDefault(ext, id);
+  return w;
+}
+
+test("make-default records each extension's original app, then makes the router the default", () => {
+  const w = world({ defaults: { md: "com.example.Notes", png: "com.apple.Preview", jpg: "com.apple.Preview", txt: "com.apple.TextEdit", py: "com.example.Editor" }, sameType: { jpeg: "jpg" } });
+  const r = w.takeover("make-default");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(
+    w.record(),
+    "md\tcom.example.Notes\npng\tcom.apple.Preview\njpg\tcom.apple.Preview\njpeg\tcom.apple.Preview\ntxt\tcom.apple.TextEdit\npy\tcom.example.Editor\n",
+  );
+  for (const ext of ["md", "png", "jpg", "jpeg", "txt", "py"]) assert.equal(w.defaultOf(ext), ROUTER_ID, ext);
+});
+
+test("make-default twice keeps the original apps instead of recording the router itself", () => {
+  const w = world({ defaults: { md: "com.example.Notes", png: "com.apple.Preview" } });
+  w.takeover("make-default");
+  const first = w.record();
+  const r = w.takeover("make-default");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(w.record(), first);
+  assert.ok(!w.record().includes(ROUTER_ID));
+});
+
+test("make-default picks up an original app the person chose after an earlier takeover", () => {
+  const w = world({ defaults: { md: "com.example.Notes" } });
+  w.takeover("make-default");
+  w.setDefault("md", "com.example.Other");
+  w.takeover("make-default");
+  assert.match(w.record(), /^md\tcom\.example\.Other$/m);
+});
+
+test("make-default leaves an extension with no original app out of the record", () => {
+  const w = world({ extensions: { markdown: ["md", "mdx"], image: [], code: [] }, defaults: { md: "com.example.Notes" } });
+  w.takeover("make-default");
+  assert.equal(w.record(), "md\tcom.example.Notes\n");
+  assert.equal(w.defaultOf("mdx"), ROUTER_ID);
+});
+
+test("make-default keeps the record of an extension that has left the list, so restore can still return it", () => {
+  const w = world({ extensions: { markdown: ["md"], image: [], code: [] }, defaults: { md: "com.example.Notes" }, record: "ts\tcom.example.Player\n" });
+  w.takeover("make-default");
+  assert.equal(w.record(), "md\tcom.example.Notes\nts\tcom.example.Player\n");
+});
+
+test("make-default reports the extensions it could not take over and exits non-zero", () => {
+  const w = world({ extensions: { markdown: ["md"], image: [], code: ["ts"] }, defaults: { md: "com.example.Notes", ts: "com.example.Player" } });
+  writeFileSync(join(w.state, "refuse-ts"), "");
+  const r = w.takeover("make-default");
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout + r.stderr, /ts/);
+  assert.equal(w.defaultOf("md"), ROUTER_ID);
+  assert.equal(w.defaultOf("ts"), "com.example.Player");
+});
+
+test("restore gives every recorded extension back to its original app", () => {
+  const defaults = { md: "com.example.Notes", png: "com.apple.Preview", jpg: "com.apple.Preview", txt: "com.apple.TextEdit", py: "com.example.Editor" };
+  const w = world({ defaults, sameType: { jpeg: "jpg" } });
+  w.takeover("make-default");
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  for (const [ext, id] of Object.entries(defaults)) assert.equal(w.defaultOf(ext), id, ext);
+});
+
+test("restore returns a recorded extension even after it left the list", () => {
+  const w = world({ extensions: { markdown: ["md"], image: [], code: [] }, defaults: { md: "com.example.Notes", ts: ROUTER_ID }, record: "ts\tcom.example.Player\n" });
+  w.takeover("restore");
+  assert.equal(w.defaultOf("ts"), "com.example.Player");
+});
+
+test("restore leaves alone an extension the person already moved off the router", () => {
+  const w = world({ defaults: { md: "com.example.Notes" } });
+  w.takeover("make-default");
+  w.setDefault("md", "com.example.Other");
+  w.takeover("restore");
+  assert.equal(w.defaultOf("md"), "com.example.Other");
+});
+
+test("restore falls back to TextEdit, or Preview for images, when nothing was recorded", () => {
+  const w = world({ extensions: { markdown: ["mdx"], image: ["webp"], code: [] } });
+  w.takeover("make-default");
+  w.takeover("restore");
+  assert.equal(w.defaultOf("mdx"), "com.apple.TextEdit");
+  assert.equal(w.defaultOf("webp"), "com.apple.Preview");
+});
+
+test("status prints the current default app and the recorded original app per extension", () => {
+  const w = world({ extensions: { markdown: ["md", "mdx"], image: ["png"], code: [] }, defaults: { md: "com.example.Notes", png: "com.apple.Preview" } });
+  assert.equal(w.takeover("status").stdout, "md\tcom.example.Notes\t-\nmdx\t-\t-\npng\tcom.apple.Preview\t-\n");
+  w.takeover("make-default");
+  assert.equal(
+    w.takeover("status").stdout,
+    `md\t${ROUTER_ID}\tcom.example.Notes\nmdx\t${ROUTER_ID}\t-\npng\t${ROUTER_ID}\tcom.apple.Preview\n`,
+  );
+});
+
+test("open-original opens the file in the recorded original app", () => {
+  const w = world({ record: "md\tcom.example.Notes\n" });
+  const r = w.openOriginal("/tmp/some dir/README.MD");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(w.opened(), "-b com.example.Notes /tmp/some dir/README.MD\n");
+});
+
+test("open-original uses TextEdit, or Preview for images, when there is no record", () => {
+  const w = world();
+  w.openOriginal("/tmp/a.py");
+  w.openOriginal("/tmp/b.png");
+  w.openOriginal("/tmp/Makefile");
+  assert.equal(w.opened(), "-b com.apple.TextEdit /tmp/a.py\n-b com.apple.Preview /tmp/b.png\n-b com.apple.TextEdit /tmp/Makefile\n");
+});
+
+test("open-original never hands the file back to the router", () => {
+  const w = world({ record: `md\t${ROUTER_ID}\n` });
+  w.openOriginal("/tmp/a.md");
+  assert.equal(w.opened(), "-b com.apple.TextEdit /tmp/a.md\n");
+});
+
+test("open-original falls back when the recorded app is no longer installed", () => {
+  const w = world({ record: "png\tcom.example.Gone\n" });
+  writeFileSync(join(w.state, "missing"), "com.example.Gone\n");
+  const r = w.openOriginal("/tmp/b.png");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(w.opened(), "-b com.example.Gone /tmp/b.png\n-b com.apple.Preview /tmp/b.png\n");
+});
