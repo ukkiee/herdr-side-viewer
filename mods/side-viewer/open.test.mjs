@@ -4,19 +4,45 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const HERDR_FRONT = "/Users/someone/Applications/Herdr.app";
 
-// Stands in for herdr-app: logs one argument per line, then answers as the scene says.
+// Stands in for herdr-app: logs one argument per line and an empty line after each call, then
+// answers as the scene says. `side-viewer.show` wakes the scene's showing viewers, at once or
+// after the delay the scene gives.
 const FAKE_HERDR = `#!/bin/sh
-for a in "$@"; do printf '%s\\n' "$a"; done >> "$FAKE_STATE/herdr.log"
+{ for a in "$@"; do printf '%s\\n' "$a"; done; echo; } >> "$FAKE_STATE/herdr.log"
+if [ "$2" = side-viewer.show ] && [ -e "$FAKE_STATE/viewers" ]; then
+  if [ -e "$FAKE_STATE/viewer-delay" ]; then
+    (sleep "$(cat "$FAKE_STATE/viewer-delay")"; "$FAKE_NODE" "$FAKE_STATE/viewers.mjs") > /dev/null 2>&1 &
+  else
+    "$FAKE_NODE" "$FAKE_STATE/viewers.mjs"
+  fi
+fi
 [ -e "$FAKE_STATE/herdr-sleep" ] && sleep "$(cat "$FAKE_STATE/herdr-sleep")"
+if [ "$2" = side-viewer.show ] && [ -e "$FAKE_STATE/show-out" ]; then cat "$FAKE_STATE/show-out"; exit 1; fi
 cat "$FAKE_STATE/herdr-out" 2>/dev/null || echo '{ "pane": "p9" }'
 exit "$(cat "$FAKE_STATE/herdr-exit" 2>/dev/null || echo 0)"
+`;
+
+// Stands in for the side viewers showing in the tab: each takes the waiting request the way
+// main.js does, through request.js, and logs the file it would show.
+const FAKE_VIEWERS = `
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { takeRequest } from ${JSON.stringify(pathToFileURL(join(here, "request.js")).href)};
+const files = {
+  read: async (path) => { try { return readFileSync(path, "utf8"); } catch { return null; } },
+  create: async (path, text) => writeFileSync(path, text, { flag: "wx" }),
+};
+const count = Number(readFileSync(process.env.FAKE_STATE + "/viewers", "utf8"));
+for (let i = 0; i < count; i++) {
+  const request = await takeRequest(files, { folder: process.env.SIDE_VIEWER_DATA, answered: null, now: Date.now() });
+  if (request) appendFileSync(process.env.FAKE_STATE + "/viewer.log", request.file + "\\n");
+}
 `;
 
 // Stands in for /usr/bin/open: logs one argument per line.
@@ -50,6 +76,7 @@ function world({ herdr = true, installed = true, record } = {}) {
     HERDR_APP_HOME: appHome,
     SIDE_VIEWER_HERDR_APP: herdrApp,
     SIDE_VIEWER_ROUTER_ID: "test.side-viewer-router",
+    FAKE_NODE: process.execPath,
   };
   const lines = (name) => (existsSync(join(state, name)) ? readFileSync(join(state, name), "utf8").trimEnd().split("\n") : []);
   return {
@@ -61,8 +88,27 @@ function world({ herdr = true, installed = true, record } = {}) {
       writeFileSync(join(state, "herdr-exit"), String(code));
     },
     herdrHangs: (seconds) => writeFileSync(join(state, "herdr-sleep"), String(seconds)),
-    // What herdr-app and `open` were called with, one argument per entry.
-    herdrArgs: () => lines("herdr.log"),
+    // Side viewers showing in the current tab. With `after`, they wake that many seconds late.
+    viewersShowing: (count = 1, { after } = {}) => {
+      writeFileSync(join(state, "viewers.mjs"), FAKE_VIEWERS);
+      writeFileSync(join(state, "viewers"), String(count));
+      if (after) writeFileSync(join(state, "viewer-delay"), String(after));
+    },
+    // The show command itself fails, as it may when no viewer is showing.
+    showFails: (out) => writeFileSync(join(state, "show-out"), out),
+    // What herdr-app was called with: one entry per call, one argument per item.
+    herdrCalls: () => {
+      const calls = [[]];
+      for (const line of lines("herdr.log")) line === "" ? calls.push([]) : calls.at(-1).push(line);
+      return calls.filter((call) => call.length);
+    },
+    // The arguments of the pane.split call, or undefined when no pane was opened.
+    splitArgs() {
+      return this.herdrCalls().find((call) => call[1] === "pane.split");
+    },
+    // The files the showing viewers took, in order.
+    shownInViewer: () => lines("viewer.log"),
+    // What `open` was called with, one argument per entry.
     openArgs: () => lines("open.log"),
   };
 }
@@ -71,8 +117,68 @@ test("with Herdr in front, the file opens in a side viewer pane split to the rig
   const w = world();
   const r = w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(w.herdrArgs(), ["do", "pane.split", "--direction", "right", "--mod", "side-viewer", "--props", '{"file":"/work/notes/plan.md"}']);
+  assert.deepEqual(w.splitArgs(), ["do", "pane.split", "--direction", "right", "--mod", "side-viewer", "--props", '{"file":"/work/notes/plan.md"}']);
   assert.deepEqual(w.openArgs(), []);
+});
+
+test("a side viewer showing in the current tab takes the file, and no pane is opened", () => {
+  const w = world();
+  w.viewersShowing();
+  const r = w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(w.herdrCalls(), [["do", "side-viewer.show"]]);
+  assert.deepEqual(w.shownInViewer(), ["/work/notes/plan.md"]);
+  assert.deepEqual(w.openArgs(), []);
+});
+
+test("when no viewer answers, as when the only one is in another tab, a new pane is opened", () => {
+  const w = world();
+  const r = w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(w.herdrCalls().map((call) => call[1]), ["side-viewer.show", "pane.split"]);
+  assert.deepEqual(w.openArgs(), []);
+});
+
+test("when the show command itself fails, a new pane is still opened", () => {
+  const w = world();
+  w.showFails('{ "error": "no mod is showing" }');
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.ok(w.splitArgs());
+  assert.deepEqual(w.openArgs(), []);
+});
+
+test("of two viewers showing in the current tab, one takes the file", () => {
+  const w = world();
+  w.viewersShowing(2);
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.deepEqual(w.shownInViewer(), ["/work/notes/plan.md"]);
+  assert.equal(w.splitArgs(), undefined);
+});
+
+test("a viewer that wakes after the new pane was asked for does not take the file as well", () => {
+  const w = world();
+  w.viewersShowing(1, { after: 1 });
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.ok(w.splitArgs());
+  spawnSync("/bin/sleep", ["1.6"]);
+  assert.deepEqual(w.shownInViewer(), []);
+});
+
+test("each file opened is a request of its own, so the same viewer takes one after another", () => {
+  const w = world();
+  w.viewersShowing();
+  w.open("/work/a.md", HERDR_FRONT);
+  w.open("/work/b.md", HERDR_FRONT);
+  assert.deepEqual(w.shownInViewer(), ["/work/a.md", "/work/b.md"]);
+  assert.equal(w.splitArgs(), undefined);
+});
+
+test("the request reaches a showing viewer even before the data folder exists", () => {
+  const w = world();
+  w.viewersShowing();
+  const data = join(w.dir, "not-made-yet", "side-viewer");
+  w.open("/work/notes/plan.md", HERDR_FRONT, { SIDE_VIEWER_DATA: data });
+  assert.deepEqual(w.shownInViewer(), ["/work/notes/plan.md"]);
 });
 
 test("with another app in front, the file goes to its original app and no viewer opens", () => {
@@ -80,13 +186,13 @@ test("with another app in front, the file goes to its original app and no viewer
   const r = w.open("/work/notes/plan.md", "/System/Library/CoreServices/Finder.app");
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(w.openArgs(), ["-b", "com.example.Notes", "/work/notes/plan.md"]);
-  assert.deepEqual(w.herdrArgs(), []);
+  assert.deepEqual(w.herdrCalls(), []);
 });
 
 test("the running Herdr is also recognised by the name herdr-app", () => {
   const w = world();
   w.open("/work/notes/plan.md", "herdr-app");
-  assert.equal(w.herdrArgs()[1], "pane.split");
+  assert.ok(w.splitArgs());
   assert.deepEqual(w.openArgs(), []);
 });
 
@@ -101,7 +207,7 @@ test("while the side viewer mod is not installed in Herdr, the file goes to its 
   const w = world({ installed: false });
   const r = w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(w.herdrArgs(), []);
+  assert.deepEqual(w.herdrCalls(), []);
   assert.deepEqual(w.openArgs(), ["-b", "com.apple.TextEdit", "/work/notes/plan.md"]);
 });
 
@@ -114,7 +220,7 @@ test("inside the built router app, where every script sits in one folder, both w
   copyFileSync(join(here, "extensions.json"), join(resources, "extensions.json"));
   const run = (front) => spawnSync("/bin/sh", [join(resources, "open.sh"), "/work/notes/plan.md", front], { env: w.env, encoding: "utf8" });
   assert.equal(run(HERDR_FRONT).status, 0);
-  assert.equal(w.herdrArgs()[1], "pane.split");
+  assert.ok(w.splitArgs());
   assert.equal(run("Finder").status, 0);
   assert.deepEqual(w.openArgs(), ["-b", "com.example.Notes", "/work/notes/plan.md"]);
 });
@@ -124,7 +230,7 @@ test("when the split command answers with an error, the file goes to its origina
   w.herdrSays('{ "error": "no focused pane" }', 1);
   const r = w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(w.herdrArgs()[1], "pane.split");
+  assert.ok(w.splitArgs());
   assert.deepEqual(w.openArgs(), ["-b", "com.apple.TextEdit", "/work/notes/plan.md"]);
 });
 
@@ -150,15 +256,32 @@ test("when Herdr does not answer in time, the file goes to its original app", ()
   assert.equal(r.status, 0, r.stderr);
   assert.ok(Date.now() - started < 4000, "gave up before herdr-app finished");
   assert.deepEqual(w.openArgs(), ["-b", "com.apple.TextEdit", "/work/notes/plan.md"]);
+  // One wait is enough: a Herdr that did not take the first command is not asked for a pane.
+  assert.equal(w.herdrCalls().length, 1);
+});
+
+test("a viewer that wakes after Herdr was given up on does not take the file as well", () => {
+  const w = world();
+  w.herdrHangs(5);
+  w.viewersShowing(1, { after: 1 });
+  w.open("/work/notes/plan.md", HERDR_FRONT, { SIDE_VIEWER_TIMEOUT: "1" });
+  assert.deepEqual(w.openArgs(), ["-b", "com.apple.TextEdit", "/work/notes/plan.md"]);
+  spawnSync("/bin/sleep", ["1.6"]);
+  assert.deepEqual(w.shownInViewer(), []);
 });
 
 test("a path with spaces, quotes, a backslash and Korean reaches the viewer and the original app intact", () => {
   const file = '/work/내 문서/it\'s "final" a\\b 계획.md';
   const w = world();
   w.open(file, HERDR_FRONT);
-  const args = w.herdrArgs();
+  const args = w.splitArgs();
   assert.equal(args.length, 8);
   assert.deepEqual(JSON.parse(args[7]), { file });
+
+  const showing = world();
+  showing.viewersShowing();
+  showing.open(file, HERDR_FRONT);
+  assert.deepEqual(showing.shownInViewer(), [file]);
 
   const other = world({ record: "md\tcom.example.Notes\n" });
   other.open(file, "Finder");
@@ -169,5 +292,5 @@ test("with no app known to be in front, the file goes to its original app", () =
   const w = world();
   w.open("/work/notes/plan.md", "");
   assert.deepEqual(w.openArgs(), ["-b", "com.apple.TextEdit", "/work/notes/plan.md"]);
-  assert.deepEqual(w.herdrArgs(), []);
+  assert.deepEqual(w.herdrCalls(), []);
 });

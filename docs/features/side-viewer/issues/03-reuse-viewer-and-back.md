@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** integrated
 
 **명세:** `docs/features/side-viewer/spec.md` (AC-2)
 
@@ -28,3 +28,22 @@
 **완료 조건:** 위 항목 전부, 경계 1·2 테스트와 경계 3 통과.
 
 ## Comments
+
+### 2026-11-11 구현 메모
+
+- **요청·응답 약속.** `open.sh`가 데이터 폴더에 `request.json`(`{"id","file","at"}`, `at`은 유닉스 초, id는 `<초>-<pid>`)을 쓰고 `herdr-app do side-viewer.show`를 보낸다. 요청을 가져간 뷰어는 같은 폴더에 `answer-<id>`를 새로 만든다. 형식은 `request.js`가 정하고, `open.test.mjs`의 가짜 뷰어가 `request.js`의 `takeRequest`로 요청을 읽어 두 쪽을 묶는다.
+- **가져가기는 응답 파일을 먼저 만든 쪽이 이긴다.** 뷰어는 `writeTextFile(path, text, null)`(새 파일만 만든다)로 응답을 만든다. 한 탭에 뷰어가 둘이면 먼저 만든 하나만 내용을 바꾼다(어느 쪽인지는 정해지지 않는다). `open.sh`는 약 0.4초(0.05초 × 8) 기다린 뒤 같은 이름을 스스로 차지하고 `pane.split`으로 간다. 그래서 늦게 깨어난 뷰어가 새 pane과 함께 파일을 또 가져가지 않는다.
+- **무시하는 요청.** 깨진 JSON, id가 `[A-Za-z0-9_-]+`가 아님, 파일이 절대 경로가 아님, `at`이 없거나 5초 넘게 차이 남, 이 사본이 직전에 가져간 id.
+- **응답 파일 정리.** 응답 파일은 바로 지우지 않는다(둘째 뷰어의 재처리를 막는다). `open.sh`가 실행될 때 1분 넘은 `answer-*`를 지운다.
+- **Herdr 무응답.** `side-viewer.show`가 `SIDE_VIEWER_TIMEOUT`을 다 쓰고 실패하면 `pane.split`을 다시 시도하지 않고 바로 원래 앱으로 넘긴다(기다림이 두 배가 되지 않게). 그 밖의 실패(명령 오류)는 기다리지 않고 `pane.split`으로 간다.
+- **방문 기록.** `history.js`. `show(file, cx)`만 기록을 쌓고, `goBack(cx)`은 쌓지 않는다. 뒤로 가기로 떠난 파일은 버린다(앞으로 가기 없음).
+- **데이터 폴더.** mod는 `appHome()/data/side-viewer`만 본다. `SIDE_VIEWER_DATA`로 다른 폴더를 주면 `open.sh`와 mod가 어긋난다(테스트 전용 변수).
+- **미검증(경계 4).** `herdr-app do side-viewer.show`가 `nextCommand()`를 `"show"`로 깨우는지, 보이는 사본이 없을 때 그 명령이 오류를 내는지, `writeTextFile(…, null)`이 이미 있는 파일에서 실제로 거절하는지, 다른 탭의 뷰어가 요청을 받지 않는지. 플랫폼 문서상 `mod.json`에 추가 선언은 필요 없다(`focusable`은 키보드 포커스용).
+
+### 통합 기록 (2026-11-11)
+
+- 결과 SHA `61215ef`(`ticket/03-reuse-back`, 통합 tip `10d9fda` 병합 포함), `feat/side-viewer`에 fast-forward로 통합.
+- 전체 오프라인 검사(통합 브랜치, 주 진행자 실행): `node --test mods/side-viewer/` 통과 96, 실패 0, skip 0. `herdr-app check mods/side-viewer` 통과.
+- 완료 조건 근거: 경계 1(방문 기록, 요청 해석), 경계 2(보이는 뷰어가 응답하면 분할 명령이 불리지 않고, 응답이 없으면 불린다), 경계 3 통과.
+- 미검증·이월(티켓 06): `herdr-app do side-viewer.show`가 뷰어의 `nextCommand()`를 깨우는지, 뷰어가 둘일 때 하나만 가져가는지(`writeTextFile`의 덮어쓰기 거절 여부), 두 파일 연속 cmd-클릭과 뒤로 가기 클릭.
+- 명세 밖 추가: `side-viewer.show`가 시간 제한을 다 쓰고 실패하면 분할을 다시 시도하지 않고 원래 앱으로 넘긴다. 5초 넘게 차이 나는 요청은 무시한다.
