@@ -20,13 +20,24 @@ function recorded(extension, record) {
   return "";
 }
 
-function isImage(extension, extensions) {
+// The group of extensions.json an extension is in, "" when it is in none, or null when
+// the list cannot be read.
+function groupOf(extension, extensions) {
+  let groups;
   try {
-    const image = JSON.parse(extensions).image;
-    return Array.isArray(image) && image.includes(extension);
+    groups = JSON.parse(extensions);
   } catch {
-    return false;
+    return null;
   }
+  if (!groups || typeof groups !== "object") return null;
+  for (const [group, listed] of Object.entries(groups)) {
+    if (Array.isArray(listed) && listed.includes(extension)) return group;
+  }
+  return "";
+}
+
+function isImage(extension, extensions) {
+  return groupOf(extension, extensions) === "image";
 }
 
 // The bundle ids to try, in order. `record` and `extensions` are the texts of
@@ -42,7 +53,9 @@ export function originalApps(file, record, extensions) {
 }
 
 // The commands to run until one succeeds. `-b` names the app, so macOS never asks the
-// default app (the router) where the file should go.
+// default app (the router) where the file should go. The router only claims the listed
+// extensions, so any other file goes to its own default app, which is its original app.
 export function openOriginalCommands(file, record, extensions) {
+  if (groupOf(extensionOf(file), extensions) === "") return [["open", [file]]];
   return originalApps(file, record, extensions).map((app) => ["open", ["-b", app, file]]);
 }

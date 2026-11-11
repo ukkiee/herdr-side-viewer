@@ -38,11 +38,26 @@ test("a damaged record or extension list falls back to the default", () => {
   assert.deepEqual(originalApps("/a/shot.png", null, null), ["com.apple.TextEdit"]);
 });
 
-test("every command names an app with -b: none leaves the choice to the default app", () => {
+test("every command for a listed extension names an app with -b: none leaves the choice to the default app", () => {
   assert.deepEqual(openOriginalCommands("/a/my notes.md", RECORD, EXTENSIONS), [
     ["open", ["-b", "com.example.Editor", "/a/my notes.md"]],
     ["open", ["-b", "com.apple.TextEdit", "/a/my notes.md"]],
   ]);
+});
+
+test("an extension outside the list opens in its own default app: the router cannot be it", () => {
+  assert.deepEqual(openOriginalCommands("/a/paper.pdf", RECORD, EXTENSIONS), [["open", ["/a/paper.pdf"]]]);
+  assert.deepEqual(openOriginalCommands("/etc/hosts", RECORD, EXTENSIONS), [["open", ["/etc/hosts"]]]);
+  assert.deepEqual(openOriginalCommands("/a/Makefile", null, EXTENSIONS), [["open", ["/a/Makefile"]]]);
+});
+
+test("a listed extension without a record still names an app", () => {
+  assert.deepEqual(openOriginalCommands("/a/tool.py", RECORD, EXTENSIONS), [["open", ["-b", "com.apple.TextEdit", "/a/tool.py"]]]);
+});
+
+test("without a readable list every file names an app, as nothing says the router is not its default", () => {
+  assert.deepEqual(openOriginalCommands("/a/paper.pdf", RECORD, null), [["open", ["-b", "com.apple.TextEdit", "/a/paper.pdf"]]]);
+  assert.deepEqual(openOriginalCommands("/a/paper.pdf", RECORD, "not json"), [["open", ["-b", "com.apple.TextEdit", "/a/paper.pdf"]]]);
 });
 
 test("the router id is the one the router app is built with", () => {
@@ -74,7 +89,6 @@ test("the mod names the same app as the router's open-original.sh", { skip: proc
     ["/a/notes.mdx", RECORD],
     ["/a/shot.jpg", null],
     ["/a/main.ts", `ts\t${ROUTER_ID}\n`],
-    ["/a/Makefile", RECORD],
   ];
   for (const [file, record] of scenes) {
     const [command, args] = openOriginalCommands(file, record, EXTENSIONS)[0];
