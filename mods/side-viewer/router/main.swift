@@ -59,7 +59,8 @@ func setDefaultApp(_ ext: String, _ bundleID: String) -> Never {
   }
   NSWorkspace.shared.setDefaultApplication(at: app, toOpen: type) { error in
     // Also how a "keep" in the confirmation window comes back; takeover.sh tells the two apart.
-    if let error = error { fail("\(ext): \(error.localizedDescription)", code: 1) }
+    // The domain and code are printed so the two can one day be told apart here.
+    if let error = error as NSError? { fail("\(ext): \(error.localizedDescription) [\(error.domain) \(error.code)]", code: 1) }
     exit(0)
   }
   // macOS shows a confirmation window for every change and the request waits on it. Leave the
@@ -134,6 +135,9 @@ case "--type-info" where arguments.count == 2:
   let parents = type.supertypes.map(\.identifier).sorted().joined(separator: ",")
   print("\(type.identifier)\t\(extensions)\t\(parents)")
   exit(0)
+case let option? where option.hasPrefix("--"):
+  // A mistyped option would otherwise start the app, wait for a file and end with 0.
+  fail("usage: SideViewerRouter --make-default [code] | --restore | --status", code: 2)
 default:
   let app = NSApplication.shared
   let router = Router()
