@@ -1,9 +1,8 @@
 // What the side viewer shows for a file and the text read from it. No Herdr imports, so it
-// runs under `node --test`.
-
-const MARKDOWN = /\.(md|markdown|mdx)$/i;
+// runs under `node --test`. Which view a file gets is decided in views.js.
 
 const NOTICES = {
+  large: "뷰어에서 열기에는 너무 큽니다.",
   none: "열 파일이 없습니다.",
   loading: "불러오는 중…",
   empty: "이 파일은 비어 있습니다.",
@@ -18,13 +17,14 @@ export function noticeFor(state) {
 }
 
 // `text` is what reading the file gave: a string, or null when the file is not there.
-// Returns { state, text? }; "markdown" is the only state with content to draw.
-export function contentOf(file, text) {
+// `found` is the file's view from views.js (null: no view for this file).
+// Returns { state, text?, language? }; "markdown" and "code" are the states with text to draw.
+export function contentOf(file, text, found) {
   if (!file) return { state: "none" };
-  const name = file.slice(file.lastIndexOf("/") + 1);
-  if (!MARKDOWN.test(name)) return { state: "unsupported" };
+  if (!found || (found.view !== "markdown" && found.view !== "code")) return { state: "unsupported" };
   if (text === null || text === undefined) return { state: "missing" };
   if (text.trim() === "") return { state: "empty" };
+  if (found.view === "code") return { state: "code", text, language: found.language };
   return { state: "markdown", text };
 }
 
