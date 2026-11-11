@@ -77,3 +77,19 @@
 - **함께 확인된 것.** 지연이 없으면 86행의 `claim`을 지운 변이도 잡힌다(위 통합 기록의 미검증 항목).
 - **고칠 것.** 늦게 깨어나는 장면에서 가짜 뷰어가 쓰는 현재 시각을 요청이 유효한 시각으로 장면이 정한다(벽시계가 아니라 요청의 `at`에서 얻는다). 그 뒤 82행과 86행의 `claim`을 각각 지운 변이가 `wakeViewers()` 앞에 6초를 멈춰도 실패하는지 저장소 밖 사본에서 확인한다.
 - **남기는 한계.** 반대 순서 테스트가 가짜 뷰어의 Node 기동이 1초보다 빠르다는 데 기대는 것은 검토자도 같은 한계로 보았다. `open.sh`를 바꾸지 않고는 없앨 수 없어 그대로 둔다.
+
+### RR-1 수정의 통합과 재검토 (2026-11-11)
+
+- 결과 SHA `5f2f282`(`ticket/07-request-expiry`, 기준 `43ec5be`), `feat/side-viewer`에 fast-forward로 통합. 바뀐 파일은 `mods/side-viewer/open.test.mjs` 하나(+8/−5). `wakeViewers()`가 `request.json`의 `at`을 읽어 가짜 뷰어의 현재 시각(`FAKE_NOW`)으로 넘긴다. Herdr 명령이 깨우는 다른 장면은 벽시계를 그대로 쓴다.
+- 작업자 검사: `node --test mods/side-viewer/open.test.mjs` 연속 3번, 매번 통과 21, 실패 0, skip 0. 고치기 전 사본에서는 82행 변이가 6초 지연 아래 잡히지 않는 것(Red)을 먼저 확인했다.
+- 전체 오프라인 검사(통합 브랜치 `5f2f282`, 주 진행자 실행): `node --test mods/side-viewer/` 통과 153, 실패 0, skip 0. `herdr-app check mods/side-viewer` 통과.
+- 재검토(주 진행자의 직접 검토. 13줄짜리 테스트 변경이라 작업자를 더 띄우지 않았다). `git archive HEAD` 사본에서 `wakeViewers()` 앞에 6초를 멈춘 채 다시 돌렸다.
+
+  | 사본 | 결과 | 실패한 테스트와 이유 |
+  |---|---|---|
+  | 변이 없음 | 21 통과, 0 실패 | 없음 |
+  | (a) 82행 `claim` 삭제 | 19 통과, 2 실패 | "wakes after Herdr was given up on": `the viewer took the file as well` / 반대 순서 테스트: `the original app opened as well` |
+  | (b) 86행 `claim` 삭제 | 20 통과, 1 실패 | "wakes after the new pane was asked for": `the viewer took the file as well` |
+
+- 상태표: RE-1 해결, RE-2 해결, RR-1 해결. 신규 발견 없음. 판정 통과(실제 앱 확인은 티켓 06에 남아 있다).
+- 한계: 이 마지막 재검토는 티켓을 쓴 주 진행자가 했다. 독립 검토자(GPT 계열)는 `4833985`까지 보았다.
