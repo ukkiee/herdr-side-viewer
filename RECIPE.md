@@ -106,9 +106,14 @@ The mod shows files, not agents, so it has no agent statuses.
   recorded app, with the same count line, windows and output. An extension with no record
   goes to the app a sibling of the same file type opens in (a sibling the router does not
   hold first, then a sibling's record), because the request changes the whole file type;
-  only without such a sibling does it go to TextEdit (Preview for images). Either way it
-  says so. When the app asked for is no longer installed, the same choice is asked for
-  once more (sibling's app, else TextEdit or Preview) and printed.
+  only without such a sibling does it go to TextEdit (Preview for images), and it says so.
+  A file type whose extensions would all go to the app it already opens in gets no request
+  and is not counted. After each request every extension of its file type is read again:
+  `바뀜` lists only those that left the router. The rest, and those of a file type that got
+  no request, are claimed by no app but the router (`rbw`, `cp` once built) and are printed
+  as `라우터에 남음: … (이 확장자를 맡은 앱이 라우터뿐입니다)`, neither a failure nor kept.
+  When the app asked for is no longer installed, the same choice is asked for once more
+  (sibling's app, else TextEdit or Preview) and printed.
 - **Status** (`--status`). One line per extension: extension, current default app, recorded
   original app or `-`, tab-separated bundle ids.
 - **Exit codes** of the three: 0 done or nothing to do, 1 a request failed, 2 wrong usage,
@@ -290,6 +295,8 @@ and a path in code formatting.
     opens the file in its original app, and no side viewer opens. (AC-11)
 17. `node --test mods/side-viewer/` passes with no failures; it covers the cases where
     `herdr-app` is missing, errors, or does not answer. (AC-11, AC-2, AC-3, AC-7, AC-9)
-18. `router --restore` announces its windows; pick the original app in each. `router --status`
-    then shows no extension with the router that has a recorded original app, and the same
-    files open from Finder as before the take-over. (AC-5)
+18. `router --restore` announces its windows, and exactly that many follow; pick the original
+    app in each. `바뀜` lists only extensions that left the router; any that stay are under
+    `라우터에 남음`. `router --status` then shows the router only for those, none of which
+    has a recorded original app, and the same files open from Finder as before the
+    take-over. (AC-5)

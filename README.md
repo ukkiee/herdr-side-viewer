@@ -140,9 +140,12 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`.
 - **Building alone can change a default.** An extension that no installed app claims
   (seen with `mdx`, `jsonc`, `rbw`, `cp`) goes to the router as soon as it is built, before
   any `--make-default`. Those have no original app on record, so the router opens them in
-  TextEdit (Preview for images). `--restore` sets them to the app a sibling extension of
-  the same file type opens in (`rb` for `rbw`, `cpp` for `cp`), and to TextEdit or Preview
-  only when there is no such sibling (`mdx`, `jsonc`).
+  TextEdit (Preview for images). One with a sibling extension of the same file type (`rb`
+  for `rbw`, `cpp` for `cp`) stays with the router after `--restore`, which lists it under
+  `라우터에 남음`: macOS sets defaults per file type, and no app but the router claims that
+  extension itself. The router keeps opening it in TextEdit or Preview, and deleting the
+  router app frees it. One without such a sibling (`mdx`, `jsonc`) goes to TextEdit or
+  Preview.
 - **`.ts` video files pass through the router too.** macOS classes `.ts` as MPEG-2 video.
   Outside Herdr they still reach the original app.
 - **Every file with a taken-over extension passes through the router**, also from Finder.
