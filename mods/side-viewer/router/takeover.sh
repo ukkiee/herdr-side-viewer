@@ -10,6 +10,7 @@
 #
 # Exit code: 0 everything asked for was changed (or nothing needed changing), 1 a request
 # failed, 2 wrong usage, 3 nothing failed but the person kept the current app for some.
+# An extension restore reports as staying with the router is neither a failure nor kept.
 #
 # SIDE_VIEWER_ROUTER: the command that answers `--default-app <ext>`, `--type-of <ext>` and
 #   `--set-default-app <ext> <id>` (exit 0 changed, 1 macOS refused, 3 app not found,
@@ -92,7 +93,17 @@ run_plan() {
       fi
     fi
     case "$code" in
-      0) changed="$changed $group" ;;
+      0)
+        # The request sets the file type, but an extension that no app but the router claims
+        # keeps going to the router whatever its file type opens in. Only a fresh read tells.
+        for one in $group; do
+          if [ "$app" != "$router_id" ] && [ "$(current "$one")" = "$router_id" ]; then
+            left="$left $one"
+          else
+            changed="$changed $one"
+          fi
+        done
+        ;;
       1)
         # macOS answers a "keep" in the window with an error and leaves the default app alone.
         # That is the person's choice, not a failure.
@@ -203,37 +214,34 @@ restore() {
   for ext in $(known_extensions); do
     printf '%s\t%s\t%s\n' "$(type_of "$ext")" "$ext" "$(current "$ext")" >> "$siblings"
   done
-  # Each wish carries how its app was chosen: record, sibling (a sibling's record), same (the
-  # app the file type opens in now) or fallback.
+  # Lines of "<file type><TAB><extension><TAB><app><TAB>now|ask": "now" when the app is the
+  # one the file type already opens in.
   wishes="$record.wishes"
   : > "$wishes"
   while IFS='	' read -r type ext app; do
     # Only what the router still holds: a default the person picked since then stays.
     [ "$app" = "$router_id" ] || continue
-    how=record
+    how=ask
     app=$(recorded "$ext")
     if [ -z "$app" ]; then
       # A request changes the whole file type. TextEdit here would also take the siblings
       # that were never taken over away from their app, so their app is asked for instead.
-      how=same
+      how=now
       app=$(sibling_opens_in "$ext")
-      [ -n "$app" ] || { how=sibling; app=$(sibling_record "$ext"); }
-      [ -n "$app" ] || { how=fallback; app=$(fallback_app "$ext"); }
+      [ -n "$app" ] || { how=ask; app=$(sibling_record "$ext"); }
+      if [ -z "$app" ]; then
+        app=$(fallback_app "$ext")
+        echo "$ext: 기록된 원래 앱이 없어 $app 으로 돌립니다."
+      fi
     fi
     printf '%s\t%s\t%s\t%s\n' "$type" "$ext" "$app" "$how" >> "$wishes"
   done < "$siblings"
-  # A file type whose every wish is "same" already opens in that app: macOS would accept the
-  # request without a window and change nothing. Those extensions are claimed by no app but
-  # the router, so they stay with it whatever the file type opens in.
-  awk -F '\t' 'NR == FNR { if ($4 != "same") asked[$1] = 1; next } asked[$1]' "$wishes" "$wishes" > "$plan"
-  left=$(awk -F '\t' 'NR == FNR { if ($4 != "same") asked[$1] = 1; next } !asked[$1] { printf " %s", $2 }' "$wishes" "$wishes")
+  # A file type whose every wish is "now" would change nothing: macOS accepts the request
+  # without a window. Those extensions are claimed by no app but the router, so they stay
+  # with it whatever the file type opens in, and no request is sent for them.
+  awk -F '\t' 'NR == FNR { if ($4 == "ask") asked[$1] = 1; next } asked[$1]' "$wishes" "$wishes" > "$plan"
+  left=$(awk -F '\t' 'NR == FNR { if ($4 == "ask") asked[$1] = 1; next } !asked[$1] { printf " %s", $2 }' "$wishes" "$wishes")
   rm -f "$wishes"
-  while IFS='	' read -r type ext app how; do
-    case "$how" in
-      same | sibling) echo "$ext: 기록된 원래 앱이 없어 같은 파일 종류의 앱 $app 으로 돌립니다." ;;
-      fallback) echo "$ext: 기록된 원래 앱이 없어 $app 으로 돌립니다." ;;
-    esac
-  done < "$plan"
 
   run_plan "창마다 원래 앱으로 바꾸는 쪽을 고르세요."
 }

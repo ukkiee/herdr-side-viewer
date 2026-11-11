@@ -292,6 +292,20 @@ test("restore leaves out of the window count a file type it asks nothing for, an
   assert.match(r.stdout, /^라우터에 남음: rbw \(이 확장자를 맡은 앱이 라우터뿐입니다\)$/m);
 });
 
+test("restore lists under 바뀜 only the extensions that left the router, and says which stayed", () => {
+  // The request for rb's original app succeeds for the file type, yet no app but the router
+  // claims rbw itself, so rbw keeps going to the router.
+  const w = world({ extensions: { markdown: [], image: [], code: ["rb", "rbw"] }, defaults: { rb: ROUTER_ID }, sameType: { rbw: "rb" }, record: "rb\tcom.example.IDE\n" });
+  w.only("rbw", ROUTER_ID);
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^macOS 확인 창이 1번 뜹니다\./);
+  assert.deepEqual(w.requests(), ["rb com.example.IDE"]);
+  assert.doesNotMatch(r.stdout, /^바뀜:.* rbw\b/m);
+  assert.match(r.stdout, /^바뀜: rb$/m);
+  assert.match(r.stdout, /^라우터에 남음: rbw \(이 확장자를 맡은 앱이 라우터뿐입니다\)$/m);
+});
+
 test("restore uses a sibling's recorded app when the router holds the whole file type", () => {
   const w = world({ extensions: { markdown: [], image: [], code: ["cp", "cpp"] }, defaults: { cpp: ROUTER_ID }, sameType: { cp: "cpp" }, record: "cpp\tcom.example.IDE\n" });
   const r = w.takeover("restore");
