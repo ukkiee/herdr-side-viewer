@@ -103,17 +103,24 @@ The mod shows files, not agents, so it has no agent statuses.
   (the person kept the current app), `실패: … (reason)` on stderr, or `바꿀 것이
   없습니다.` (nothing to change). A second run never records the router as an original app.
 - **Restore** (`--restore`). Every extension the router still holds goes back to its
-  recorded app, with the same count line, windows and output. An extension with no record
-  goes to the app a sibling of the same file type opens in (a sibling the router does not
-  hold first, then a sibling's record), because the request changes the whole file type;
-  only without such a sibling does it go to TextEdit (Preview for images), and it says so.
-  A file type whose extensions would all go to the app it already opens in gets no request
-  and is not counted. After each request every extension of its file type is read again:
-  `바뀜` lists only those that left the router. The rest, and those of a file type that got
-  no request, are claimed by no app but the router (`rbw`, `cp` once built) and are printed
-  as `라우터에 남음: … (이 확장자를 맡은 앱이 라우터뿐입니다)`, neither a failure nor kept.
-  When the app asked for is no longer installed, the same choice is asked for once more
-  (sibling's app, else TextEdit or Preview) and printed.
+  recorded app, with the same count line and windows. An extension with no record goes to
+  the app a sibling of the same file type opens in (a sibling the router does not hold
+  first, then a sibling's record), because the request changes the whole file type; only
+  without such a sibling does it go to TextEdit (Preview for images), and it says so. When
+  the app asked for is no longer installed, the same choice is asked for once more
+  (sibling's app, else TextEdit or Preview) and printed. A file type whose extensions would
+  all go to the app it already opens in gets no request and is not counted. A file type
+  that got a request ends one of three ways. When the request succeeds, every extension of
+  the file type is read again: those that left the router are listed under `바뀜`, those
+  still with it under `라우터에 남음`. A "keep" lists the whole file type under
+  `유지를 선택함` and a failure under `실패: … (reason)` on stderr, neither read again. The
+  extensions of a file type that got no request go under `라우터에 남음` too. Output order:
+  `바뀜`, `유지를 선택함`, then `라우터에 남음: … (이 확장자를 맡은 앱이 라우터뿐입니다)`,
+  which follows `바꿀 것이 없습니다.` when nothing was asked. The extensions on that line
+  are claimed by no app but the router (`rbw`, `cp` once built) and are neither a failure
+  nor kept. The router keeps handling them like any taken-over extension: the side viewer
+  from Herdr, otherwise the recorded app, or TextEdit (Preview for images) without a
+  record. Deleting the router app frees them.
 - **Status** (`--status`). One line per extension: extension, current default app, recorded
   original app or `-`, tab-separated bundle ids.
 - **Exit codes** of the three: 0 done or nothing to do, 1 a request failed, 2 wrong usage,
@@ -297,6 +304,10 @@ and a path in code formatting.
     `herdr-app` is missing, errors, or does not answer. (AC-11, AC-2, AC-3, AC-7, AC-9)
 18. `router --restore` announces its windows, and exactly that many follow; pick the original
     app in each. `바뀜` lists only extensions that left the router; any that stay are under
-    `라우터에 남음`. `router --status` then shows the router only for those, none of which
-    has a recorded original app, and the same files open from Finder as before the
-    take-over. (AC-5)
+    `라우터에 남음`, and `router --status` then shows the router for those and no others.
+    An extension the router got from building alone beside a sibling in another app (the
+    router and `-` in `router --status` before the first `--make-default`, such as `rbw`
+    beside `rb` or `cp` beside `cpp`) is among them, and its files still open from Finder
+    in TextEdit (Preview for images). Every other file opens from Finder in the app it
+    opened in before the take-over, except where restore gives a file type one app (see
+    Watch out). (AC-5)
