@@ -31,3 +31,13 @@
 **완료 조건:** 위 항목 전부와 전체 오프라인 검사 통과.
 
 ## Comments
+
+### 2026-11-11 구현 메모 (설치 스크립트와 문서)
+
+- **만든 것.** `install.sh`, `README.md`, `RECIPE.md`, `LICENSE`(MIT, `Copyright (c) 2026 ukyi`). 실제 앱에서의 "Done when" 수행, 명세의 `미확인` 반영, 사용자 확인은 이 메모의 범위가 아니다.
+- **install.sh.** macOS·`herdr-app`·`swiftc`(`xcode-select -p`)를 먼저 확인하고, 하나라도 없으면 아무것도 복사하지 않고 끝난다. mod 폴더 전체를 앱 홈에 복사(`extensions.json`, svg, `router/` 포함)하고 `herdr-app check`, `router/build.sh` 순으로 실행한다. 기본 앱을 바꾸는 명령은 부르지 않고 끝에 넘겨받기 명령만 안내한다.
+- **임시 앱 홈 검증.** `HERDR_APP_HOME=<임시 폴더> ./install.sh` → `check passed`, `built …/Side Viewer Router.app`, 종료 코드 0. 빌드 전후 `SideViewerRouter --status` 출력이 같았다(48줄, diff 없음).
+- **설치 스크립트가 경고하는 두 경우.** 라우터는 macOS가 셸 환경 없이 띄우므로 `open.sh`의 기본값만 쓴다. `~/.local/bin/herdr-app`이 없으면, 또는 `HERDR_APP_HOME`이 기본 위치가 아니면 cmd-클릭이 항상 원래 앱으로 간다. 스크립트가 이 두 경우를 알려 준다.
+- **RECIPE에 넣지 않은 것.** 플랫폼 문서가 정한 `![Side Viewer](preview.png)` 줄. `preview.png`가 아직 없다. 스크린샷을 찍으면 첫 문단 아래에 넣는다.
+- **README에 넣지 않은 것.** 저장소 주소(`git clone …`). 이 저장소에 remote가 없어 주소를 알 수 없다.
+- **문서가 단정하지 않은 것(경계 4에서 확인).** macOS 확인 창의 버튼 문구, 확인 창의 정확한 횟수, 코드 보기의 실제 모습, 이미지가 사본 경로에서 그려지는지.
