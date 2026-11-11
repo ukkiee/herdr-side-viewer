@@ -29,7 +29,7 @@ test("every other listed extension gets the code view", () => {
   assert.equal(viewOf("/work/main.c++", groups).view, "code");
 });
 
-test("a file outside the handed-over extensions has no view", () => {
+test("a file outside the listed extensions has no view", () => {
   assert.equal(viewOf("/work/report.pdf", groups), null);
   assert.equal(viewOf("/work/page.html", groups), null);
   assert.equal(viewOf("/work/README", groups), null);

@@ -78,7 +78,9 @@ router --restore
 asks macOS to return every extension the router still holds to its original app. The
 windows come up again, once per file type, and this time you have to pick **the original
 app**: keeping the current one leaves the router in place for that extension. An extension
-whose default you changed yourself in the meantime is left alone.
+whose default you changed yourself in the meantime is left alone. If a recorded original
+app has been uninstalled since, the command says so and asks for a sibling extension's app
+instead, or for TextEdit (Preview for images).
 
 Run it before you delete the router app: the record it restores from is of no use without
 the command.
@@ -138,7 +140,9 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`.
 - **Building alone can change a default.** An extension that no installed app claims
   (seen with `mdx`, `jsonc`, `rbw`, `cp`) goes to the router as soon as it is built, before
   any `--make-default`. Those have no original app on record, so the router opens them in
-  TextEdit (Preview for images), and `--restore` sets them to that.
+  TextEdit (Preview for images). `--restore` sets them to the app a sibling extension of
+  the same file type opens in (`rb` for `rbw`, `cpp` for `cp`), and to TextEdit or Preview
+  only when there is no such sibling (`mdx`, `jsonc`).
 - **`.ts` video files pass through the router too.** macOS classes `.ts` as MPEG-2 video.
   Outside Herdr they still reach the original app.
 - **Every file with a taken-over extension passes through the router**, also from Finder.
@@ -154,7 +158,7 @@ The router is built on your machine from `mods/side-viewer/router/main.swift` an
 ad hoc. The mod and the router run shell commands (`sh`, `open`, `stat`, `cp`, `rm` and
 the like, and `herdr-app`), and read the files you open. They write to `~/.config/herdr-app/data/side-viewer/`:
 the record of original apps, the request passed from the router to the viewer, and copies
-of the images you view (deleted when not shown for 30 days). Nothing reaches the network;
+of the images you view (deleted when the image changes, or when not shown for 30 days). Nothing reaches the network;
 a web or mail link you click in a document is handed to macOS.
 
 How it is built and what to watch for: [RECIPE.md](RECIPE.md).

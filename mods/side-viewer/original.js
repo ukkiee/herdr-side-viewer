@@ -1,5 +1,5 @@
-// Which app "open in the original app" names. The same decision as router/open-original.sh,
-// kept here so the mod does not depend on where the router app is installed. No Herdr
+// Which app "open in the original app" names. For a listed extension it is the same
+// decision as router/open-original.sh, kept here so the mod does not depend on where the router app is installed. No Herdr
 // imports, so it runs under `node --test`.
 
 import { extensionOf } from "./views.js";

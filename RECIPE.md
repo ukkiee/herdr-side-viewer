@@ -20,8 +20,8 @@ Top to bottom:
   - **Folder**, 11px `dim`, the home folder written as `~`. It takes the room that is left
     and is cut with an ellipsis.
   - **Buttons**, which never shrink: each a 24×24 square, radius 4, a 14px icon in `muted`,
-    `hover` background under the pointer, a tooltip. For a markdown file a source/rendered
-    switch (tooltip `원문 보기`, or `렌더링 보기` while the source shows); for every file
+    `hover` background under the pointer, a tooltip. While a markdown document is drawn, a
+    source/rendered switch (tooltip `원문 보기`, or `렌더링 보기` while the source shows); for every file
     `원래 앱으로 열기` (open in the original app) and `Finder에서 보기` (show in Finder),
     2px apart.
   - With no file the name reads `Side Viewer` and there are no buttons.
@@ -67,16 +67,26 @@ The mod shows files, not agents, so it has no agent statuses.
 - **Back.** Each viewer keeps its own history. Opening a file adds the one being left;
   opening the file already shown adds nothing. `←` returns to the previous file and drops
   the one left behind (there is no forward).
-- **Reload.** The viewer watches the shown file's folder and also reads the file again
-  every 15 seconds. Unchanged content leaves the screen and the scroll position alone;
-  changed code keeps its editor and only gets the new text. A deleted file turns into the
-  "gone" notice, and its content comes back when the file does. "Loading" shows only for a
-  newly opened file.
-- **Source switch.** Markdown files only. It stays on when another markdown file opens.
-- **Open in the original app.** Runs `open -b <bundle id> <file>` with the app recorded for
-  the extension; TextEdit (Preview for images) when there is no record, when the record
-  names the router, or as a second try when the recorded app fails. Naming the app keeps
-  the file from coming back through the router.
+- **Reload.** The viewer watches the shown file's folder and also checks the file again
+  every 15 seconds. A file directly in the home folder or in `/` is not watched, only
+  checked every 15 seconds. A text file whose size and modified time are as at the last
+  read is not read again (unless it changed within the last 2 seconds, since the time is in
+  whole seconds). While a read of the shown file is under way, a new change waits for it
+  and the file is read once more afterwards; opening another file leaves the read behind.
+  Unchanged content leaves the screen and the scroll position alone; changed code keeps
+  its editor and only gets the new text. A deleted file turns into the "gone" notice, and
+  its content comes back when the file does. "Loading" shows only for a newly opened file.
+- **Theme.** The code view's colors are fixed when its editor is made, so each check also
+  compares them with the theme: after a theme change the open code is redrawn with the new
+  colors within 15 seconds.
+- **Source switch.** Shown only while a markdown document is drawn, not on a notice. Every
+  file opens rendered: opening another file, `←` and a link all switch back from the source.
+- **Open in the original app.** For a listed extension, runs `open -b <bundle id> <file>`
+  with the app recorded for the extension; TextEdit (Preview for images) when there is no
+  record, when the record names the router, or as a second try when the recorded app
+  fails. Naming the app keeps the file from coming back through the router. For an
+  extension outside the list, which the router cannot be the default app of, it runs
+  `open <file>`.
 - **Show in Finder.** Runs `open -R <file>`.
 - **Links in the markdown view.** Another markdown file opens in the same viewer and joins
   the history. `http`, `https` and `mailto` go to macOS's handler. Any other local file is
@@ -92,11 +102,16 @@ The mod shows files, not agents, so it has no agent statuses.
   없습니다.` (nothing to change). A second run never records the router as an original app.
 - **Restore** (`--restore`). Every extension the router still holds goes back to its
   recorded app, with the same count line, windows and output. An extension with no record
-  goes to TextEdit (Preview for images) and says so.
+  goes to the app a sibling of the same file type opens in (a sibling the router does not
+  hold first, then a sibling's record), because the request changes the whole file type;
+  only without such a sibling does it go to TextEdit (Preview for images). Either way it
+  says so. When the app asked for is no longer installed, the same choice is asked for
+  once more (sibling's app, else TextEdit or Preview) and printed.
 - **Status** (`--status`). One line per extension: extension, current default app, recorded
   original app or `-`, tab-separated bundle ids.
 - **Exit codes** of the three: 0 done or nothing to do, 1 a request failed, 2 wrong usage,
-  3 nothing failed but the person kept the current app for some.
+  3 nothing failed but the person kept the current app for some. Any other argument that
+  starts with `--` prints the usage and ends with 2.
 - **Outside Herdr.** A taken-over file opened from Finder goes through the router to its
   original app (TextEdit, or Preview for images, without a record). The router never comes
   to the front and quits 2 seconds after the last file.
@@ -112,8 +127,10 @@ The mod shows files, not agents, so it has no agent statuses.
   `request.js` (the handoff from `open.sh`), `links.js` (link clicks, watch decisions),
   `original.js` (which app "open in the original app" names), `image-copies.js` (image
   check by first bytes, copy names, sizes, cleanup). Each has a `*.test.mjs`.
-- `mods/side-viewer/extensions.json`: the handed-over extensions in three groups,
-  `markdown`, `image`, `code`. The router build and the mod both read it.
+- `mods/side-viewer/extensions.json`: the listed extensions in three groups, `markdown`,
+  `image`, `code`. The router build and the mod both read it, and it alone says which
+  extensions are markdown. A listed extension is taken over only once the router is its
+  default app: `markdown` and `image` with `--make-default`, `code` with `--make-default code`.
 - `mods/side-viewer/open.sh`: the branch the router calls. It writes
   `request.json` (`{"id","file","at"}`) into the data folder, runs
   `herdr-app do side-viewer.show`, waits 8 × 0.05 s for the viewer's `answer-<id>` file,
@@ -140,7 +157,8 @@ The mod shows files, not agents, so it has no agent statuses.
 - Files outside the mod folder, all under the app home's `data/side-viewer/`:
   `original-apps.tsv` (`<extension><TAB><bundle id>` per line), `request.json`,
   `answer-<id>`, and `images/<path hash>-<bytes>-<modified>.<kind>` (image copies, mode 600,
-  deleted when not shown for 30 days). The viewer reads whichever file it is asked to show.
+  deleted when the image changes and gets a new copy, or when not shown for 30 days). The
+  viewer reads whichever file it is asked to show.
 - `install.sh`: runs `herdr-app check` on the mod folder, runs `build.sh`, then copies the
   mod folder into the app home. It never runs the take-over command; building can still
   change a default (see "Building the app is enough" under Watch out).
@@ -168,7 +186,8 @@ Platform:
 - Images are drawn from copies under the app home, on the report that Herdr draws images
   only from there. Only files whose first bytes are an image's are copied.
 - `watchFolder` reports subfolders too on macOS, and real paths (`/private/tmp` for `/tmp`):
-  batches are matched by path ending.
+  batches are matched by path ending. Watching the home folder or `/` would report every
+  change under them, so a file there is left to the 15-second check.
 - `herdr-app check` draws once, with no file, so it only ever sees `열 파일이 없습니다.`
 - Language names the editor knows are not documented. `toml`, `swift`, `kotlin`, `scss` and
   `xml` are guesses; an unknown name draws without colors, never an error. TypeScript and
@@ -253,7 +272,7 @@ and a path in code formatting.
     열기` opens the file in its original app and the side viewer does not change.
     `Finder에서 보기` opens a Finder window with the file selected. Narrow the pane: name
     and folder are cut short, the buttons stay. (AC-8)
-13. Open, one at a time: a text file over 1 MB with a taken-over extension, an image over
+13. Open, one at a time: a text file over 1 MB with a listed extension, an image over
     20 MB, an empty file, a file with mode 000, and a text file renamed to `.png`. Each
     shows its notice (`뷰어에서 열기에는 너무 큽니다.` for the two large ones,
     `이 파일은 비어 있습니다.`, `이 파일을 읽을 수 없습니다.`,

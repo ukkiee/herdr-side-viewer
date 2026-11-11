@@ -8,6 +8,7 @@ Issues and specs for this repo live as markdown files in `docs/features/`.
 - The spec is `docs/features/<feature-slug>/spec.md`
 - Implementation issues are one file per ticket at `docs/features/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`, never a single combined tickets file
 - Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
+- Implementation progress also goes on the `Status:` line: `Status: integrated` (merged into the integration branch and the full offline checks pass) and `Status: done` (review and integration verification are finished)
 - Comments and conversation history append to the bottom of the file under a `## Comments` heading
 
 ## When a skill says "publish to the issue tracker"
