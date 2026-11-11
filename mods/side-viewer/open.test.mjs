@@ -273,6 +273,18 @@ test("a viewer that wakes after Herdr was given up on does not take the file as 
   assert.deepEqual(w.shownInViewer(), [], "the viewer took the file as well");
 });
 
+test("a viewer that takes the file while Herdr has not answered keeps it, and nothing else opens", () => {
+  const w = world();
+  // The fake wakes the viewer before it hangs, so the viewer is done long before the 1 s limit.
+  w.herdrHangs(5);
+  w.viewersShowing();
+  const r = w.open("/work/notes/plan.md", HERDR_FRONT, { SIDE_VIEWER_TIMEOUT: "1" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(w.shownInViewer(), ["/work/notes/plan.md"]);
+  assert.deepEqual(w.openArgs(), [], "the original app opened as well");
+  assert.equal(w.splitArgs(), undefined);
+});
+
 test("a path with spaces, quotes, a backslash and Korean reaches the viewer and the original app intact", () => {
   const file = '/work/내 문서/it\'s "final" a\\b 계획.md';
   const w = world();
