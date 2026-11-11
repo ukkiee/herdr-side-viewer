@@ -73,3 +73,22 @@ export function readProbe(stdout) {
   const head = lines.slice(1).join(" ").split(/\s+/).filter(Boolean).map((hex) => parseInt(hex, 16));
   return { found: true, readable: true, bytes: Number(stat[1]), modified: Number(stat[2]), head };
 }
+
+// Whether a load shows "loading" first. Reading the shown file again (the file watch, the
+// slow recheck) must not: the notice would flash over content that is most likely unchanged.
+export function showsLoading(shownFile, file) {
+  return shownFile !== file;
+}
+
+// What a finished read does to the content on screen:
+// "keep": nothing changed, so nothing is redrawn and the scroll position stays.
+// "retext": the code changed; its editor takes the new text and keeps its place.
+// "replace": anything else.
+export function refreshOf(shown, next) {
+  if (shown.state !== next.state) return "replace";
+  const same = shown.text === next.text && shown.language === next.language && shown.path === next.path
+    && shown.size?.width === next.size?.width && shown.size?.height === next.size?.height;
+  if (same) return "keep";
+  if (next.state === "code" && shown.editor && shown.language === next.language) return "retext";
+  return "replace";
+}

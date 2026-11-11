@@ -10,7 +10,7 @@ import * as fs from "fs/promises";
 import { image } from "gpui-kit";
 import { Editor, EditorState } from "gpui-base";
 import { settings } from "herdr";
-import { viewOf, blockerOf, readProbe, PROBE } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf } from "./views.js";
 import { kindOf, copyName, sizeOf, fitted, staleCopies, FOLDER, COPY, LIST } from "./image-copies.js";
 
 // Space around an image, on each side.
@@ -44,14 +44,17 @@ export default class SideViewer extends View {
   // Reading the shown file into this.content.
   load(cx) {
     const file = this.file;
-    const generation = ++this.generation;
+    // Counts reads, so one that finishes late cannot replace a newer one.
+    const turn = (this.reads = (this.reads ?? 0) + 1);
+    const opened = showsLoading(this.loadedFile, file);
+    this.loadedFile = file;
     if (!file) {
-      this.setContent(contentOf(null, null, null));
-      cx.notify();
+      if (this.content.state !== "none") this.setContent(contentOf(null, null, null), cx);
       return;
     }
-    this.setContent({ state: "loading" });
-    cx.notify();
+    // The watch reads the shown file again every few seconds: only a newly opened file
+    // shows "loading", and a read that finds nothing new leaves the screen alone.
+    if (opened) this.setContent({ state: "loading" }, cx);
     cx.spawn(async (cx) => {
       let content;
       try {
@@ -59,18 +62,28 @@ export default class SideViewer extends View {
       } catch {
         content = { state: "unreadable" };
       }
-      if (generation !== this.generation) return;
+      if (turn !== this.reads) return;
+      const step = refreshOf(this.content, content);
+      if (step === "keep") return;
+      if (step === "retext") {
+        this.content.text = content.text;
+        this.content.editor.set_value(content.text);
+        cx.notify();
+        return;
+      }
       // Editor state cannot be created while drawing, so it is made here, once the text is in.
       if (content.state === "code") content.editor = this.makeEditor(content);
-      this.setContent(content);
-      cx.notify();
+      this.setContent(content, cx);
     });
   }
 
-  // Replacing this.content. The code view's editor state is released when it goes.
-  setContent(content) {
+  // Replacing this.content. The code view's editor state is released when it goes, and the
+  // generation moves on so the markdown element draws the new text.
+  setContent(content, cx) {
     this.content?.editor?.release();
     this.content = content;
+    this.generation++;
+    cx.notify();
   }
 
   // What to show for a file: the view's content, or the state of a notice. The size is
@@ -106,10 +119,14 @@ export default class SideViewer extends View {
     const path = `${FOLDER}/${copyName(file, probe, kind)}`;
     const copied = await exec("sh", ["-c", COPY, "sh", file, `${appHome()}/${path}`]);
     if (copied.code !== 0) return { state: "unreadable" };
-    let size = null;
-    try {
-      size = sizeOf(await fs.readFile(`${appHome()}/${path}`));
-    } catch {}
+    // The same copy as the one on screen: its size is known, so the file is not read again.
+    const shown = this.content.state === "image" && this.content.path === path ? this.content : null;
+    let size = shown?.size ?? null;
+    if (!shown) {
+      try {
+        size = sizeOf(await fs.readFile(`${appHome()}/${path}`));
+      } catch {}
+    }
     this.sweep().catch(() => null);
     return { state: "image", path, size };
   }

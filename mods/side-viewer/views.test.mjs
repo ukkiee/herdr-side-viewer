@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { viewOf, blockerOf, readProbe, PROBE } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf } from "./views.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const probe = (bytes) => ({ found: true, readable: true, bytes, modified: 1, head: [] });
@@ -111,4 +111,33 @@ test("the probe tells a missing file from one that cannot be read", () => {
   chmodSync(locked, 0o000);
   assert.deepEqual(run(locked), { found: true, readable: false });
   assert.deepEqual(readProbe(""), { found: true, readable: false });
+});
+
+test("reading the same file again shows no loading notice, opening another file does", () => {
+  assert.equal(showsLoading("/w/a.md", "/w/a.md"), false);
+  assert.equal(showsLoading("/w/a.md", "/w/b.md"), true);
+  assert.equal(showsLoading(null, "/w/a.md"), true);
+});
+
+test("a second read that gives the same content changes nothing on screen", () => {
+  assert.equal(refreshOf({ state: "markdown", text: "# A" }, { state: "markdown", text: "# A" }), "keep");
+  assert.equal(refreshOf({ state: "code", text: "x", language: "go", editor: {} }, { state: "code", text: "x", language: "go" }), "keep");
+  const image = { state: "image", path: "data/side-viewer/images/a-1-1.png", size: { width: 2, height: 1 } };
+  assert.equal(refreshOf(image, { ...image, size: { width: 2, height: 1 } }), "keep");
+  assert.equal(refreshOf({ state: "missing" }, { state: "missing" }), "keep");
+});
+
+test("changed content replaces what is shown", () => {
+  assert.equal(refreshOf({ state: "markdown", text: "# A" }, { state: "markdown", text: "# B" }), "replace");
+  assert.equal(refreshOf({ state: "markdown", text: "# A" }, { state: "missing" }), "replace");
+  assert.equal(refreshOf({ state: "missing" }, { state: "unreadable" }), "replace");
+  assert.equal(refreshOf({ state: "loading" }, { state: "markdown", text: "# A" }), "replace");
+  const image = { state: "image", path: "data/side-viewer/images/a-1-1.png", size: null };
+  assert.equal(refreshOf(image, { ...image, path: "data/side-viewer/images/a-1-2.png" }), "replace");
+  assert.equal(refreshOf({ state: "code", text: "x", language: "go", editor: {} }, { state: "code", text: "x", language: null }), "replace");
+});
+
+test("changed code in the same language keeps its editor and only gets the new text", () => {
+  assert.equal(refreshOf({ state: "code", text: "x", language: "go", editor: {} }, { state: "code", text: "y", language: "go" }), "retext");
+  assert.equal(refreshOf({ state: "code", text: "x", language: "go" }, { state: "code", text: "y", language: "go" }), "replace");
 });
