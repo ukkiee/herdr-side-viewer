@@ -82,3 +82,11 @@
 ## 다음 기능 후보 (이번 범위 아님)
 
 사용자가 다른 머신의 파일도 사이드로 열고 싶어 한다. cmd-클릭은 원격 경로에 통하지 않으므로, 사용자가 고른 방향은 **사이드 뷰어 안의 경로 목록을 마우스로 눌러 여는 방식**이다(목록이 길어질 때의 대책: 중복 제거와 최근순, 처음 5~8개만 표시, 열 수 있는 종류만, 필터, 평소에는 머리줄에 접어 둠). 뷰어의 원격 파일 읽기(`readTextFile`의 `on`, 주기적 재확인, 원격 이미지 가져오기)도 필요하다. 이번 구현이 끝난 뒤 `/feature-plan`으로 따로 계획한다. Herdr에 "터미널 경로 클릭을 mod가 받는 이벤트"를 요청하는 것(`herdr-app feedback`)도 사용자에게 제안해 두었다.
+
+## 이 Mac(mac-m5-pro)에서 먼저 볼 것: 테스트 1개 실패
+
+옮긴 직후 이 Mac에서 `node --test mods/side-viewer/`를 돌리면 152개 중 1개가 실패한다(원래 Mac에서는 3번 모두 통과, 이 Mac에서는 3번 모두 실패. Node v26.13.0).
+
+- 테스트: `mods/side-viewer/open.test.mjs:263` "a viewer that wakes after Herdr was given up on does not take the file as well"
+- 증상: `w.openArgs()`가 `["-b", "com.apple.TextEdit", "/work/notes/plan.md"]`이어야 하는데 `[]`다. 즉 `herdr-app`이 5초 멈추고 `SIDE_VIEWER_TIMEOUT=1`인 상황에서 원래 앱이 불리지 않았다.
+- 원인은 확정하지 않았다. 시간에 기대는 테스트라 머신 속도·`sleep` 정밀도 차이일 수도 있고, `open.sh`의 응답 대기와 시간 제한 사이에 실제 경합이 있을 수도 있다(AC-11 "클릭을 잃지 않는다"와 관련). 통합 검증 전에 `원인 확정 → 결정 → 수정` 순서로 다룬다. 원인을 모른 채 테스트만 느슨하게 고치지 않는다.
