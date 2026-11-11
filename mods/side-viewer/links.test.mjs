@@ -1,11 +1,13 @@
 // node --test: what a click on a link inside a markdown document does.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isMarkdown, linkAction, rawMarkdown, touches } from "./links.js";
+import { readFileSync } from "node:fs";
+import { isMarkdown, linkAction, rawMarkdown, touches, watchedFolder } from "./links.js";
 
 const DOC = "/Users/me/notes/guide/intro.md";
 const HOME = "/Users/me";
-const act = (url, doc = DOC) => linkAction(url, doc, HOME);
+const GROUPS = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
+const act = (url, doc = DOC) => linkAction(url, doc, HOME, GROUPS);
 
 test("a relative markdown link opens in the viewer, from the document's folder", () => {
   assert.deepEqual(act("setup.md"), { action: "show", file: "/Users/me/notes/guide/setup.md" });
@@ -64,9 +66,25 @@ test("dots cannot climb above the root, and a relative link needs a document", (
   assert.deepEqual(act("/abs/a.md", null), { action: "show", file: "/abs/a.md" });
 });
 
-test("isMarkdown knows the three markdown extensions", () => {
-  for (const file of ["/a/b.md", "/a/b.MARKDOWN", "/a/b.mdx"]) assert.equal(isMarkdown(file), true, file);
-  for (const file of ["/a/b.txt", "/a/md", "/a.md/b", null, ""]) assert.equal(isMarkdown(file), false, String(file));
+test("isMarkdown knows the markdown extensions of the list", () => {
+  for (const file of ["/a/b.md", "/a/b.MARKDOWN", "/a/b.mdx"]) assert.equal(isMarkdown(file, GROUPS), true, file);
+  for (const file of ["/a/b.txt", "/a/md", "/a.md/b", null, ""]) assert.equal(isMarkdown(file, GROUPS), false, String(file));
+});
+
+test("the list alone says what markdown is: a changed list changes links with it", () => {
+  const groups = { markdown: ["md", "qmd"], image: [], code: ["mdx"] };
+  assert.equal(isMarkdown("/a/b.qmd", groups), true);
+  assert.equal(isMarkdown("/a/b.mdx", groups), false);
+  assert.equal(isMarkdown("/a/b.markdown", groups), false);
+  assert.deepEqual(linkAction("b.qmd", DOC, HOME, groups), { action: "show", file: "/Users/me/notes/guide/b.qmd" });
+  assert.deepEqual(linkAction("b.mdx", DOC, HOME, groups), { action: "reveal", file: "/Users/me/notes/guide/b.mdx" });
+});
+
+test("before the list has been read nothing counts as markdown, so a link only shows the file in Finder", () => {
+  assert.equal(isMarkdown("/a/b.md", null), false);
+  assert.equal(isMarkdown("/a/b.md", undefined), false);
+  assert.deepEqual(linkAction("setup.md", DOC, HOME, null), { action: "reveal", file: "/Users/me/notes/guide/setup.md" });
+  assert.deepEqual(linkAction("https://example.com", DOC, HOME, null), { action: "system", url: "https://example.com" });
 });
 
 test("rawMarkdown fences the source so it is drawn as written", () => {
@@ -91,7 +109,20 @@ test("touches: a batch of changed paths concerns the shown file", () => {
   assert.equal(touches(undefined, file), true);
 });
 
-test("folderOf names the folder to watch", async () => {
+test("watchedFolder: the shown file's folder, but never the home folder or the root", () => {
+  assert.equal(watchedFolder("/Users/me/notes/a.md", HOME), "/Users/me/notes");
+  assert.equal(watchedFolder("/tmp/a.md", HOME), "/tmp");
+  // Watching these would report every change under them; the slow recheck covers the file.
+  assert.equal(watchedFolder("/Users/me/a.md", HOME), null);
+  assert.equal(watchedFolder("/Users/me/a.md", "/Users/me/"), null);
+  assert.equal(watchedFolder("/a.md", HOME), null);
+  assert.equal(watchedFolder(null, HOME), null);
+  // Without a known home folder only the root is left out.
+  assert.equal(watchedFolder("/Users/me/a.md", ""), "/Users/me");
+  assert.equal(watchedFolder("/Users/me/a.md", null), "/Users/me");
+});
+
+test("folderOf names the folder a file sits in", async () => {
   const { folderOf } = await import("./links.js");
   assert.equal(folderOf("/tmp/docs/a.md"), "/tmp/docs");
   assert.equal(folderOf("/a.md"), "/");

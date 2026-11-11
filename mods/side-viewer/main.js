@@ -13,7 +13,7 @@ import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf } from "./
 import { kindOf, copyName, sizeOf, fitted, staleCopies, FOLDER, COPY, LIST } from "./image-copies.js";
 import { start, open, back, canGoBack } from "./history.js";
 import { takeRequest } from "./request.js";
-import { folderOf, isMarkdown, linkAction, rawMarkdown, touches } from "./links.js";
+import { watchedFolder, linkAction, rawMarkdown, touches } from "./links.js";
 import { openOriginalCommands } from "./original.js";
 
 // Space around an image, on each side.
@@ -77,6 +77,8 @@ export default class SideViewer extends View {
   // that adds to the visit history.
   show(file, cx) {
     this.visits = open(this.visits, file);
+    // Another file starts in the rendered view.
+    if (this.visits.file !== this.file) this.raw = false;
     this.file = this.visits.file;
     this.load(cx);
   }
@@ -86,6 +88,7 @@ export default class SideViewer extends View {
   goBack(cx) {
     if (!canGoBack(this.visits)) return;
     this.visits = back(this.visits);
+    this.raw = false;
     this.file = this.visits.file;
     this.load(cx);
     this.watch(cx);
@@ -222,7 +225,8 @@ export default class SideViewer extends View {
       .child(div().min_w(0).truncate().text_size(13).font_semibold().child(label.name))
       .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(label.folder))
       // The buttons never shrink: a narrow viewer cuts the name and the folder instead.
-      .when(isMarkdown(this.file), (el) => el.child(this.raw
+      // The switch belongs to a drawn markdown document, not to a notice about one.
+      .when(this.content.state === "markdown", (el) => el.child(this.raw
         ? this.renderButton(t, "side-viewer-rendered", "rendered", "렌더링 보기", (_event, cx) => this.toggleRaw(cx))
         : this.renderButton(t, "side-viewer-source", "source", "원문 보기", (_event, cx) => this.toggleRaw(cx))))
       .when(Boolean(this.file), (el) => el.child(this.renderActions(t)));
@@ -268,7 +272,7 @@ export default class SideViewer extends View {
   // A click on a link in the markdown view. links.js decides; a local file that is not
   // markdown is only shown in Finder, never opened.
   followLink(url, cx) {
-    const step = linkAction(url, this.file, home());
+    const step = linkAction(url, this.file, home(), this.groups);
     if (step.action === "show") {
       this.show(step.file, cx);
       this.watch(cx);
@@ -281,6 +285,7 @@ export default class SideViewer extends View {
 
   // Keeps the folder watch on the shown file's folder, and starts the slow recheck once.
   // Call it again whenever this.file may have changed: it does nothing if the folder is the same.
+  // A file in the home folder or the root is not watched, only rechecked (links.js).
   watch(cx) {
     if (!this.rechecking) {
       this.rechecking = true;
@@ -289,7 +294,7 @@ export default class SideViewer extends View {
         if (this.file) this.load(cx);
       });
     }
-    const folder = folderOf(this.file);
+    const folder = watchedFolder(this.file, home());
     if (folder === this.watched) return;
     this.watched = folder;
     // A loop for an earlier folder sees a newer turn and stops.

@@ -1,17 +1,29 @@
 // What a click on a link inside a markdown document does, and the small decisions of the
 // file watch. No Herdr imports, so it runs under `node --test`.
+import { viewOf } from "./views.js";
 
-const MARKDOWN = /\.(md|markdown|mdx)$/i;
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
-export function isMarkdown(file) {
-  return typeof file === "string" && MARKDOWN.test(file.slice(file.lastIndexOf("/") + 1));
+// `groups` is extensions.json, the one place that says which extensions are markdown.
+// Until it has been read nothing is markdown: the file is then only ever shown in Finder.
+export function isMarkdown(file, groups) {
+  return typeof file === "string" && viewOf(file, groups)?.view === "markdown";
 }
 
 // The folder a file sits in, or null without a file.
 export function folderOf(file) {
   if (typeof file !== "string" || !file) return null;
   return file.slice(0, file.lastIndexOf("/")) || "/";
+}
+
+// The folder to watch for the shown file, or null to leave it to the slow recheck. The
+// watch is recursive on macOS, so the home folder or the root would report every change
+// on the machine.
+export function watchedFolder(file, home) {
+  const folder = folderOf(file);
+  if (!folder || folder === "/") return null;
+  if (typeof home === "string" && home && folder === (home.replace(/\/+$/, "") || "/")) return null;
+  return folder;
 }
 
 // Resolves "." and "..", never climbing above the root.
@@ -25,14 +37,15 @@ function normalize(path) {
   return "/" + parts.join("/");
 }
 
-// `url` is the link as written, `file` the document it is in, `home` the home folder.
+// `url` is the link as written, `file` the document it is in, `home` the home folder,
+// `groups` extensions.json.
 // Returns one of:
 //   { action: "show", file }    another markdown document: open it in this viewer
 //   { action: "system", url }   a web or mail address: the system's handler opens it
 //   { action: "reveal", file }  any other local file: only shown in Finder. A link could
 //                               point at something that runs, so it is never opened.
 //   { action: "none" }          an anchor inside the document, or a scheme we do not follow
-export function linkAction(url, file, home) {
+export function linkAction(url, file, home, groups) {
   const none = { action: "none" };
   let path = typeof url === "string" ? url.trim() : "";
   if (/^(https?|mailto):/i.test(path)) return { action: "system", url: path };
@@ -55,7 +68,7 @@ export function linkAction(url, file, home) {
     path = `${folder}/${path}`;
   }
   path = normalize(path);
-  return isMarkdown(path) ? { action: "show", file: path } : { action: "reveal", file: path };
+  return isMarkdown(path, groups) ?{ action: "show", file: path } : { action: "reveal", file: path };
 }
 
 // The source wrapped in a code fence, so the markdown view draws it as written and it stays
