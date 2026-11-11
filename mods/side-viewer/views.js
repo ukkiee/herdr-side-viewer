@@ -81,15 +81,41 @@ export function showsLoading(shownFile, file) {
   return shownFile !== file;
 }
 
+// Whether a load waits for the read under way instead of starting its own. `reading` is the
+// file being read, or null. Starting again would throw the earlier read away, so a file
+// written faster than it can be read would never get on screen. The caller reads once more
+// when the read ends. A read of another file is simply left behind.
+export function waitsForRead(reading, file) {
+  return Boolean(file) && reading === file;
+}
+
+// What to remember of a probe so the next one can be compared with it, or null when it
+// cannot be trusted yet. `now` is in seconds. The file's time is in whole seconds, so a
+// file changed this second or the last could change again and look the same.
+export function settledProbe(file, probe, now) {
+  if (!probe?.found || !probe.readable) return null;
+  if (now - probe.modified < 2) return null;
+  return { file, bytes: probe.bytes, modified: probe.modified };
+}
+
+// Whether the file is as it was at the last read (`last` is what settledProbe gave), so its
+// text need not be read again.
+export function sameProbe(last, file, probe) {
+  return Boolean(last && probe?.found && probe.readable)
+    && last.file === file && last.bytes === probe.bytes && last.modified === probe.modified;
+}
+
 // What a finished read does to the content on screen:
 // "keep": nothing changed, so nothing is redrawn and the scroll position stays.
 // "retext": the code changed; its editor takes the new text and keeps its place.
-// "replace": anything else.
+// "replace": anything else. That includes code under another theme (`theme` is a mark of
+// the syntax colors): an editor's colors are fixed when it is made.
 export function refreshOf(shown, next) {
   if (shown.state !== next.state) return "replace";
-  const same = shown.text === next.text && shown.language === next.language && shown.path === next.path
+  const look = shown.language === next.language && shown.theme === next.theme;
+  const same = shown.text === next.text && look && shown.path === next.path
     && shown.size?.width === next.size?.width && shown.size?.height === next.size?.height;
   if (same) return "keep";
-  if (next.state === "code" && shown.editor && shown.language === next.language) return "retext";
+  if (next.state === "code" && shown.editor && look) return "retext";
   return "replace";
 }

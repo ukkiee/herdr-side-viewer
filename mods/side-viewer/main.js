@@ -9,7 +9,7 @@ import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, 
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
 import { contentOf, labelOf, noticeFor } from "./document.js";
-import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe } from "./views.js";
 import { kindOf, copyName, sizeOf, fitted, staleCopies, FOLDER, COPY, LIST } from "./image-copies.js";
 import { start, open, back, canGoBack } from "./history.js";
 import { takeRequest } from "./request.js";
@@ -35,6 +35,11 @@ export default class SideViewer extends View {
     this.reads = 0;
     // The file the last load was for: only a newly opened file shows "loading".
     this.loadedFile = null;
+    // The file being read, and whether it has to be read once more when that read ends.
+    this.reading = null;
+    this.again = false;
+    // The size and time of the shown text file at its last read (views.js, settledProbe).
+    this.probed = null;
     // extensions.json, once it has been read.
     this.groups = null;
     // Whether this copy has already deleted the old image copies.
@@ -97,36 +102,61 @@ export default class SideViewer extends View {
   // Reading the shown file into this.content.
   load(cx) {
     const file = this.file;
-    const turn = ++this.reads;
     const opened = showsLoading(this.loadedFile, file);
     this.loadedFile = file;
     if (!file) {
+      // A read under way is left behind.
+      this.reads++;
+      this.reading = null;
       if (this.content.state !== "none") this.setContent(contentOf(null, null, null), cx);
       return;
     }
     // The watch reads the shown file again every few seconds: only a newly opened file
     // shows "loading", and a read that finds nothing new leaves the screen alone.
     if (opened) this.setContent({ state: "loading" }, cx);
+    // The same file is being read: let that read finish, then read once more.
+    if (waitsForRead(this.reading, file)) {
+      this.again = true;
+      return;
+    }
+    const turn = ++this.reads;
+    this.reading = file;
+    this.again = false;
     cx.spawn(async (cx) => {
-      let content;
+      let result;
       try {
-        content = await this.read(file);
+        result = await this.read(file, opened ? null : this.probed);
       } catch {
-        content = { state: "unreadable" };
+        result = { content: { state: "unreadable" }, probe: null };
       }
+      // Another file was opened meanwhile, and its own read is under way.
       if (turn !== this.reads) return;
-      const step = refreshOf(this.content, content);
-      if (step === "keep") return;
-      if (step === "retext") {
-        this.content.text = content.text;
-        this.content.editor.set_value(content.text);
-        cx.notify();
-        return;
-      }
-      // Editor state cannot be created while drawing, so it is made here, once the text is in.
-      if (content.state === "code") content.editor = this.makeEditor(content);
-      this.setContent(content, cx);
+      this.reading = null;
+      this.probed = result.probe;
+      this.apply(result.content, cx);
+      if (this.again) this.load(cx);
     });
+  }
+
+  // Puts a finished read on screen. Null means the file is as it was at the last read.
+  apply(content, cx) {
+    const shown = this.content;
+    // Unchanged code is compared all the same, so its colors follow a change of theme.
+    const next = content ?? (shown.state === "code" ? { state: "code", text: shown.text, language: shown.language } : null);
+    if (!next) return;
+    const syntax = this.syntax();
+    if (next.state === "code") next.theme = Object.values(syntax).join(" ");
+    const step = refreshOf(shown, next);
+    if (step === "keep") return;
+    if (step === "retext") {
+      shown.text = next.text;
+      shown.editor.set_value(next.text);
+      cx.notify();
+      return;
+    }
+    // Editor state cannot be created while drawing, so it is made here, once the text is in.
+    if (next.state === "code") next.editor = this.makeEditor(next, syntax);
+    this.setContent(next, cx);
   }
 
   // Replacing this.content. The code view's editor state is released when it goes, and the
@@ -138,16 +168,25 @@ export default class SideViewer extends View {
     cx.notify();
   }
 
-  // What to show for a file: the view's content, or the state of a notice. The size is
-  // asked first, so a file too large to draw is never read.
-  async read(file) {
+  // What to show for a file, as { content, probe }: the view's content or the state of a
+  // notice, and what to remember of the file's size and time for the next read. The size is
+  // asked first, so a file too large to draw is never read. `known` is what the last read
+  // remembered: text that still has that size and time is not read again (content: null).
+  async read(file, known) {
     const found = viewOf(file, await this.listed());
-    if (!found) return { state: "unsupported" };
+    if (!found) return { content: { state: "unsupported" }, probe: null };
     const probe = readProbe((await exec("sh", ["-c", PROBE, "sh", file])).stdout);
+    // An image goes on: its bytes are not read again anyway, and showing it has to touch
+    // its copy, or the 30-day cleanup would take it.
+    if (found.view === "image") {
+      const blocker = blockerOf(found, probe);
+      return { content: blocker ? { state: blocker } : await this.readImage(file, probe), probe: null };
+    }
+    if (sameProbe(known, file, probe)) return { content: null, probe: known };
+    const remembered = settledProbe(file, probe, Math.floor(Date.now() / 1000));
     const blocker = blockerOf(found, probe);
-    if (blocker) return { state: blocker };
-    if (found.view === "image") return this.readImage(file, probe);
-    return contentOf(file, await readTextFile(file), found);
+    if (blocker) return { content: { state: blocker }, probe: remembered };
+    return { content: contentOf(file, await readTextFile(file), found), probe: remembered };
   }
 
   // The listed extensions by group (extensions.json). The installed mod's own list is the
@@ -193,18 +232,24 @@ export default class SideViewer extends View {
     if (stale.length) await exec("rm", ["-f", ...stale.map((name) => `${folder}/${name}`)]);
   }
 
+  // The code view's colors under the theme of the moment.
+  syntax() {
+    const t = theme();
+    return {
+      keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3,
+      number: t.ansi1, constant: t.ansi6, boolean: t.ansi1, operator: t.muted, punctuation: t.muted,
+    };
+  }
+
   // Read-only editor state for the code view. A language of null, or one the editor does
   // not know, draws as plain text.
-  makeEditor({ text, language }) {
-    const t = theme(), font = settings()?.font_family;
+  makeEditor({ text, language }, syntax) {
+    const font = settings()?.font_family;
     return EditorState.new({
       value: text, readonly: true, soft_wrap: false,
       ...(language ? { language } : {}),
       ...(typeof font === "string" && font ? { font_family: font } : {}),
-      syntax: {
-        keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3,
-        number: t.ansi1, constant: t.ansi6, boolean: t.ansi1, operator: t.muted, punctuation: t.muted,
-      },
+      syntax,
     });
   }
 

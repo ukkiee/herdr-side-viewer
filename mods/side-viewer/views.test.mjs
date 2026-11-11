@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe } from "./views.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const probe = (bytes) => ({ found: true, readable: true, bytes, modified: 1, head: [] });
@@ -135,6 +135,47 @@ test("changed content replaces what is shown", () => {
   const image = { state: "image", path: "data/side-viewer/images/a-1-1.png", size: null };
   assert.equal(refreshOf(image, { ...image, path: "data/side-viewer/images/a-1-2.png" }), "replace");
   assert.equal(refreshOf({ state: "code", text: "x", language: "go", editor: {} }, { state: "code", text: "x", language: null }), "replace");
+});
+
+test("a read of the same file in progress is waited for, a read of another file is not", () => {
+  // Starting again would throw away the read under way: a file written faster than it can
+  // be read would then never get on screen.
+  assert.equal(waitsForRead("/w/a.log", "/w/a.log"), true);
+  // Another file was opened: the earlier read is of no use any more.
+  assert.equal(waitsForRead("/w/a.log", "/w/b.log"), false);
+  assert.equal(waitsForRead(null, "/w/a.log"), false);
+  assert.equal(waitsForRead(null, null), false);
+});
+
+test("a file with the size and time of the last read is not read again", () => {
+  const last = { file: "/w/a.md", bytes: 10, modified: 100 };
+  const seen = (bytes, modified) => ({ found: true, readable: true, bytes, modified, head: [] });
+  assert.equal(sameProbe(last, "/w/a.md", seen(10, 100)), true);
+  assert.equal(sameProbe(last, "/w/a.md", seen(11, 100)), false);
+  assert.equal(sameProbe(last, "/w/a.md", seen(10, 101)), false);
+  assert.equal(sameProbe(last, "/w/b.md", seen(10, 100)), false);
+  assert.equal(sameProbe(null, "/w/a.md", seen(10, 100)), false);
+  assert.equal(sameProbe(last, "/w/a.md", { found: false }), false);
+  assert.equal(sameProbe(last, "/w/a.md", { found: true, readable: false }), false);
+});
+
+test("a probe is only remembered once the file's time is safely in the past", () => {
+  const seen = { found: true, readable: true, bytes: 10, modified: 100, head: [] };
+  assert.deepEqual(settledProbe("/w/a.md", seen, 102), { file: "/w/a.md", bytes: 10, modified: 100 });
+  // The time is in whole seconds: a second write in the same second would look the same.
+  assert.equal(settledProbe("/w/a.md", seen, 100), null);
+  assert.equal(settledProbe("/w/a.md", seen, 101), null);
+  assert.equal(settledProbe("/w/a.md", { found: false }, 200), null);
+  assert.equal(settledProbe("/w/a.md", { found: true, readable: false }, 200), null);
+});
+
+test("code drawn under another theme gets a new editor, whose colors are fixed when it is made", () => {
+  const shown = { state: "code", text: "x", language: "go", theme: "#111 #222", editor: {} };
+  assert.equal(refreshOf(shown, { state: "code", text: "x", language: "go", theme: "#111 #222" }), "keep");
+  assert.equal(refreshOf(shown, { state: "code", text: "x", language: "go", theme: "#eee #ddd" }), "replace");
+  // New text and a new theme at once: the editor is still rebuilt.
+  assert.equal(refreshOf(shown, { state: "code", text: "y", language: "go", theme: "#eee #ddd" }), "replace");
+  assert.equal(refreshOf(shown, { state: "code", text: "y", language: "go", theme: "#111 #222" }), "retext");
 });
 
 test("changed code in the same language keeps its editor and only gets the new text", () => {
