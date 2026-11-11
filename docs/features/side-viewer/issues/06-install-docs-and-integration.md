@@ -41,3 +41,13 @@
 - **RECIPE에 넣지 않은 것.** 플랫폼 문서가 정한 `![Side Viewer](preview.png)` 줄. `preview.png`가 아직 없다. 스크린샷을 찍으면 첫 문단 아래에 넣는다.
 - **README에 넣지 않은 것.** 저장소 주소(`git clone …`). 이 저장소에 remote가 없어 주소를 알 수 없다.
 - **문서가 단정하지 않은 것(경계 4에서 확인).** macOS 확인 창의 버튼 문구, 확인 창의 정확한 횟수, 코드 보기의 실제 모습, 이미지가 사본 경로에서 그려지는지.
+
+### 2026-11-11 통합 검증 기록 (mac-m5-pro, `herdr-app 0.1.15`, 진행 중)
+
+이 Mac은 저장소를 git bundle로 옮겨 온 두 번째 머신이다. 시작할 때 mod도 라우터도 없었다.
+
+- **전체 오프라인 검사(Done when 17).** `8dfc485`에서 `node --test mods/side-viewer/` 연속 3번, 매번 통과 153, 실패 0, skip 0. `herdr-app check mods/side-viewer` 통과. 옮긴 직후에는 `open.test.mjs:263` 하나가 실패했고 티켓 07에서 원인을 확정해 고쳤다(제품 동작이 아니라 테스트 장면의 순서 문제).
+- **설치(Done when 1, AC-10).** `./install.sh`가 `check passed`, `built /Users/…/Applications/Side Viewer Router.app`, 넘겨받기 명령 안내를 찍었다. 설치된 폴더에서 `herdr-app check ~/.config/herdr-app/mods/side-viewer` 통과, `herdr-app status`의 `errors`는 빈 배열.
+- **설치 전후 기본 앱.** 설치 전에는 라우터가 없어, `main.swift`를 저장소 밖 임시 폴더에 빌드한(등록하지 않은) 바이너리의 `--default-app`으로 48개 확장자를 읽어 두었다. 설치 뒤 `--status`와 비교하면 44개는 같고 4개가 바뀌었다: `mdx`(기본 앱 없음 → 라우터), `jsonc`(기본 앱 없음 → 라우터), `rbw`(TextEdit → 라우터), `cp`(TextEdit → 라우터). 설치 스크립트는 넘겨받기 명령을 부르지 않았고 확인 창도 뜨지 않았다. 빌드가 앱을 등록하는 것만으로 바뀐 것이며, README·RECIPE가 적은 네 확장자와 같다(원래 Mac의 관찰과 일치).
+- **상태 보기(Done when 2, AC-5).** `--status`가 48줄(확장자, 현재 기본 앱, 기록된 원래 앱 또는 `-`)을 찍었다. 넘겨받기 전이라 기록은 모두 `-`다.
+- **남은 것.** Done when 3~16과 18(확인 창과 cmd-클릭이 필요해 사용자와 함께 한다), `preview.png`, 명세의 `미확인` 세 항목.
