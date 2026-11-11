@@ -38,3 +38,26 @@ export function requestFrom(text, { answered, now }) {
   if (id === answered) return null;
   return { id, file };
 }
+
+// Takes the waiting request, if there is one for this viewer. `files` is the data folder's
+// access: read(path) gives the text or null, create(path, text) makes a new file and rejects
+// when the name is taken. Creating the answer is what takes the request, so of several
+// viewers woken by one command only the first gets it, and none gets it once open.sh has
+// given up and taken the name itself.
+// Returns { id, file }, or null.
+export async function takeRequest(files, { folder, answered, now }) {
+  let text;
+  try {
+    text = await files.read(`${folder}/${REQUEST_FILE}`);
+  } catch {
+    return null;
+  }
+  const request = requestFrom(text, { answered, now });
+  if (!request) return null;
+  try {
+    await files.create(`${folder}/${answerFile(request.id)}`, `${request.id}\n`);
+  } catch {
+    return null;
+  }
+  return request;
+}

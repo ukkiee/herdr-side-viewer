@@ -1,7 +1,7 @@
 // node --test: reading the request open.sh leaves for a showing viewer, without Herdr.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { REQUEST_FILE, answerFile, requestFrom } from "./request.js";
+import { REQUEST_FILE, answerFile, requestFrom, takeRequest } from "./request.js";
 
 const NOW = 1_800_000_000_000;
 const AT = NOW / 1000;
@@ -70,4 +70,53 @@ test("a request stamped slightly ahead of the viewer's clock is still taken, a f
 test("a request without a time is ignored", () => {
   assert.equal(requestFrom(text({ id: "a1", file: "/a.md" }), fresh), null);
   assert.equal(requestFrom(text({ id: "a1", file: "/a.md", at: "soon" }), fresh), null);
+});
+
+// A data folder in memory. `create` refuses a name that is taken, as the real one does.
+function folder(files = {}) {
+  const held = new Map(Object.entries(files));
+  return {
+    held,
+    files: {
+      read: async (path) => (held.has(path) ? held.get(path) : null),
+      create: async (path, text) => {
+        if (held.has(path)) throw new Error("exists");
+        held.set(path, text);
+      },
+    },
+  };
+}
+const waiting = (id = "a1", file = "/a.md") => folder({ "/data/request.json": text({ id, file, at: AT }) });
+const here = { folder: "/data", answered: null, now: NOW };
+
+test("a viewer that takes a request leaves the answer the asker waits for", async () => {
+  const data = waiting();
+  assert.deepEqual(await takeRequest(data.files, here), { id: "a1", file: "/a.md" });
+  assert.ok(data.held.has("/data/answer-a1"));
+});
+
+test("of two viewers showing in one tab, only the first takes the request", async () => {
+  const data = waiting();
+  const taken = [await takeRequest(data.files, here), await takeRequest(data.files, here)];
+  assert.deepEqual(taken, [{ id: "a1", file: "/a.md" }, null]);
+});
+
+test("a request the asker has already closed is not taken", async () => {
+  const data = waiting();
+  data.held.set("/data/answer-a1", "");
+  assert.equal(await takeRequest(data.files, here), null);
+});
+
+test("with no request, or one that cannot be read, nothing is taken and no answer is left", async () => {
+  const empty = folder();
+  assert.equal(await takeRequest(empty.files, here), null);
+  const failing = { read: async () => { throw new Error("denied"); }, create: empty.files.create };
+  assert.equal(await takeRequest(failing, here), null);
+  assert.equal(empty.held.size, 0);
+});
+
+test("a request already answered by this viewer leaves no second answer", async () => {
+  const data = waiting();
+  assert.equal(await takeRequest(data.files, { ...here, answered: "a1" }), null);
+  assert.equal(data.held.has("/data/answer-a1"), false);
 });
