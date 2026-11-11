@@ -7,6 +7,8 @@ content reloads when the file changes. Outside Herdr the same files open in the 
 opened in before. macOS only: a small background app, the **router**, becomes the default
 app for a list of extensions and passes each file to the viewer or to its **original app**.
 
+![Side Viewer](preview.png)
+
 ## What you see
 
 One pane, to the right of the pane that had focus. `background` fill, `foreground` text.
