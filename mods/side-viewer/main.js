@@ -3,22 +3,59 @@
 // The decisions (what a file's text becomes, the header's label) live in document.js.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
-import { props, readTextFile, home, theme } from "herdr";
+import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme } from "herdr";
 import { contentOf, labelOf, noticeFor } from "./document.js";
+import { start, open, back, canGoBack } from "./history.js";
+import { takeRequest } from "./request.js";
 
 export default class SideViewer extends View {
   init(given, cx) {
     this.file = null;
+    this.visits = start();
+    // The id of the last request this copy took from open.sh.
+    this.answered = null;
     this.content = { state: "none" };
     // Counts loads: an older read that finishes late must not replace a newer one, and the
     // markdown element needs a new id to draw new text.
     this.generation = 0;
     this.show(given?.file ?? props()?.file, cx);
+    this.listen(cx);
   }
 
-  // Changing the shown file. Every way of opening a file ends here.
+  // Taking files from open.sh while this copy is showing: `side-viewer.show` wakes it, and
+  // the request waits in the data folder (request.js).
+  listen(cx) {
+    const files = {
+      read: (path) => readTextFile(path),
+      create: (path, text) => writeTextFile(path, text, null),
+    };
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const command = await nextCommand();
+        if (command !== "show") continue;
+        const folder = `${appHome()}/data/side-viewer`;
+        const request = await takeRequest(files, { folder, answered: this.answered, now: Date.now() });
+        if (!request) continue;
+        this.answered = request.id;
+        this.show(request.file, cx);
+      }
+    });
+  }
+
+  // Changing the shown file. Every way of opening a file ends here, and it is the only place
+  // that adds to the visit history.
   show(file, cx) {
-    this.file = typeof file === "string" && file ? file : null;
+    this.visits = open(this.visits, file);
+    this.file = this.visits.file;
+    this.load(cx);
+  }
+
+  // Returning to the file before this one. Not through show(), which would add the file
+  // being left to the history again.
+  goBack(cx) {
+    if (!canGoBack(this.visits)) return;
+    this.visits = back(this.visits);
+    this.file = this.visits.file;
     this.load(cx);
   }
 
@@ -46,10 +83,20 @@ export default class SideViewer extends View {
     });
   }
 
-  // The header: file name and folder.
+  // Back, drawn only while there is a file to go back to.
+  renderBack(t) {
+    return div().id("side-viewer-back").flex_none().w(24).h(24).rounded(4)
+      .flex().items_center().justify_center().text_size(14).text_color(t.muted).cursor_pointer()
+      .hover((s) => s.bg(t.hover))
+      .on_click((_event, cx) => this.goBack(cx))
+      .child("←");
+  }
+
+  // The header: back, file name and folder.
   renderHeader(t) {
     const label = this.file ? labelOf(this.file, home()) : { name: "Side Viewer", folder: "" };
     return h_flex().h(40).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border)
+      .when(canGoBack(this.visits), (el) => el.child(this.renderBack(t)))
       .child(div().min_w(0).truncate().text_size(13).font_semibold().child(label.name))
       .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(label.folder));
   }
