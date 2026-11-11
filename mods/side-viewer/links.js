@@ -68,7 +68,7 @@ export function linkAction(url, file, home, groups) {
     path = `${folder}/${path}`;
   }
   path = normalize(path);
-  return isMarkdown(path, groups) ?{ action: "show", file: path } : { action: "reveal", file: path };
+  return isMarkdown(path, groups) ? { action: "show", file: path } : { action: "reveal", file: path };
 }
 
 // The source wrapped in a code fence, so the markdown view draws it as written and it stays

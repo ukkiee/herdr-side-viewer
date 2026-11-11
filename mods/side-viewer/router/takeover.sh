@@ -59,6 +59,7 @@ run_plan() {
   if [ "$count" -eq 0 ]; then
     echo "바꿀 것이 없습니다."
     rm -f "$plan"
+    [ -n "$siblings" ] && rm -f "$siblings"
     return 0
   fi
   echo "macOS 확인 창이 ${count}번 뜹니다. $1"

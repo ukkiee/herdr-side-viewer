@@ -55,7 +55,10 @@ export function originalApps(file, record, extensions) {
 // The commands to run until one succeeds. `-b` names the app, so macOS never asks the
 // default app (the router) where the file should go. The router only claims the listed
 // extensions, so any other file goes to its own default app, which is its original app.
+// An extension that left the list but is still in the record may still be held by the
+// router, so it names an app too.
 export function openOriginalCommands(file, record, extensions) {
-  if (groupOf(extensionOf(file), extensions) === "") return [["open", [file]]];
+  const extension = extensionOf(file);
+  if (groupOf(extension, extensions) === "" && !recorded(extension, record)) return [["open", [file]]];
   return originalApps(file, record, extensions).map((app) => ["open", ["-b", app, file]]);
 }

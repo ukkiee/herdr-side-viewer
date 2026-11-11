@@ -51,6 +51,16 @@ test("an extension outside the list opens in its own default app: the router can
   assert.deepEqual(openOriginalCommands("/a/Makefile", null, EXTENSIONS), [["open", ["/a/Makefile"]]]);
 });
 
+test("an extension that left the list but is still in the record names its recorded app: the router may still hold it", () => {
+  const extensions = JSON.stringify({ markdown: ["md"], image: ["png"], code: [] });
+  assert.deepEqual(openOriginalCommands("/a/x.ts", RECORD, extensions), [
+    ["open", ["-b", "com.example.Editor", "/a/x.ts"]],
+    ["open", ["-b", "com.apple.TextEdit", "/a/x.ts"]],
+  ]);
+  assert.deepEqual(openOriginalCommands("/a/x.ts", `ts\t${ROUTER_ID}\n`, extensions), [["open", ["-b", "com.apple.TextEdit", "/a/x.ts"]]]);
+  assert.deepEqual(openOriginalCommands("/a/x.rs", RECORD, extensions), [["open", ["/a/x.rs"]]]);
+});
+
 test("a listed extension without a record still names an app", () => {
   assert.deepEqual(openOriginalCommands("/a/tool.py", RECORD, EXTENSIONS), [["open", ["-b", "com.apple.TextEdit", "/a/tool.py"]]]);
 });

@@ -69,6 +69,7 @@ function world({ extensions, defaults = {}, sameType = {}, record } = {}) {
     setDefault: (ext, id) => execFileSync(join(dir, "router"), ["--set-default-app", ext, id], { env }),
     defaultOf: (ext) => execFileSync(join(dir, "router"), ["--default-app", ext], { env, encoding: "utf8" }).trim(),
     record: () => (existsSync(recordFile) ? readFileSync(recordFile, "utf8") : ""),
+    dataFiles: () => readdirSync(data).sort(),
     takeover: (...args) => spawnSync("/bin/sh", [join(here, "takeover.sh"), ...args], { env, encoding: "utf8" }),
     // The confirmation windows asked for: one line per request sent to macOS.
     requests: () => (existsSync(join(state, "requests.log")) ? readFileSync(join(state, "requests.log"), "utf8").trim().split("\n") : []),
@@ -188,6 +189,15 @@ test("make-default asks for nothing when the router already holds everything", (
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, "바꿀 것이 없습니다.\n");
   assert.equal(w.requests().length, 2);
+  assert.deepEqual(w.dataFiles(), ["original-apps.tsv"]);
+});
+
+test("restore with nothing to give back leaves no working file in the data folder", () => {
+  const w = world({ defaults: { md: "com.example.Notes" } });
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, "바꿀 것이 없습니다.\n");
+  assert.deepEqual(w.dataFiles(), []);
 });
 
 test("make-default reports the extensions the person chose to keep, apart from failures, and exits 3", () => {
