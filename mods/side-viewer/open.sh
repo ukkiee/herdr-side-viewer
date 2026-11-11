@@ -57,8 +57,34 @@ herdr_do() {
   return "$code"
 }
 
-# Ticket 03 asks a viewer that is already showing to take the file here, and leaves when one
-# answers. Requests and answers live in "$data". Until then every file gets a new pane.
+# A side viewer already showing in this tab takes the file, so no pane is added. The command
+# reaches showing viewers only, which is why an answer is waited for: none within about 0.4 s
+# means there is no viewer here. request.js reads the request and names the answer.
+asked=$(date +%s)
+id="$asked-$$"
+# Taking the answer's name ends the request. Fails when a viewer has taken it already.
+claim() { ( set -C; : > "$data/answer-$id" ) 2>/dev/null; }
+mkdir -p "$data" 2>/dev/null
+# Answers are left behind so a second viewer cannot take a request twice. Old ones go here.
+find "$data" -name 'answer-*' -mmin +1 -exec rm -f {} + 2>/dev/null
+# Written beside and moved in, so a viewer never reads half a request.
+if printf '{"id":"%s","file":"%s","at":%s}\n' "$id" "$json_file" "$asked" > "$data/request.json.$$" 2>/dev/null &&
+  mv -f "$data/request.json.$$" "$data/request.json" 2>/dev/null; then
+  if herdr_do side-viewer.show; then
+    tries=8
+    while [ "$tries" -gt 0 ]; do
+      [ -e "$data/answer-$id" ] && exit 0
+      sleep 0.05
+      tries=$((tries - 1))
+    done
+  elif [ $(( $(date +%s) - asked )) -ge "${SIDE_VIEWER_TIMEOUT:-5}" ]; then
+    # Herdr did not take the command at all. Asking it for a pane would only double the wait.
+    claim || exit 0
+    original
+  fi
+  # A viewer that wakes after this cannot take the file as well as the new pane.
+  claim || exit 0
+fi
 
 herdr_do pane.split --direction right --mod side-viewer --props "{\"file\":\"$json_file\"}" || original
 exit 0
