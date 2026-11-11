@@ -113,7 +113,7 @@ The mod shows files, not agents, so it has no agent statuses.
   that got a request ends one of three ways. When the request succeeds, every extension of
   the file type is read again: those that left the router are listed under `바뀜`, those
   still with it under `라우터에 남음`. A "keep" lists the whole file type under
-  `유지를 선택함` and a failure under `실패: … (reason)` on stderr, neither read again. The
+  `유지를 선택함` and a failure under `실패: … (reason)` on stderr, not per extension. The
   extensions of a file type that got no request go under `라우터에 남음` too. Output order:
   `바뀜`, `유지를 선택함`, then `라우터에 남음: … (이 확장자를 맡은 앱이 라우터뿐입니다)`,
   which follows `바꿀 것이 없습니다.` when nothing was asked. The extensions on that line
