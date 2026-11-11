@@ -15,15 +15,18 @@ const ROUTER_ID = "test.side-viewer-router";
 // `type-<ext>` makes an extension share another one's file type, as jpg and jpeg do on macOS.
 // `keep-<ext>` plays the person choosing "keep" in the macOS confirmation window: the request
 // ends with exit 1 and nothing changes. `fail-<ext>` holds the exit code of any other failure.
+// `only-<ext>` gives one extension a default app of its own inside a shared file type, and
+// `gone` lists the bundle ids of apps that are no longer installed.
 const FAKE_ROUTER = `#!/bin/sh
 key() { cat "$FAKE_STATE/type-$1" 2>/dev/null || printf '%s' "$1"; }
 case "$1" in
-  --default-app) cat "$FAKE_STATE/app-$(key "$2")" 2>/dev/null; exit 0 ;;
+  --default-app) cat "$FAKE_STATE/only-$2" 2>/dev/null || cat "$FAKE_STATE/app-$(key "$2")" 2>/dev/null; exit 0 ;;
   --type-of) printf 'type.%s\\n' "$(key "$2")"; exit 0 ;;
   --set-default-app)
     [ -e "$FAKE_STATE/quiet" ] || printf '%s %s\\n' "$2" "$3" >> "$FAKE_STATE/requests.log"
     [ -e "$FAKE_STATE/keep-$2" ] && { echo "The file couldn't be opened." >&2; exit 1; }
     [ -e "$FAKE_STATE/fail-$2" ] && exit "$(cat "$FAKE_STATE/fail-$2")"
+    grep -qx "$3" "$FAKE_STATE/gone" 2>/dev/null && exit 3
     printf '%s\\n' "$3" > "$FAKE_STATE/app-$(key "$2")" ;;
 esac
 `;
@@ -70,6 +73,8 @@ function world({ extensions, defaults = {}, sameType = {}, record } = {}) {
     requests: () => (existsSync(join(state, "requests.log")) ? readFileSync(join(state, "requests.log"), "utf8").trim().split("\n") : []),
     keep: (ext) => writeFileSync(join(state, `keep-${ext}`), ""),
     fail: (ext, code) => writeFileSync(join(state, `fail-${ext}`), String(code)),
+    only: (ext, id) => writeFileSync(join(state, `only-${ext}`), `${id}\n`),
+    gone: (...ids) => writeFileSync(join(state, "gone"), ids.map((id) => `${id}\n`).join("")),
     openOriginal: (file) => spawnSync("/bin/sh", [join(here, "open-original.sh"), file], { env, encoding: "utf8" }),
     opened: () => (existsSync(join(state, "open.log")) ? readFileSync(join(state, "open.log"), "utf8") : ""),
   };
@@ -251,6 +256,55 @@ test("restore falls back to TextEdit, or Preview for images, when nothing was re
   w.takeover("restore");
   assert.equal(w.defaultOf("mdx"), "com.apple.TextEdit");
   assert.equal(w.defaultOf("webp"), "com.apple.Preview");
+});
+
+test("restore returns an unrecorded extension to the app its sibling of the same file type opens in", () => {
+  // Building alone gave rbw to the router. rb was never taken over and still opens in the IDE.
+  const w = world({ extensions: { markdown: [], image: [], code: ["rb", "rbw"] }, defaults: { rb: "com.example.IDE" }, sameType: { rbw: "rb" } });
+  w.only("rbw", ROUTER_ID);
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /macOS 확인 창이 1번 뜹니다\./);
+  assert.deepEqual(w.requests(), ["rbw com.example.IDE"]);
+  assert.doesNotMatch(r.stdout, /TextEdit/);
+});
+
+test("restore uses a sibling's recorded app when the router holds the whole file type", () => {
+  const w = world({ extensions: { markdown: [], image: [], code: ["cp", "cpp"] }, defaults: { cpp: ROUTER_ID }, sameType: { cp: "cpp" }, record: "cpp\tcom.example.IDE\n" });
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /macOS 확인 창이 1번 뜹니다\./);
+  assert.deepEqual(w.requests(), ["cp com.example.IDE"]);
+  assert.equal(w.defaultOf("cpp"), "com.example.IDE");
+});
+
+test("restore asks for TextEdit or Preview when the recorded app is no longer installed, and says so", () => {
+  const w = world({ extensions: { markdown: ["md"], image: ["png"], code: [] }, defaults: { md: ROUTER_ID, png: ROUTER_ID }, record: "md\tcom.example.Gone\npng\tcom.example.Gone\n" });
+  w.gone("com.example.Gone");
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /macOS 확인 창이 2번 뜹니다\./);
+  assert.match(r.stdout, /^md: 원래 앱 com\.example\.Gone 이 없어 com\.apple\.TextEdit 으로 돌립니다\.$/m);
+  assert.deepEqual(w.requests(), ["md com.example.Gone", "md com.apple.TextEdit", "png com.example.Gone", "png com.apple.Preview"]);
+  assert.equal(w.defaultOf("md"), "com.apple.TextEdit");
+  assert.equal(w.defaultOf("png"), "com.apple.Preview");
+});
+
+test("restore prefers a sibling's app to TextEdit when the recorded app is no longer installed", () => {
+  const w = world({ extensions: { markdown: [], image: [], code: ["rb", "rbw"] }, defaults: { rb: "com.example.IDE" }, sameType: { rbw: "rb" }, record: "rbw\tcom.example.Gone\n" });
+  w.only("rbw", ROUTER_ID);
+  w.gone("com.example.Gone");
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(w.requests(), ["rbw com.example.Gone", "rbw com.example.IDE"]);
+});
+
+test("make-default does not try another app when the router itself is not found", () => {
+  const w = world({ extensions: { markdown: ["md"], image: [], code: [] }, defaults: { md: "com.example.Notes" } });
+  w.gone(ROUTER_ID);
+  const r = w.takeover("make-default");
+  assert.equal(r.status, 1);
+  assert.deepEqual(w.requests(), [`md ${ROUTER_ID}`]);
 });
 
 test("status prints the current default app and the recorded original app per extension", () => {
