@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer/spec.md` (AC-5, AC-4 중 "원래 앱 기록이 없을 때"의 기본값)
 

@@ -1,5 +1,7 @@
 # 인계: 사이드 뷰어 구현 (2026-11-11)
 
+**이 인계는 끝났다(2026-11-11, mac-m5-pro).** 아래 "남은 일"은 모두 했고 티켓 01~08은 `done`이며 `feat/side-viewer`는 `main`에 합쳐졌다. 결과와 한계는 티켓 06·07·08의 Comments에 있다. 원래 Mac에는 고치기 전의 라우터가 설치돼 있으므로, 그 Mac에서 `--restore`를 돌리기 전에 이 저장소를 옮겨 `./install.sh`를 먼저 돌린다.
+
 이 문서는 다른 머신에서 `/feature-build`를 이어가기 위한 것이다. 원래 작업은 `ukyi`의 다른 Mac(Herdr의 "This computer", 경로 `~/workspace/herdr-md`)에서 했고, 이 저장소는 git bundle로 옮겨 왔다. 원격 저장소는 없다.
 
 ## 지휘 스킬 단계

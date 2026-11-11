@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer/spec.md` (AC-5의 경계 2. "구현 결정"의 "확장자 실측과 확인 창", "원래 앱 기록")
 

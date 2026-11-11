@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer/spec.md` (AC-2)
 

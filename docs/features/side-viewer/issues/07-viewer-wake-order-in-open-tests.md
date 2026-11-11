@@ -4,7 +4,7 @@
 
 **Blocked by:** 02, 03
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer/spec.md` (AC-11, AC-2의 경계 2. 사용자 스토리 14)
 

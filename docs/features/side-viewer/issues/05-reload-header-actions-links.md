@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer/spec.md` (AC-6, AC-7, AC-8, AC-9 중 안내 화면의 버튼)
 
