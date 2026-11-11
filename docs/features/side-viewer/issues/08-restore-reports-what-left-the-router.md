@@ -80,3 +80,21 @@
 - **범위 밖 관찰(기록만).** 이 변경 전부터, 기록된 앱이 지워져 다시 요청하는 경우의 창 수 안내는 1번인데 그 조합에서 실제로 창이 뜨는지는 본 적이 없다.
 - **검토자가 돌린 것.** `router.test.mjs` 통과 34·실패 0·skip 0, `open.test.mjs` 통과 21·실패 0·skip 0, `sh -n takeover.sh` 통과. 사본에서 종료 코드 1·3·4·5·127의 임시 파일 정리 검사 5개를 더해 39개 통과, 변이 넷(위 RR-1의 둘, 다시 읽기 제거 33/1, 요청 생략 제거 32/2).
 - **판정.** 통과(Blocking·Important 없음). RS-1과 RS-2는 수용해 새 작업자가 RECIPE만 고치고, 같은 검토자가 그 수정을 다시 본다.
+
+### RS-1·RS-2·RT-1의 수정과 재검토 (2026-11-11)
+
+- **RS-1, RS-2 수정.** 새 작업자(claude 프로필, worktree `ticket-08b`)가 `RECIPE.md`만 고쳤다. 결과 SHA `d7843db`(fast-forward). Restore 문단이 성공·유지·실패를 나눠 말하고, 남은 확장자를 라우터가 계속 원래 앱 쪽으로 열며 라우터 앱을 지우면 풀린다고 적는다. "Done when" 18번은 "기록이 없다"는 단정을 빼고 빌드만으로 온 확장자의 경우로 한정했다. 작업자가 범위 밖에서 더한 것이 하나 있다. 18번 끝의 "except where restore gives a file type one app (see Watch out)"이다.
+- **재검토(같은 검토자, `83aa674` → `d7843db`, `RECIPE.md`).** RS-1 해결, RS-2 해결. 더한 단서는 사실이고 가리키는 곳이 있으며 같은 문장의 보장을 이미 있는 한계에 맞춘 것이라 범위를 넘지 않는다고 판단했다. 신규 **RT-1 (Minor, 수용)**: 새 문장의 "neither read again"이 틀리다. `takeover.sh:110`은 종료 코드 1에서 기본 앱을 다시 읽어 "유지"와 실패를 가른다.
+- **RT-1 수정.** 또 다른 새 작업자(worktree `ticket-08c`)가 그 한 구절을 "not per extension"으로 바꿨다. 결과 SHA `e7193b3`(fast-forward).
+- **재검토(같은 검토자, `d7843db` → `e7193b3`).** RT-1 해결, 신규 없음, 판정 통과.
+
+| 발견 | 상태 |
+|---|---|
+| RR-1 (티켓 07) | 해결 |
+| RS-1 | 해결 |
+| RS-2 | 해결 |
+| RT-1 | 해결 |
+
+- **통합 뒤 검사(통합 담당, `e7193b3`).** `node --test mods/side-viewer/`: 통과 155, 실패 0, skip 0. `herdr-app check mods/side-viewer`: `check passed`.
+- **이 Mac에 다시 설치.** `./install.sh`가 `check passed`, `built …/Side Viewer Router.app`으로 끝났다. 설치 전후의 `--status` 48줄과 원래 앱 기록이 같고(RECIPE "Done when" 1번의 둘째 문장), 설치된 `takeover.sh`는 저장소의 것과 같다.
+- **작업자.** 이번 티켓으로 띄운 작업자 넷(`sv-08-impl`, `sv-rr2-review`, `sv-08b-fix`, `sv-08c-fix`)은 결과를 회수하고 대조한 뒤 종료하고 지웠다. worktree 셋과 그 브랜치도 지웠다.
