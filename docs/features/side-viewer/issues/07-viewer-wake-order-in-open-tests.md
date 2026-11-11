@@ -4,7 +4,7 @@
 
 **Blocked by:** 02, 03
 
-**Status:** ready-for-agent
+**Status:** integrated
 
 **명세:** `docs/features/side-viewer/spec.md` (AC-11, AC-2의 경계 2. 사용자 스토리 14)
 
@@ -25,10 +25,10 @@
 2. 반대 순서의 테스트를 하나 더한다: Herdr 명령이 시간 제한까지 끝나지 않지만 보이는 뷰어가 그 전에 요청을 가져간 경우, 파일은 뷰어에만 보이고 원래 앱은 불리지 않으며 `pane.split`도 불리지 않는다.
 3. 실패 검출력을 확인한다. `open.sh`를 임시로 바꿔 (a) 시간 초과 갈래에서 응답 이름을 차지하지 않게 하면 1번의 첫 테스트가 "뷰어도 파일을 가져갔다"로 실패하고, (b) 같은 갈래에서 차지 실패를 무시하고 원래 앱을 열게 하면 2번의 테스트가 "원래 앱도 열렸다"로 실패하는지 본다. 바꾸기 전 사본과 diff로 의도한 변경만 들어갔는지 대조하고, 확인 뒤 되돌려 `git diff -- mods/side-viewer/open.sh`가 비어 있게 한다.
 
-- [ ] 두 "늦게 깨어나는 뷰어" 테스트의 순서가 타이머 경쟁에 기대지 않는다
-- [ ] Herdr 명령이 멈춘 동안 뷰어가 먼저 가져간 경우의 테스트가 있다
-- [ ] 실패 검출력 (a), (b)를 확인했고 `open.sh`는 바뀌지 않았다
-- [ ] `node --test mods/side-viewer/open.test.mjs`가 이 Mac에서 연속 5번 통과한다
+- [x] 두 "늦게 깨어나는 뷰어" 테스트의 순서가 타이머 경쟁에 기대지 않는다
+- [x] Herdr 명령이 멈춘 동안 뷰어가 먼저 가져간 경우의 테스트가 있다
+- [x] 실패 검출력 (a), (b)를 확인했고 `open.sh`는 바뀌지 않았다
+- [x] `node --test mods/side-viewer/open.test.mjs`가 이 Mac에서 연속 5번 통과한다
 
 **완료 조건:** 위 항목 전부와 전체 오프라인 검사(`node --test mods/side-viewer/`, 통합 담당 실행) 통과.
 
@@ -56,3 +56,14 @@
 - 명세 대조: AC-11과 사용자 스토리 14는 "클릭이 사라지지 않는다"를 요구한다. 뷰어가 먼저 가져간 경우 파일은 뷰어에 보이므로 요구를 지킨다. 명세와 `open.sh`는 바꾸지 않는다.
 - 고칠 것은 테스트다. 테스트 이름이 말하는 순서를 장면이 보장하지 않았다. 지연 값만 늘리는 것은 같은 경쟁을 남기므로 하지 않는다.
 - 이 Mac에서 우연히 지나간 반대 순서(시간 초과 갈래의 `claim || exit 0`)는 지금 어떤 테스트도 고정하지 않는다. 테스트를 하나 더한다.
+
+### 통합 기록 (2026-11-11, mac-m5-pro)
+
+- 결과 SHA `8dfc485`(`ticket/07-viewer-wake-order`, 기준 `0c89fd5`), `feat/side-viewer`에 fast-forward로 통합. 커밋 `28eb475`, `8dfc485`. 바뀐 파일은 `mods/side-viewer/open.test.mjs` 하나(+32/−17)이고 `open.sh`·`request.js`의 diff는 비어 있다.
+- 고친 방법. 늦게 깨어나는 뷰어는 가짜 `herdr-app`이 깨우지 않고(`viewersShowing(1, { asleep: true })`), `open.sh`가 끝난 뒤 테스트가 `wakeViewers()`로 직접 깨운다. 지연 옵션(`after`, `viewer-delay`)과 `sleep 1.6` 두 번은 지웠다. 반대 순서 테스트 "a viewer that takes the file while Herdr has not answered keeps it, and nothing else opens"를 더했다.
+- 실패 검출력(작업자 실행, 사본과 diff로 한 줄 변경 확인, `sh -n` 통과 뒤 되돌림). (a) `open.sh` 82행의 `claim || exit 0`을 지우면 "wakes after Herdr was given up on"이 `the viewer took the file as well`로 실패. (b) 같은 행을 `claim`으로 바꾸면 새 테스트만 `the original app opened as well`로 실패(20 통과, 1 실패).
+- 작업자 검사: `node --test mods/side-viewer/open.test.mjs` 연속 5번, 매번 통과 21, 실패 0, skip 0.
+- 전체 오프라인 검사(통합 브랜치 `8dfc485`, 주 진행자 실행): `node --test mods/side-viewer/` 연속 3번, 매번 통과 153, 실패 0, skip 0(고치기 전 `a91bf3b`에서는 통과 151, 실패 1). `herdr-app check mods/side-viewer` 통과(`herdr-app 0.1.15`).
+- 완료 조건 근거: 체크박스 네 개와 전체 오프라인 검사 통과.
+- 남은 조건(알려진 한계). 반대 순서 테스트는 가짜 뷰어의 Node가 뜨는 시간(약 0.1초)이 시간 제한 1초보다 짧다는 데 기댄다. `open.sh`를 바꾸지 않고는 없앨 수 없다.
+- 미검증: 새 pane 갈래의 마지막 `claim || exit 0`(`open.sh` 86행)을 지웠을 때의 검출력은 이 티켓에서 확인하지 않았다.
