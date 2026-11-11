@@ -12,16 +12,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const HERDR_FRONT = "/Users/someone/Applications/Herdr.app";
 
 // Stands in for herdr-app: logs one argument per line and an empty line after each call, then
-// answers as the scene says. `side-viewer.show` wakes the scene's showing viewers, at once or
-// after the delay the scene gives.
+// answers as the scene says. `side-viewer.show` wakes the scene's showing viewers before it
+// answers, unless the scene keeps them asleep for the test to wake.
 const FAKE_HERDR = `#!/bin/sh
 { for a in "$@"; do printf '%s\\n' "$a"; done; echo; } >> "$FAKE_STATE/herdr.log"
-if [ "$2" = side-viewer.show ] && [ -e "$FAKE_STATE/viewers" ]; then
-  if [ -e "$FAKE_STATE/viewer-delay" ]; then
-    (sleep "$(cat "$FAKE_STATE/viewer-delay")"; "$FAKE_NODE" "$FAKE_STATE/viewers.mjs") > /dev/null 2>&1 &
-  else
-    "$FAKE_NODE" "$FAKE_STATE/viewers.mjs"
-  fi
+if [ "$2" = side-viewer.show ] && [ -e "$FAKE_STATE/viewers" ] && [ ! -e "$FAKE_STATE/viewers-asleep" ]; then
+  "$FAKE_NODE" "$FAKE_STATE/viewers.mjs"
 fi
 [ -e "$FAKE_STATE/herdr-sleep" ] && sleep "$(cat "$FAKE_STATE/herdr-sleep")"
 if [ "$2" = side-viewer.show ] && [ -e "$FAKE_STATE/show-out" ]; then cat "$FAKE_STATE/show-out"; exit 1; fi
@@ -88,11 +84,16 @@ function world({ herdr = true, installed = true, record } = {}) {
       writeFileSync(join(state, "herdr-exit"), String(code));
     },
     herdrHangs: (seconds) => writeFileSync(join(state, "herdr-sleep"), String(seconds)),
-    // Side viewers showing in the current tab. With `after`, they wake that many seconds late.
-    viewersShowing: (count = 1, { after } = {}) => {
+    // Side viewers showing in the current tab. `asleep` ones are not woken by the show command,
+    // only by wakeViewers(), so a scene can wake them after open.sh has finished.
+    viewersShowing: (count = 1, { asleep = false } = {}) => {
       writeFileSync(join(state, "viewers.mjs"), FAKE_VIEWERS);
       writeFileSync(join(state, "viewers"), String(count));
-      if (after) writeFileSync(join(state, "viewer-delay"), String(after));
+      if (asleep) writeFileSync(join(state, "viewers-asleep"), "");
+    },
+    wakeViewers: () => {
+      const r = spawnSync(process.execPath, [join(state, "viewers.mjs")], { env, encoding: "utf8" });
+      assert.equal(r.status, 0, r.stderr);
     },
     // The show command itself fails, as it may when no viewer is showing.
     showFails: (out) => writeFileSync(join(state, "show-out"), out),
@@ -157,11 +158,12 @@ test("of two viewers showing in the current tab, one takes the file", () => {
 
 test("a viewer that wakes after the new pane was asked for does not take the file as well", () => {
   const w = world();
-  w.viewersShowing(1, { after: 1 });
+  w.viewersShowing(1, { asleep: true });
   w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.ok(w.splitArgs());
-  spawnSync("/bin/sleep", ["1.6"]);
-  assert.deepEqual(w.shownInViewer(), []);
+  // Well inside the 5 s a request stays fresh, so only the claimed answer stops the viewer.
+  w.wakeViewers();
+  assert.deepEqual(w.shownInViewer(), [], "the viewer took the file as well");
 });
 
 test("each file opened is a request of its own, so the same viewer takes one after another", () => {
@@ -263,11 +265,12 @@ test("when Herdr does not answer in time, the file goes to its original app", ()
 test("a viewer that wakes after Herdr was given up on does not take the file as well", () => {
   const w = world();
   w.herdrHangs(5);
-  w.viewersShowing(1, { after: 1 });
+  w.viewersShowing(1, { asleep: true });
   w.open("/work/notes/plan.md", HERDR_FRONT, { SIDE_VIEWER_TIMEOUT: "1" });
   assert.deepEqual(w.openArgs(), ["-b", "com.apple.TextEdit", "/work/notes/plan.md"]);
-  spawnSync("/bin/sleep", ["1.6"]);
-  assert.deepEqual(w.shownInViewer(), []);
+  // Well inside the 5 s a request stays fresh, so only the claimed answer stops the viewer.
+  w.wakeViewers();
+  assert.deepEqual(w.shownInViewer(), [], "the viewer took the file as well");
 });
 
 test("a path with spaces, quotes, a backslash and Korean reaches the viewer and the original app intact", () => {
