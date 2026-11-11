@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** integrated
 
 **명세:** `docs/features/side-viewer/spec.md` (AC-2)
 
@@ -39,3 +39,11 @@
 - **방문 기록.** `history.js`. `show(file, cx)`만 기록을 쌓고, `goBack(cx)`은 쌓지 않는다. 뒤로 가기로 떠난 파일은 버린다(앞으로 가기 없음).
 - **데이터 폴더.** mod는 `appHome()/data/side-viewer`만 본다. `SIDE_VIEWER_DATA`로 다른 폴더를 주면 `open.sh`와 mod가 어긋난다(테스트 전용 변수).
 - **미검증(경계 4).** `herdr-app do side-viewer.show`가 `nextCommand()`를 `"show"`로 깨우는지, 보이는 사본이 없을 때 그 명령이 오류를 내는지, `writeTextFile(…, null)`이 이미 있는 파일에서 실제로 거절하는지, 다른 탭의 뷰어가 요청을 받지 않는지. 플랫폼 문서상 `mod.json`에 추가 선언은 필요 없다(`focusable`은 키보드 포커스용).
+
+### 통합 기록 (2026-11-11)
+
+- 결과 SHA `61215ef`(`ticket/03-reuse-back`, 통합 tip `10d9fda` 병합 포함), `feat/side-viewer`에 fast-forward로 통합.
+- 전체 오프라인 검사(통합 브랜치, 주 진행자 실행): `node --test mods/side-viewer/` 통과 96, 실패 0, skip 0. `herdr-app check mods/side-viewer` 통과.
+- 완료 조건 근거: 경계 1(방문 기록, 요청 해석), 경계 2(보이는 뷰어가 응답하면 분할 명령이 불리지 않고, 응답이 없으면 불린다), 경계 3 통과.
+- 미검증·이월(티켓 06): `herdr-app do side-viewer.show`가 뷰어의 `nextCommand()`를 깨우는지, 뷰어가 둘일 때 하나만 가져가는지(`writeTextFile`의 덮어쓰기 거절 여부), 두 파일 연속 cmd-클릭과 뒤로 가기 클릭.
+- 명세 밖 추가: `side-viewer.show`가 시간 제한을 다 쓰고 실패하면 분할을 다시 시도하지 않고 원래 앱으로 넘긴다. 5초 넘게 차이 나는 요청은 무시한다.
