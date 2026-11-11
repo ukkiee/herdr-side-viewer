@@ -269,15 +269,16 @@ test("restore falls back to TextEdit, or Preview for images, when nothing was re
   assert.equal(w.defaultOf("webp"), "com.apple.Preview");
 });
 
-test("restore returns an unrecorded extension to the app its sibling of the same file type opens in", () => {
-  // Building alone gave rbw to the router. rb was never taken over and still opens in the IDE.
+test("restore asks nothing for an unrecorded extension whose file type already opens in its sibling's app, and says it stays with the router", () => {
+  // Building alone gave rbw to the router. rb was never taken over and still opens in the IDE,
+  // so asking for the IDE would change nothing: no app but the router claims rbw itself.
   const w = world({ extensions: { markdown: [], image: [], code: ["rb", "rbw"] }, defaults: { rb: "com.example.IDE" }, sameType: { rbw: "rb" } });
   w.only("rbw", ROUTER_ID);
   const r = w.takeover("restore");
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /macOS 확인 창이 1번 뜹니다\./);
-  assert.deepEqual(w.requests(), ["rbw com.example.IDE"]);
-  assert.doesNotMatch(r.stdout, /TextEdit/);
+  assert.equal(r.stdout, "바꿀 것이 없습니다.\n라우터에 남음: rbw (이 확장자를 맡은 앱이 라우터뿐입니다)\n");
+  assert.deepEqual(w.requests(), []);
+  assert.deepEqual(w.dataFiles(), []);
 });
 
 test("restore uses a sibling's recorded app when the router holds the whole file type", () => {

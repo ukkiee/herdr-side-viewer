@@ -48,9 +48,11 @@ known_extensions() {
 }
 
 # Set by restore: the command that names another app when the one asked for is not installed,
-# and the table it reads. make-default has no second choice.
+# the table it reads, and the extensions that stay with the router without a request.
+# make-default has no second choice.
 second_choice=""
 siblings=""
+left=""
 
 # Sends the requests in $plan (lines of "<file type><TAB><extension><TAB><app>"), one per file
 # type, after saying how many confirmation windows that means. $1 tells the person what to pick.
@@ -58,6 +60,7 @@ run_plan() {
   count=$(cut -f 1 "$plan" | awk 'NF && !seen[$0]++' | wc -l | tr -d ' ')
   if [ "$count" -eq 0 ]; then
     echo "바꿀 것이 없습니다."
+    [ -n "$left" ] && echo "라우터에 남음:$left (이 확장자를 맡은 앱이 라우터뿐입니다)"
     rm -f "$plan"
     [ -n "$siblings" ] && rm -f "$siblings"
     return 0
@@ -153,20 +156,31 @@ make_default() {
   run_plan "창마다 Side Viewer Router로 바꾸는 쪽을 고르세요."
 }
 
-# The app that extension $1's siblings (same file type) open in, or nothing. A sibling the
-# router does not hold answers first, then a sibling's record. $2 is an app to pass over.
+# The app a sibling of extension $1 (same file type) that the router does not hold opens in,
+# which is the app that file type opens in now, or nothing. $2 is an app to pass over.
 # Reads $siblings: lines of "<file type><TAB><extension><TAB><current default app>".
-sibling_app() {
+sibling_opens_in() {
   type=$(awk -F '\t' -v ext="$1" '$2 == ext { print $1; exit }' "$siblings")
-  found=$(awk -F '\t' -v type="$type" -v ext="$1" -v router="$router_id" -v skip="${2:-}" \
-    '$1 == type && $2 != ext && $3 != "" && $3 != router && $3 != skip { print $3; exit }' "$siblings")
-  if [ -z "$found" ]; then
-    for other in $(awk -F '\t' -v type="$type" -v ext="$1" '$1 == type && $2 != ext { print $2 }' "$siblings"); do
-      found=$(recorded "$other")
-      [ -n "$found" ] && [ "$found" != "$router_id" ] && [ "$found" != "${2:-}" ] && break
-      found=""
-    done
-  fi
+  awk -F '\t' -v type="$type" -v ext="$1" -v router="$router_id" -v skip="${2:-}" \
+    '$1 == type && $2 != ext && $3 != "" && $3 != router && $3 != skip { print $3; exit }' "$siblings"
+}
+
+# The recorded original app of a sibling of extension $1, or nothing. $2 is an app to pass over.
+sibling_record() {
+  type=$(awk -F '\t' -v ext="$1" '$2 == ext { print $1; exit }' "$siblings")
+  for other in $(awk -F '\t' -v type="$type" -v ext="$1" '$1 == type && $2 != ext { print $2 }' "$siblings"); do
+    found=$(recorded "$other")
+    if [ -n "$found" ] && [ "$found" != "$router_id" ] && [ "$found" != "${2:-}" ]; then
+      printf '%s' "$found"
+      return
+    fi
+  done
+}
+
+# The app that extension $1's siblings open in, else a sibling's record, else nothing.
+sibling_app() {
+  found=$(sibling_opens_in "$1" "${2:-}")
+  [ -n "$found" ] || found=$(sibling_record "$1" "${2:-}")
   printf '%s' "$found"
 }
 
@@ -188,23 +202,37 @@ restore() {
   for ext in $(known_extensions); do
     printf '%s\t%s\t%s\n' "$(type_of "$ext")" "$ext" "$(current "$ext")" >> "$siblings"
   done
+  # Each wish carries how its app was chosen: record, sibling (a sibling's record), same (the
+  # app the file type opens in now) or fallback.
+  wishes="$record.wishes"
+  : > "$wishes"
   while IFS='	' read -r type ext app; do
     # Only what the router still holds: a default the person picked since then stays.
     [ "$app" = "$router_id" ] || continue
+    how=record
     app=$(recorded "$ext")
     if [ -z "$app" ]; then
       # A request changes the whole file type. TextEdit here would also take the siblings
       # that were never taken over away from their app, so their app is asked for instead.
-      app=$(sibling_app "$ext")
-      if [ -n "$app" ]; then
-        echo "$ext: 기록된 원래 앱이 없어 같은 파일 종류의 앱 $app 으로 돌립니다."
-      else
-        app=$(fallback_app "$ext")
-        echo "$ext: 기록된 원래 앱이 없어 $app 으로 돌립니다."
-      fi
+      how=same
+      app=$(sibling_opens_in "$ext")
+      [ -n "$app" ] || { how=sibling; app=$(sibling_record "$ext"); }
+      [ -n "$app" ] || { how=fallback; app=$(fallback_app "$ext"); }
     fi
-    printf '%s\t%s\t%s\n' "$type" "$ext" "$app" >> "$plan"
+    printf '%s\t%s\t%s\t%s\n' "$type" "$ext" "$app" "$how" >> "$wishes"
   done < "$siblings"
+  # A file type whose every wish is "same" already opens in that app: macOS would accept the
+  # request without a window and change nothing. Those extensions are claimed by no app but
+  # the router, so they stay with it whatever the file type opens in.
+  awk -F '\t' 'NR == FNR { if ($4 != "same") asked[$1] = 1; next } asked[$1]' "$wishes" "$wishes" > "$plan"
+  left=$(awk -F '\t' 'NR == FNR { if ($4 != "same") asked[$1] = 1; next } !asked[$1] { printf " %s", $2 }' "$wishes" "$wishes")
+  rm -f "$wishes"
+  while IFS='	' read -r type ext app how; do
+    case "$how" in
+      same | sibling) echo "$ext: 기록된 원래 앱이 없어 같은 파일 종류의 앱 $app 으로 돌립니다." ;;
+      fallback) echo "$ext: 기록된 원래 앱이 없어 $app 으로 돌립니다." ;;
+    esac
+  done < "$plan"
 
   run_plan "창마다 원래 앱으로 바꾸는 쪽을 고르세요."
 }
