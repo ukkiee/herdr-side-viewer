@@ -24,7 +24,7 @@ test("image extensions get the image view", () => {
   assert.equal(viewOf("/work/SHOT.PNG", groups).view, "image");
 });
 
-test("every other handed-over extension gets the code view", () => {
+test("every other listed extension gets the code view", () => {
   for (const ext of groups.code) assert.equal(viewOf(`/work/file.${ext}`, groups).view, "code", ext);
   assert.equal(viewOf("/work/main.c++", groups).view, "code");
 });

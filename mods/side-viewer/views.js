@@ -18,13 +18,14 @@ const LANGUAGES = {
   sh: "bash", zsh: "bash", sql: "sql", xml: "xml",
 };
 
-function extensionOf(file) {
+// A file's extension in lower case, or "" without one.
+export function extensionOf(file) {
   const name = file.slice(file.lastIndexOf("/") + 1);
   const dot = name.lastIndexOf(".");
   return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();
 }
 
-// `groups` is extensions.json: the handed-over extensions by view. Returns
+// `groups` is extensions.json: the listed extensions by group. Returns
 // { view: "markdown" | "image" | "code", language } or null for a file with no view.
 // `language` is null when the code view should draw without colors.
 export function viewOf(file, groups) {

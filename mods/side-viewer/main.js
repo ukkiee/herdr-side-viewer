@@ -1,27 +1,23 @@
 // Side viewer: shows one file in a pane beside the conversation. open.sh opens it with
 // `pane.split {direction: "right", mod: "side-viewer", props: {file}}`.
-// The decisions (what a file's text becomes, the header's label) live in document.js.
-import { View, div } from "gpui-kit";
-import { v_flex, h_flex, TextView } from "gpui-base";
-import { props, readTextFile, writeTextFile, nextCommand, home, theme } from "herdr";
-import { contentOf, labelOf, noticeFor } from "./document.js";
-// Code view, image view and the checks before reading a file.
+// This file talks to Herdr and draws. The decisions live in modules without Herdr imports,
+// each with its own tests: document.js, views.js, image-copies.js, history.js, request.js,
+// links.js and original.js.
+import { View, div, image, svg } from "gpui-kit";
+import { v_flex, h_flex, TextView, Editor, EditorState } from "gpui-base";
+import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder } from "herdr";
+// Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
-import { image } from "gpui-kit";
-import { Editor, EditorState } from "gpui-base";
-import { settings } from "herdr";
+import { contentOf, labelOf, noticeFor } from "./document.js";
 import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf } from "./views.js";
 import { kindOf, copyName, sizeOf, fitted, staleCopies, FOLDER, COPY, LIST } from "./image-copies.js";
+import { start, open, back, canGoBack } from "./history.js";
+import { takeRequest } from "./request.js";
+import { folderOf, isMarkdown, linkAction, rawMarkdown, touches } from "./links.js";
+import { openOriginalCommands } from "./original.js";
 
 // Space around an image, on each side.
 const IMAGE_PADDING = 20;
-import { start, open, back, canGoBack } from "./history.js";
-import { takeRequest } from "./request.js";
-// Header buttons, the file watch and markdown links (links.js, original.js).
-import { svg } from "gpui-kit";
-import { exec, appHome, watchFolder } from "herdr";
-import { folderOf, isMarkdown, linkAction, rawMarkdown, touches } from "./links.js";
-import { openOriginalCommands } from "./original.js";
 
 // The folder watch can miss a change, so the shown file is also read again this often.
 const RECHECK_MS = 15000;
@@ -33,9 +29,24 @@ export default class SideViewer extends View {
     // The id of the last request this copy took from open.sh.
     this.answered = null;
     this.content = { state: "none" };
-    // Counts loads: an older read that finishes late must not replace a newer one, and the
-    // markdown element needs a new id to draw new text.
+    // Counts content replacements: the markdown element needs a new id to draw new text.
     this.generation = 0;
+    // Counts reads, so one that finishes late cannot replace a newer one.
+    this.reads = 0;
+    // The file the last load was for: only a newly opened file shows "loading".
+    this.loadedFile = null;
+    // extensions.json, once it has been read.
+    this.groups = null;
+    // Whether this copy has already deleted the old image copies.
+    this.swept = false;
+    // Whether the markdown view shows the source.
+    this.raw = false;
+    this.rechecking = false;
+    // The folder being watched, and a count that stops the loop of an earlier folder.
+    this.watched = null;
+    this.watchTurn = 0;
+    // The body's width, from its size report. Null until the first one.
+    this.room = null;
     this.show(given?.file ?? props()?.file, cx);
     this.watch(cx);
     this.listen(cx);
@@ -83,8 +94,7 @@ export default class SideViewer extends View {
   // Reading the shown file into this.content.
   load(cx) {
     const file = this.file;
-    // Counts reads, so one that finishes late cannot replace a newer one.
-    const turn = (this.reads = (this.reads ?? 0) + 1);
+    const turn = ++this.reads;
     const opened = showsLoading(this.loadedFile, file);
     this.loadedFile = file;
     if (!file) {
@@ -128,7 +138,7 @@ export default class SideViewer extends View {
   // What to show for a file: the view's content, or the state of a notice. The size is
   // asked first, so a file too large to draw is never read.
   async read(file) {
-    const found = viewOf(file, await this.handedOver());
+    const found = viewOf(file, await this.listed());
     if (!found) return { state: "unsupported" };
     const probe = readProbe((await exec("sh", ["-c", PROBE, "sh", file])).stdout);
     const blocker = blockerOf(found, probe);
@@ -137,9 +147,9 @@ export default class SideViewer extends View {
     return contentOf(file, await readTextFile(file), found);
   }
 
-  // The handed-over extensions by view. The installed mod's own list is the one read,
-  // because a mod cannot import JSON or ask where its files are.
-  async handedOver() {
+  // The listed extensions by group (extensions.json). The installed mod's own list is the
+  // one read, because a mod cannot import JSON or ask where its files are.
+  async listed() {
     if (!this.groups) {
       try {
         this.groups = JSON.parse(await readTextFile(`${appHome()}/mods/side-viewer/extensions.json`));
@@ -283,7 +293,7 @@ export default class SideViewer extends View {
     if (folder === this.watched) return;
     this.watched = folder;
     // A loop for an earlier folder sees a newer turn and stops.
-    const turn = (this.watchTurn = (this.watchTurn ?? 0) + 1);
+    const turn = ++this.watchTurn;
     if (!folder) return;
     cx.spawn(async (cx) => {
       while (turn === this.watchTurn) {
@@ -292,7 +302,7 @@ export default class SideViewer extends View {
           paths = await watchFolder(folder);
         } catch {
           // The folder cannot be watched (it may be gone). Forget it so the recheck tries again.
-          if (turn === this.watchTurn) this.watched = undefined;
+          if (turn === this.watchTurn) this.watched = null;
           return;
         }
         if (turn !== this.watchTurn) return;

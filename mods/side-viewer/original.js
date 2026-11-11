@@ -2,17 +2,13 @@
 // kept here so the mod does not depend on where the router app is installed. No Herdr
 // imports, so it runs under `node --test`.
 
+import { extensionOf } from "./views.js";
+
 // The router's bundle id, as router/build.sh writes it.
 export const ROUTER_ID = "dev.ukkiee.side-viewer-router";
 
 const TEXT_APP = "com.apple.TextEdit";
 const IMAGE_APP = "com.apple.Preview";
-
-function extensionOf(file) {
-  const name = file.slice(file.lastIndexOf("/") + 1);
-  const dot = name.lastIndexOf(".");
-  return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();
-}
 
 // `record` is the text of original-apps.tsv: "<extension><TAB><bundle id>" per line.
 function recorded(extension, record) {
