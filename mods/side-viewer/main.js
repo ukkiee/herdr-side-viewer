@@ -10,7 +10,7 @@ import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, 
 import * as fs from "fs/promises";
 import { contentOf, labelOf, noticeFor } from "./document.js";
 import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe } from "./views.js";
-import { kindOf, copyName, sizeOf, fitted, staleCopies, FOLDER, COPY, LIST } from "./image-copies.js";
+import { kindOf, copyName, sizeOf, fitted, staleCopies, olderCopies, FOLDER, COPY, LIST } from "./image-copies.js";
 import { start, open, back, canGoBack } from "./history.js";
 import { takeRequest } from "./request.js";
 import { watchedFolder, linkAction, rawMarkdown, touches } from "./links.js";
@@ -219,7 +219,16 @@ export default class SideViewer extends View {
       } catch {}
     }
     this.sweep().catch(() => null);
+    if (!shown) this.dropOlder(path).catch(() => null);
     return { state: "image", path, size };
+  }
+
+  // Deleting the earlier copies of the image whose copy is at `path`.
+  async dropOlder(path) {
+    const folder = `${appHome()}/${FOLDER}`;
+    const listing = await exec("sh", ["-c", LIST, "sh", folder]);
+    const older = olderCopies(listing.stdout, path.slice(FOLDER.length + 1));
+    if (older.length) await exec("rm", ["-f", ...older.map((name) => `${folder}/${name}`)]);
   }
 
   // Deleting copies not shown for 30 days. Once per viewer is enough.

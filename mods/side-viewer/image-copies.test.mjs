@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, utimesSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { kindOf, copyName, sizeOf, fitted, staleCopies, COPY, LIST } from "./image-copies.js";
+import { kindOf, copyName, sizeOf, fitted, staleCopies, olderCopies, COPY, LIST } from "./image-copies.js";
 
 const bytes = (text) => [...Buffer.from(text, "latin1")];
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -133,6 +133,26 @@ test("copying a file that cannot be copied fails without leaving a copy", () => 
   const copy = join(dir, "images", "aaaa-8-1.png");
   assert.notEqual(sh(COPY, join(dir, "none.png"), copy).status, 0);
   assert.equal(existsSync(copy), false);
+});
+
+test("a new copy replaces the earlier copies of the same image, and no others", () => {
+  const name = copyName("/w/shot.png", { bytes: 900, modified: 30 }, "png");
+  const older = copyName("/w/shot.png", { bytes: 800, modified: 20 }, "png");
+  const oldest = copyName("/w/shot.png", { bytes: 700, modified: 10 }, "svg");
+  const other = copyName("/w/other.png", { bytes: 800, modified: 20 }, "png");
+  const listing = [`50 ${name}`, `40 ${older}`, `30 ${oldest}`, `40 ${other}`, "40 notes.txt", `40 ${name}.bak`, ""].join("\n");
+  assert.deepEqual(olderCopies(listing, name), [older, oldest]);
+  assert.deepEqual(olderCopies("", name), []);
+  assert.deepEqual(olderCopies(null, name), []);
+  // A name that is not a copy's gives nothing to delete.
+  assert.deepEqual(olderCopies(listing, "../x.png"), []);
+  assert.deepEqual(olderCopies(listing, ""), []);
+});
+
+test("the listing of a real folder names the older copies of an image", () => {
+  const dir = mkdtempSync(join(tmpdir(), "side-viewer-copies-"));
+  for (const name of ["aaaa-8-1.png", "aaaa-9-2.png", "aaaab-8-1.png", "bbbb-8-1.png"]) writeFileSync(join(dir, name), "x");
+  assert.deepEqual(olderCopies(sh(LIST, dir).stdout, "aaaa-9-2.png"), ["aaaa-8-1.png"]);
 });
 
 test("the listing of a real folder names the copies that went stale", () => {

@@ -114,6 +114,20 @@ for f in *; do [ -f "$f" ] && stat $format "$f" | tr '@' ' '; done
 exit 0
 `;
 
+// The names in LIST's output that are earlier copies of the image `name` is a copy of: the
+// same path hash with another size or time. A changed image gets a new copy every time, so
+// without this an image an agent keeps redrawing would fill the disk.
+export function olderCopies(listing, name) {
+  const hashed = /^([0-9a-f]+)-\d+-\d+\.[a-z]+$/.exec(name ?? "")?.[1];
+  if (!hashed) return [];
+  const older = [];
+  for (const line of String(listing ?? "").split("\n")) {
+    const found = /^\d+ (([0-9a-f]+)-\d+-\d+\.[a-z]+)$/.exec(line);
+    if (found && found[2] === hashed && found[1] !== name) older.push(found[1]);
+  }
+  return older;
+}
+
 // The names in LIST's output that were last shown more than 30 days before `now` (seconds).
 // Only names shaped like copyName's are returned, so the cleanup can never be pointed at
 // anything else.
