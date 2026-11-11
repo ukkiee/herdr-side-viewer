@@ -7,11 +7,17 @@ set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/lib.sh"
 
-app="${SIDE_VIEWER_ROUTER_APP:-$HOME/Applications/Side Viewer Router.app}"
-plist="$app/Contents/Info.plist"
+final="${SIDE_VIEWER_ROUTER_APP:-$HOME/Applications/Side Viewer Router.app}"
 buddy=/usr/libexec/PlistBuddy
 
-rm -rf "$app"
+# Built beside the final place and swapped in only when every step worked: the app that is
+# there may be the default app for taken-over extensions, and the only way to run --restore.
+mkdir -p "$(dirname "$final")"
+stage=$(mktemp -d "$(dirname "$final")/.side-viewer-router.XXXXXX")
+trap 'rm -rf "$stage"' EXIT
+app="$stage/$(basename "$final")"
+plist="$app/Contents/Info.plist"
+
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 swiftc -O -o "$app/Contents/MacOS/SideViewerRouter" "$here/main.swift"
 cp "$here/takeover.sh" "$here/open-original.sh" "$here/lib.sh" "$here/../open.sh" "$list" "$app/Contents/Resources/"
@@ -41,5 +47,12 @@ for ext in $(all_extensions); do
 done
 
 codesign -s - --force "$app"
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app"
-echo "built $app"
+
+# The old app steps aside rather than being deleted first, so it can come back if the move fails.
+if [ -e "$final" ]; then mv "$final" "$stage/old"; fi
+if ! mv "$app" "$final"; then
+  if [ -e "$stage/old" ]; then mv "$stage/old" "$final"; fi
+  exit 1
+fi
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$final"
+echo "built $final"

@@ -1,7 +1,8 @@
 // node --test: takeover.sh and open-original.sh against a fake router command, a fake `open`,
-// and a throwaway data folder. Nothing here touches the real default apps.
+// and a throwaway data folder, and build.sh against a compiler that fails. Nothing here
+// touches the real default apps or the real router app.
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -315,6 +316,42 @@ test("status prints the current default app and the recorded original app per ex
     w.takeover("status").stdout,
     `md\t${ROUTER_ID}\tcom.example.Notes\nmdx\t${ROUTER_ID}\t-\npng\t${ROUTER_ID}\tcom.apple.Preview\n`,
   );
+});
+
+test("a build that fails leaves the router app that was there in place", () => {
+  const dir = mkdtempSync(join(tmpdir(), "side-viewer-build-"));
+  const bin = join(dir, "bin");
+  const app = join(dir, "apps", "Side Viewer Router.app");
+  mkdirSync(bin);
+  mkdirSync(join(app, "Contents", "MacOS"), { recursive: true });
+  writeFileSync(join(app, "Contents", "MacOS", "SideViewerRouter"), "the old router");
+  writeFileSync(join(bin, "swiftc"), "#!/bin/sh\necho 'error: no such module' >&2\nexit 1\n");
+  chmodSync(join(bin, "swiftc"), 0o755);
+  const r = spawnSync("/bin/sh", [join(here, "build.sh")], {
+    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir, SIDE_VIEWER_ROUTER_APP: app },
+    encoding: "utf8",
+  });
+  assert.notEqual(r.status, 0);
+  assert.equal(readFileSync(join(app, "Contents", "MacOS", "SideViewerRouter"), "utf8"), "the old router");
+  // Nothing half-built is left beside it.
+  assert.deepEqual(readdirSync(join(dir, "apps")), ["Side Viewer Router.app"]);
+});
+
+test("install.sh changes nothing when the mod does not pass the check", { skip: process.platform !== "darwin" }, () => {
+  const dir = mkdtempSync(join(tmpdir(), "side-viewer-install-"));
+  const bin = join(dir, "bin");
+  const home = join(dir, "app-home");
+  const app = join(dir, "apps", "Side Viewer Router.app");
+  mkdirSync(bin);
+  writeFileSync(join(bin, "herdr-app"), "#!/bin/sh\necho 'check failed' >&2\nexit 1\n");
+  chmodSync(join(bin, "herdr-app"), 0o755);
+  const r = spawnSync("/bin/sh", [join(here, "..", "..", "..", "install.sh")], {
+    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir, HERDR_APP_HOME: home, SIDE_VIEWER_ROUTER_APP: app },
+    encoding: "utf8",
+  });
+  assert.notEqual(r.status, 0);
+  assert.ok(!existsSync(home), "the mod was copied");
+  assert.ok(!existsSync(join(dir, "apps")), "the router was built");
 });
 
 test("open-original opens the file in the recorded original app", () => {

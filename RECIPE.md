@@ -125,7 +125,9 @@ The mod shows files, not agents, so it has no agent statuses.
   `~/Applications/Side Viewer Router.app` (bundle id `dev.ukkiee.side-viewer-router`,
   `LSBackgroundOnly`, document types from `extensions.json` at rank `Alternate`), copies
   the scripts and the list into its `Resources`, signs it ad hoc and registers it with
-  `lsregister`.
+  `lsregister`. It builds in a hidden folder beside the app and swaps the result in only
+  when every step worked. The binary also answers `--type-info <extension>` (file type, its
+  other extensions, its parent types), the check behind the sibling extensions in the list.
 - Icons: `source.svg`, `rendered.svg`, `original.svg`, `finder.svg`, 16×16, one stroked
   path each in `currentColor`, drawn at 14px with `svg("mods/side-viewer/<name>.svg")`.
 - `herdr` functions: `props`, `readTextFile`, `writeTextFile`, `nextCommand`, `home`,
@@ -139,8 +141,9 @@ The mod shows files, not agents, so it has no agent statuses.
   `original-apps.tsv` (`<extension><TAB><bundle id>` per line), `request.json`,
   `answer-<id>`, and `images/<path hash>-<bytes>-<modified>.<kind>` (image copies, mode 600,
   deleted when not shown for 30 days). The viewer reads whichever file it is asked to show.
-- `install.sh`: copies the mod folder into the app home, runs `herdr-app check`, runs
-  `build.sh`. It changes no default app.
+- `install.sh`: runs `herdr-app check` on the mod folder, runs `build.sh`, then copies the
+  mod folder into the app home. It never runs the take-over command; building can still
+  change a default (see "Building the app is enough" under Watch out).
 
 ## Watch out
 

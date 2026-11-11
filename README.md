@@ -19,8 +19,9 @@ Herdr hands a cmd-clicked path to macOS, which opens it in the default app for t
 file. So this repo ships a small background app, the **router**, that you make the default
 app for a list of extensions. For each file it receives, it looks at which app is in front:
 Herdr sends the file to the side viewer, anything else sends it to the **original app**,
-the one that was the default before. Nothing changes until you run the take-over command
-below, and one command gives everything back.
+the one that was the default before. The router takes over only when you run the take-over
+command below (the one exception is under [Limits](#limits)), and one command gives
+everything back.
 
 ## Install
 
@@ -31,10 +32,13 @@ Needs the Herdr app (`herdr-app` on your `PATH`) and Xcode's command line tools
 ./install.sh
 ```
 
-from a clone of this repository. It copies the mod into `~/.config/herdr-app/mods/side-viewer`
-(or `$HERDR_APP_HOME`), runs `herdr-app check` on it, and builds
-`~/Applications/Side Viewer Router.app`. It does not change any default app. Run it again
-after `git pull` to update.
+from a clone of this repository. It runs `herdr-app check` on the mod, builds
+`~/Applications/Side Viewer Router.app`, and copies the mod into
+`~/.config/herdr-app/mods/side-viewer` (or `$HERDR_APP_HOME`). If the check or the build
+fails, the mod and the router that were installed stay as they were. It does not run the
+take-over command below; building alone can still make the router the default for an
+extension no other app claims (see "Building alone can change a default" under
+[Limits](#limits)). Run it again after `git pull` to update.
 
 ## Take over the extensions
 
