@@ -26,7 +26,8 @@ exit "$(cat "$FAKE_STATE/herdr-exit" 2>/dev/null || echo 0)"
 `;
 
 // Stands in for the side viewers showing in the tab: each takes the waiting request the way
-// main.js does, through request.js, and logs the file it would show.
+// main.js does, through request.js, and logs the file it would show. FAKE_NOW, when set, is
+// the time in milliseconds the viewers believe it is.
 const FAKE_VIEWERS = `
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { takeRequest } from ${JSON.stringify(pathToFileURL(join(here, "request.js")).href)};
@@ -34,9 +35,10 @@ const files = {
   read: async (path) => { try { return readFileSync(path, "utf8"); } catch { return null; } },
   create: async (path, text) => writeFileSync(path, text, { flag: "wx" }),
 };
+const now = process.env.FAKE_NOW ? Number(process.env.FAKE_NOW) : Date.now();
 const count = Number(readFileSync(process.env.FAKE_STATE + "/viewers", "utf8"));
 for (let i = 0; i < count; i++) {
-  const request = await takeRequest(files, { folder: process.env.SIDE_VIEWER_DATA, answered: null, now: Date.now() });
+  const request = await takeRequest(files, { folder: process.env.SIDE_VIEWER_DATA, answered: null, now });
   if (request) appendFileSync(process.env.FAKE_STATE + "/viewer.log", request.file + "\\n");
 }
 `;
@@ -91,8 +93,11 @@ function world({ herdr = true, installed = true, record } = {}) {
       writeFileSync(join(state, "viewers"), String(count));
       if (asleep) writeFileSync(join(state, "viewers-asleep"), "");
     },
+    // The viewers wake at the moment the waiting request was written, so it is still fresh to
+    // them however long the scene took, and only a claimed answer can keep them from it.
     wakeViewers: () => {
-      const r = spawnSync(process.execPath, [join(state, "viewers.mjs")], { env, encoding: "utf8" });
+      const { at } = JSON.parse(readFileSync(join(data, "request.json"), "utf8"));
+      const r = spawnSync(process.execPath, [join(state, "viewers.mjs")], { env: { ...env, FAKE_NOW: String(at * 1000) }, encoding: "utf8" });
       assert.equal(r.status, 0, r.stderr);
     },
     // The show command itself fails, as it may when no viewer is showing.
@@ -161,7 +166,6 @@ test("a viewer that wakes after the new pane was asked for does not take the fil
   w.viewersShowing(1, { asleep: true });
   w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.ok(w.splitArgs());
-  // Well inside the 5 s a request stays fresh, so only the claimed answer stops the viewer.
   w.wakeViewers();
   assert.deepEqual(w.shownInViewer(), [], "the viewer took the file as well");
 });
@@ -268,7 +272,6 @@ test("a viewer that wakes after Herdr was given up on does not take the file as 
   w.viewersShowing(1, { asleep: true });
   w.open("/work/notes/plan.md", HERDR_FRONT, { SIDE_VIEWER_TIMEOUT: "1" });
   assert.deepEqual(w.openArgs(), ["-b", "com.apple.TextEdit", "/work/notes/plan.md"]);
-  // Well inside the 5 s a request stays fresh, so only the claimed answer stops the viewer.
   w.wakeViewers();
   assert.deepEqual(w.shownInViewer(), [], "the viewer took the file as well");
 });
