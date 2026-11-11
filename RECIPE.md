@@ -202,6 +202,10 @@ Platform:
 - `watchFolder` reports subfolders too on macOS, and real paths (`/private/tmp` for `/tmp`):
   batches are matched by path ending. Watching the home folder or `/` would report every
   change under them, so a file there is left to the 15-second check.
+- In a layout that gives panes a header (the shipped `pane` mod), its split, zoom and close
+  buttons show only while the pointer is on the header, at its right end, one row above the
+  viewer's own buttons. A viewer closed there is gone with its history; the next cmd-click
+  opens a new one.
 - `herdr-app check` draws once, with no file, so it only ever sees `열 파일이 없습니다.`
 - Language names the editor knows are not documented. `toml`, `swift`, `kotlin`, `scss` and
   `xml` are guesses; an unknown name draws without colors, never an error. TypeScript and
@@ -214,6 +218,9 @@ macOS:
   dismiss it. "Keep" comes back as an error with the default unchanged; `takeover.sh` tells
   it from a failure by comparing the default before and after.
 - A 30-second wait per window was too short for a person to read and answer; it is 300.
+- The windows come one after another in the same place and each names both apps, so they
+  are easy to answer the same way every time. On restore the button that names the router
+  means keep. Nothing is lost by that: the next run asks only for what is still left.
 - Two extensions of one file type can still open in different apps, so the default app is
   asked about a real file with that extension, and the record is per extension. Restore
   sets a file type once, to the original app of the extension that comes first in the list.
@@ -303,7 +310,7 @@ and a path in code formatting.
 17. `node --test mods/side-viewer/` passes with no failures; it covers the cases where
     `herdr-app` is missing, errors, or does not answer. (AC-11, AC-2, AC-3, AC-7, AC-9)
 18. `router --restore` announces its windows, and exactly that many follow; pick the original
-    app in each. `바뀜` lists only extensions that left the router; any that stay are under
+    app in each (the button that names the other app, not the router). `바뀜` lists only extensions that left the router; any that stay are under
     `라우터에 남음`, and `router --status` then shows the router for those and no others.
     An extension the router got from building alone beside a sibling in another app (the
     router and `-` in `router --status` before the first `--make-default`, such as `rbw`
