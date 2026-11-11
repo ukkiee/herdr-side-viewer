@@ -114,6 +114,7 @@ run_plan() {
 
   [ -n "$changed" ] && echo "바뀜:$changed"
   [ -n "$kept" ] && echo "유지를 선택함:$kept"
+  [ -n "$left" ] && echo "라우터에 남음:$left (이 확장자를 맡은 앱이 라우터뿐입니다)"
   [ "$failed" -eq 1 ] && return 1
   [ -n "$kept" ] && return 3
   return 0

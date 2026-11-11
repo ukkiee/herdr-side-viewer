@@ -281,6 +281,17 @@ test("restore asks nothing for an unrecorded extension whose file type already o
   assert.deepEqual(w.dataFiles(), []);
 });
 
+test("restore leaves out of the window count a file type it asks nothing for, and still says what stays with the router", () => {
+  const w = world({ extensions: { markdown: ["md"], image: [], code: ["rb", "rbw"] }, defaults: { md: ROUTER_ID, rb: "com.example.IDE" }, sameType: { rbw: "rb" }, record: "md\tcom.example.Notes\n" });
+  w.only("rbw", ROUTER_ID);
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^macOS 확인 창이 1번 뜹니다\./);
+  assert.deepEqual(w.requests(), ["md com.example.Notes"]);
+  assert.match(r.stdout, /^바뀜: md$/m);
+  assert.match(r.stdout, /^라우터에 남음: rbw \(이 확장자를 맡은 앱이 라우터뿐입니다\)$/m);
+});
+
 test("restore uses a sibling's recorded app when the router holds the whole file type", () => {
   const w = world({ extensions: { markdown: [], image: [], code: ["cp", "cpp"] }, defaults: { cpp: ROUTER_ID }, sameType: { cp: "cpp" }, record: "cpp\tcom.example.IDE\n" });
   const r = w.takeover("restore");
