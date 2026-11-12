@@ -61,7 +61,8 @@ everything back.
 
 ## Open in a new tab
 
-The header's `새 탭으로 열기` button (the leftmost of the three icons on the right) opens a
+The header's `새 탭으로 열기` button (the leftmost of the three icons on the right, there
+while a file is drawn, not on a notice such as "too large" or "gone") opens a
 **viewer tab**: a tab right after the current one, in the same space, holding only a side
 viewer of this file, and switches to it. The tab is named after the file and follows it
 through links, `←` and new files. It starts with an empty history. The same file opens a new
@@ -97,7 +98,8 @@ file opens in it, not in a new pane.
   next `>_` goes into the same shell pane while it is open. If that shell is running a
   program, nothing is typed and a notification says so (`터미널에 넣지 않았습니다`). A line
   `print -rz -- '…'` is left on the shell's screen. Text you had typed at its prompt is moved
-  aside with zsh's push-line (alt+q) and comes back after the command (not with vi keys).
+  aside with zsh's push-line (alt+q) and comes back after the command (not with vi keys: see
+  [Limits](#limits)).
 - **Pictures.** A local picture on a line of its own (`![alt](path)`, relative to the
   document's folder, or absolute) is drawn in the document: as wide as the pane at most,
   never larger than itself, at most 420 high, centered. One that can't be read shows
@@ -236,6 +238,10 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
 - **No autosave and no "save changes?" prompt.** Edits not saved are gone when the pane
   closes or Herdr quits. The one save without cmd+S is a checkbox click on a file without
   edits.
+- **`>_` with zsh's vi keys can run what you had typed.** With a vi keymap (zsh picks one when
+  `EDITOR` or `VISUAL` contains "vi", or after `bindkey -v`), text left at the shell pane's
+  prompt is not moved aside: the command joins it and the line runs, draft and all. Clear
+  the prompt before clicking `>_`, or use emacs keys (`bindkey -e`).
 - **No keyboard navigation** between blocks, no `cmd+E` for the source switch, no filling in
   of `{{placeholders}}` in commands.
 - **A path with text stuck to its end doesn't open.** Herdr reads the letters right after a

@@ -30,9 +30,10 @@ Top to bottom:
     `렌더링 | 원문`, two cells in a 24px tall box with a 1px `border`, radius 5. The cell
     shown is filled with `hover` in `foreground`; the other is `muted` and switches on click.
   - **Buttons**, which never shrink: each a 24×24 square, radius 4, a 14px icon in `muted`,
-    `hover` background under the pointer, a tooltip. For every file `새 탭으로 열기` (open
-    in a new tab), `원래 앱으로 열기` (open in the original app) and `Finder에서 보기` (show
-    in Finder), 2px apart.
+    `hover` background under the pointer, a tooltip, 2px apart. While a markdown document,
+    code, an image or an svg is drawn, `새 탭으로 열기` (open in a new tab); for every file
+    `원래 앱으로 열기` (open in the original app) and `Finder에서 보기` (show in Finder). A
+    notice has only those two.
   - With no file the name reads `Side Viewer` and there are no buttons.
 - **Bar**, only while the shown file has one, between the header and the body: 12px side and
   6px vertical padding, a 1px `border` line under it, `chrome` background, the message at
@@ -114,7 +115,9 @@ The mod shows files, not agents, so it has no agent statuses.
   Unchanged content leaves the screen and the scroll position alone; changed code keeps
   its editor and only gets the new text. A deleted file turns into the "gone" notice, and
   its content comes back when the file does. "Loading" shows only for a newly opened file.
-  A file with unsaved edits is never read over them: see "Changed outside".
+  A file with unsaved edits is never read over them: see "Changed outside". Nor is it
+  replaced by a notice: coming back to one that is now gone, empty, too large or unreadable
+  shows its editor with the edits (views.js, `editedContentOf`), and the bar says what it can.
 - **Theme.** The code view's colors are fixed when its editor is made, so each check also
   compares them with the theme: after a theme change the open code is redrawn with the new
   colors within 15 seconds. Code block cards take the new colors at the same check.
@@ -167,8 +170,9 @@ The mod shows files, not agents, so it has no agent statuses.
   `터미널에 넣지 못했습니다` / `셸 pane을 열거나 찾지 못했습니다.`.
 - **New tab** (`새 탭으로 열기`). Runs `tab.new {name: <file name>, space, mod:
   "side-viewer", props: {file, viewerTab: true, handoff?}}`, finds the new tab by comparing
-  `spaces()` (every 50 ms, up to 20 times), then `tab.move` right after the viewer's tab and
-  `tab.select`. Every click makes a tab. Unsaved edits go to `handoff-<id>.json` in the data
+  `spaces()` (every 50 ms with `cx.sleep`, up to 3 seconds), then `tab.move` right after the
+  viewer's tab and `tab.select`. Not found by then: a notification
+  `새 탭으로 넘어가지 못했습니다` names the tab. Every click makes a tab. Unsaved edits go to `handoff-<id>.json` in the data
   folder, its id in the props; the new tab reads and deletes it (ignoring one older than 60
   seconds) and the viewer that opened it drops the edits. A viewer tab renames its tab
   (`tab.rename`) to each file it shows. It starts with an empty history. Being on screen,
@@ -354,15 +358,18 @@ Platform:
   running it; the leading space keeps it out of history with `histignorespace`. zsh only,
   and the `print -rz` line stays on screen. `hc send` waits up to 60 seconds after the last
   key when the person has typed something and pastes after it: hence alt+q (push-line)
-  first, which a vi keymap doesn't have.
+  first, which a vi keymap doesn't have. With a vi keymap (zsh starts in one when `EDITOR`
+  or `VISUAL` holds "vi") alt+q only leaves insert mode, so a draft at the prompt stays, the
+  `print -rz` line joins it, and `hc send`'s Enter runs the joined line, draft included. The
+  viewer cannot see the keymap or the draft, so this stays a limit (README, Limits).
 - zsh reports no hc status, so `hc get`'s `status` is always null; `foreground.name` (`zsh`
   at the prompt, `sleep` while it runs) tells a busy shell.
 - `pane.split` takes no folder, so the shell starts as a short zsh that `cd`s and becomes
   the login shell. A mod is not told its own pane id: the viewer is the focused side viewer,
   else the tab's only one.
 - `tab.new` returns no id and its new tab's place is Herdr's: the tab is found by
-  comparing `spaces()`, which must show it within about a second, or it stays where Herdr
-  put it. The rename follows `focused().tab`; several windows were not tried.
+  comparing `spaces()`, which must show it within 3 seconds, or it stays where Herdr put it
+  and a notification says so. The rename follows `focused().tab`; several windows were not tried.
 - Props are saved with a tab, so unsaved edits never go in them, only a handoff id. After an
   app restart a viewer tab shows its first file under its last name.
 
@@ -479,7 +486,7 @@ and a path in code formatting.
     shows its notice (`뷰어에서 열기에는 너무 큽니다.` for the two large ones,
     `이 파일은 비어 있습니다.`, `이 파일을 읽을 수 없습니다.`,
     `이 종류의 파일은 뷰어에서 열 수 없습니다.`) with `원래 앱으로 열기` and `Finder에서 보기`
-    working, and `herdr-app status` reports no mod error. (AC-9)
+    working and no `새 탭으로 열기`, and `herdr-app status` reports no mod error. (AC-9)
 14. `herdr-app do pane.split --direction right --mod side-viewer --props '{"file":"/etc/hosts"}'`
     shows `이 종류의 파일은 뷰어에서 열 수 없습니다.` with `원래 앱으로 열기` and
     `Finder에서 보기`. (AC-9)
@@ -557,11 +564,14 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
    first: discard and try again.) (AC-4)
 10. No permission: edit `~/sv2-check/main.js`, run `chmod 555 ~/sv2-check` (a read-only
     file alone, `chmod 444`, probably still saves: Watch out), press cmd+S: the bar says
-    `이 파일에 쓸 권한이 없습니다.` and the edit stays. `chmod 755 ~/sv2-check`, cmd+S: saved,
-    the bar goes. (AC-5)
+    `이 파일에 쓸 권한이 없습니다.` and the edit stays. Cmd-click another file's path, then
+    `←`: the bar still says why. `chmod 755 ~/sv2-check`, cmd+S: saved, the bar goes. (AC-5)
 11. Deleted: edit `~/sv2-check/main.js`, then `mv ~/sv2-check/main.js ~/sv2-check/main.js.bak`:
     the bar says `파일이 지워졌습니다.` and the edit stays; cmd+S says the same and writes
-    nothing. `mv` it back: the bar goes, the edit is still there. (AC-5)
+    nothing. `mv` it back: the bar goes, the edit is still there. Then, with the edit
+    unsaved, cmd-click `~/sv2-check/markdown-sample.md`, run the same `mv` and press `←`:
+    `main.js` comes back in its editor with the edit, `저장 안 됨` and `파일이 지워졌습니다.`,
+    not the `이 파일은 더 이상 없습니다.` notice. `mv` it back. (AC-5, AC-3)
 12. Too large: `head -c 1100000 /dev/zero | tr '\0' a | pbcopy`, paste it into the source of
     `~/sv2-check/markdown-sample.md`, press cmd+S: the bar says `저장하기에는 너무
     큽니다.`, the file is unchanged, the edit stays. Undo the paste (cmd+Z, or select it and
