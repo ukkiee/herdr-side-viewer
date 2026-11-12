@@ -1,15 +1,16 @@
 // Side viewer: shows one file in a pane beside the conversation. open.sh opens it with
-// `pane.split {direction: "right", mod: "side-viewer", props: {file}}`.
+// `pane.split {direction: "right", mod: "side-viewer", props: {file, space?}}`.
 // This file holds the viewer's state and most of its talk with Herdr: reading, saving,
-// taking requests from open.sh, watching and viewer tabs. Two parts that keep their own state
-// and call Herdr themselves sit beside it: shell-pane.js (a shell code block's `>_`) and
-// markdown-image-loader.js (the document's image copies). Drawing is in header.js,
+// taking requests from open.sh, watching and viewer tabs. The shown file is read on the
+// machine of the viewer's space (machine.js) through file-access.js. Two parts that keep their
+// own state and call Herdr themselves sit beside it: shell-pane.js (a shell code block's `>_`)
+// and markdown-image-loader.js (the document's image copies). Drawing is in header.js,
 // code-card.js and the views' modules (markdown-view.js, code-view.js,
 // image-view.js, notice-view.js), which get what to show and callbacks from here.
 // The decisions live in modules without Herdr imports, each with its own tests: document.js,
 // views.js, image-copies.js, svg-preview.js, history.js, request.js, links.js, original.js,
 // edit-state.js, viewer-tab.js, checkbox.js, markdown-blocks.js, code-blocks.js,
-// markdown-images.js and terminal-insert.js.
+// markdown-images.js, terminal-insert.js and machine.js.
 import { View } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
 import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes, notify, shared, setShared } from "herdr";
@@ -35,6 +36,8 @@ import { renderImage } from "./image-view.js";
 import { renderNotice } from "./notice-view.js";
 import { MarkdownImages } from "./markdown-image-loader.js";
 import { LANGS, translator, systemLang, askAgainAfter } from "./i18n.js";
+import { machineOf } from "./machine.js";
+import { accessOf } from "./file-access.js";
 
 // Where the system's language is remembered in Herdr's shared state ("ko" | "en").
 const LANG_KEY = "side-viewer.lang";
@@ -102,6 +105,9 @@ export default class SideViewer extends View {
     // than a viewer beside a conversation. Its props say so, and they never change.
     const tab = viewerTabOf(props()) ?? viewerTabOf(given);
     this.viewerTab = Boolean(tab);
+    // The space value its opener gave (machine.js), which never changes. Without one the
+    // viewer is on this Mac.
+    this.space = props()?.space ?? given?.space ?? null;
     // A viewer tab starts with an empty history, as every new copy does: back only returns
     // to files opened in this tab.
     this.show(given?.file ?? props()?.file, cx);
@@ -161,7 +167,7 @@ export default class SideViewer extends View {
       try {
         run("tab.new", {
           name: tabName(file), ...(place ? { space: place.space } : {}),
-          mod: "side-viewer", props: tabProps({ file, handoff }),
+          mod: "side-viewer", props: tabProps({ file, handoff, space: this.space }),
         });
       } catch {
         if (handoff) exec("rm", ["-f", `${folder}/${handoffFile(handoff)}`]).catch(() => null);
@@ -384,7 +390,11 @@ export default class SideViewer extends View {
   async read(file, known) {
     const found = viewOf(file, await this.listed());
     if (!found) return { content: { state: "unsupported" }, probe: null };
-    const probe = readProbe((await exec("sh", ["-c", PROBE, "sh", file])).stdout);
+    const access = this.access();
+    // An image is drawn from a copy that readImage makes of a file on this Mac, so an image
+    // on another machine is a kind this viewer cannot show.
+    if (found.view === "image" && access.remote) return { content: { state: "unsupported" }, probe: null };
+    const probe = readProbe((await access.run("sh", ["-c", PROBE, "sh", file])).stdout);
     // An image goes on: its bytes are not read again anyway, and showing it has to touch
     // its copy, or the 30-day cleanup would take it. An svg's text goes with it, for edits.
     if (found.view === "image") {
@@ -404,8 +414,14 @@ export default class SideViewer extends View {
     if (blocker) {
       return { content: { state: blocker }, probe: remembered, text: blocker === "missing" ? null : undefined };
     }
-    const text = await readTextFile(file);
+    const text = await access.read(file);
     return { content: contentOf(file, text, found), probe: remembered, text };
+  }
+
+  // The file access of this viewer's machine (file-access.js). Asked again at each read: a
+  // viewer that starts before Herdr lists its space is on this Mac until it does.
+  access() {
+    return accessOf(machineOf({ space: this.space }, spaces()).machine);
   }
 
   // The listed extensions by group (extensions.json). The installed mod's own list is the
@@ -575,6 +591,9 @@ export default class SideViewer extends View {
     this.saving = true;
     cx.spawn(async (cx) => {
       try {
+        // writeTextFile writes on this Mac only: a file on another machine fails the save
+        // instead of landing on this Mac's file of the same path.
+        if (this.access().remote) throw new Error("Saving to another machine's file is not supported.");
         await writeTextFile(request.path, request.text, request.expected);
         this.edits = saved(this.edits, request.path, request.text);
         if (this.content.file === request.path) this.content.text = request.text;
@@ -780,6 +799,7 @@ export default class SideViewer extends View {
       canGoBack: canGoBack(this.visits),
       state: this.content.state,
       raw: this.raw,
+      remote: this.access().remote,
       status: statusOf(this.edits, this.file, tr),
       tr,
       onBack: (cx) => this.goBack(cx),
