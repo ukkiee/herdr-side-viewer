@@ -21,6 +21,7 @@ import { openOriginalCommands } from "./original.js";
 import { renderHeader } from "./header.js";
 import { renderBar } from "./conflict-bar.js";
 import { renderMarkdown } from "./markdown-view.js";
+import { CodeCards } from "./code-card.js";
 import { renderCode } from "./code-view.js";
 import { renderImage } from "./image-view.js";
 import { renderNotice } from "./notice-view.js";
@@ -63,6 +64,8 @@ export default class SideViewer extends View {
     this.edits = noEdits();
     // Whether a save is under way: a second cmd+S waits for it instead of writing twice.
     this.saving = false;
+    // The markdown view's code block cards and their editor state (code-card.js).
+    this.codeCards = new CodeCards();
     // The viewer's own keyboard target: cmd+S is heard on the root that tracks it, whether
     // it or the editor inside it holds the keyboard.
     this.focus = cx.focus_handle();
@@ -169,6 +172,9 @@ export default class SideViewer extends View {
   // `text` stays the disk text; a file with unsaved edits shows those instead (edit-state.js),
   // so a read never drops them.
   apply(file, content, cx) {
+    // Before the early returns below: unchanged markdown (null) still needs new cards
+    // after a change of theme.
+    this.prepareCards(file, content ?? this.content, cx);
     const shown = this.content;
     // Unchanged code is compared all the same, so its colors follow a change of theme.
     const next = content ?? (shown.state === "code" ? { state: "code", text: shown.text, language: shown.language } : null);
@@ -189,6 +195,16 @@ export default class SideViewer extends View {
     const options = editorOf(next.state);
     if (options) next.editor = this.makeEditor(next, syntax, options);
     this.setContent(next, cx);
+  }
+
+  // Makes the code cards' editor state for the markdown `content` of `file` shows, with its
+  // unsaved edits; any other content leaves no cards. Editor state cannot be made while
+  // drawing, so this runs after a read and on an edit.
+  prepareCards(file, content, cx) {
+    const text = content.state === "markdown" ? shownText(this.edits, file, content.text) : "";
+    const font = settings()?.font_family;
+    const look = { syntax: this.syntax(), font: typeof font === "string" && font ? font : null };
+    if (this.codeCards.prepare(text, look)) cx.notify();
   }
 
   // Replacing this.content. The code view's editor state is released when it goes, and the
@@ -312,6 +328,7 @@ export default class SideViewer extends View {
     this.edits = typed(this.edits, content.file, content.text, editor.value());
     // The rendering draws the edited text, and the markdown element needs a new id for it.
     if (content.state === "markdown") this.generation++;
+    if (content.state === "markdown") this.prepareCards(content.file, content, cx);
     if (content.state === "markdown") this.images.prepare(content.file, editor.value(), false, cx);
     if (unsaved(this.edits, content.file) !== was) cx.notify();
   }
@@ -494,6 +511,7 @@ export default class SideViewer extends View {
         text: shownText(this.edits, content.file, content.text), raw: this.raw, generation: this.generation,
         onLink: (url, cx) => this.followLink(url, cx),
         file: this.file,
+        codeCards: this.codeCards,
         images: this.images.forDocument(content.file),
       });
     }
