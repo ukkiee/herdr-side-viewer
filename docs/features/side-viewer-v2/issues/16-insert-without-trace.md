@@ -4,7 +4,7 @@
 
 **Blocked by:** 07 (integrated)
 
-**Status:** ready-for-agent
+**Status:** integrated
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-16, "구현 결정"의 "터미널에 넣기")
 
@@ -22,10 +22,22 @@
 - 숨은 백그라운드 zsh(`hc run --bg`)에서: 준비 줄 뒤 화면에 준비 줄이 남지 않음, 넣은 명령이 입력 칸에만 있고 실행 안 됨, 클립보드 해시 그대로, 쓰던 글이 push-line으로 밀렸다가 돌아옴, `bindkey -v`에서도 쓰던 글이 실행 안 됨. 시험 터미널은 지운다.
 - 경계 4: 12에서 18~20번 다시 확인
 
-- [ ] 처음 연 셸에 준비 줄을 보내고 지워 화면에 남지 않는다
-- [ ] `>_`가 파일에 쓰고 키 하나로 넣어 화면에 줄이 남지 않는다
-- [ ] Enter·클립보드를 쓰지 않고 쓰던 글이 돌아온다(vi 키맵 포함)
-- [ ] 바쁜 셸에는 넣지 않고 알린다(지금 그대로)
-- [ ] 문서의 `print -rz`·vi 키맵 한계 문장이 새 동작과 맞다
+- [x] 처음 연 셸에 준비 줄을 보내고 지워 화면에 남지 않는다 (경계 1·3과 숨은 셸 실측. 실제 앱 확인은 미실행, 12에서 한다)
+- [x] `>_`가 파일에 쓰고 키 하나로 넣어 화면에 줄이 남지 않는다 (경계 1·3과 숨은 셸 실측. 실제 앱 확인은 미실행, 12에서 한다)
+- [x] Enter·클립보드를 쓰지 않고 쓰던 글이 돌아온다(vi 키맵 포함) (경계 1·3과 숨은 셸 실측. 실제 앱 확인은 미실행, 12에서 한다)
+- [x] 바쁜 셸에는 넣지 않고 알린다(지금 그대로) (경계 1·3과 숨은 셸 실측. 실제 앱 확인은 미실행, 12에서 한다)
+- [x] 문서의 `print -rz`·vi 키맵 한계 문장이 새 동작과 맞다 (경계 1·3과 숨은 셸 실측. 실제 앱 확인은 미실행, 12에서 한다)
 
 **완료 조건:** 위 항목 전부, 경계 1·3 통과, 숨은 셸 실측 통과.
+
+## Comments
+
+### 2026-11-12 통합 (주 진행자)
+
+- **결과:** 브랜치 `sv2/16-insert-without-trace`의 `0719d4a`(순수 부분), `e9160e7`(shell-pane 연결), `f5b3382`·`706e474`(README·README.ko·RECIPE)를 `feat/side-viewer-v2`에 fast-forward로 합쳤다. `0719d4a` 하나만으로는 check가 깨진다(`shell-pane.js`가 없어진 export를 부름). `e9160e7`부터 정상.
+- **자리:** `terminal-insert.js`의 `insertFolderOf`·`insertFileOf`(`appHome/data/side-viewer/shell/<터미널>.txt`), `INSERT_KEY = "ctrl+alt+f12"`, `prepareLine`(위젯 `_side_viewer_insert`: 쓰던 글은 push-line, 파일 글을 BUFFER로, 읽은 뒤 파일을 지움, emacs·viins·vicmd에 묶고 `clear`), `insertText`, `insertPlan`(바쁨이면 알림만; 준비한 zsh pid와 같으면 키만; 다르면 새 셸은 준비 줄→키, 아니면 alt+q→준비 줄→키), `shellState`의 ready에 `pid`. `shell-pane.js`의 `send`(파일 쓰기→계획의 hc 명령→`prepared` 기억→pane에 키보드)와 `write`(`umask 077` 폴더, `writeTextFile(file, text, readTextFile 결과)` 두 번 시도).
+- **완료 조건:** 경계 1·3과 숨은 셸 실측 통과.
+  - 작업자(`706e474`): `node --test mods/side-viewer/` 321 통과·0 실패·0 skip, `herdr-app check` 통과. 숨은 백그라운드 zsh에서 준비 줄이 화면에 남지 않음, 명령(여러 줄 포함)이 입력 칸에만 있고 실행 안 됨, 쓰던 글이 push-line으로 밀렸다가 돌아옴, `bindkey -v`에서도 실행 안 됨, 클립보드 해시 그대로. 덤으로 중첩 zsh 다시 준비와 바쁨 알림. 시험 터미널 2개 정리. 새 테스트가 기준에서 실패한 것은 export가 없어 모듈을 불러오는 단계였다(단언 단위 실패는 아님).
+  - 통합 담당(`706e474`): `node --test mods/side-viewer/` 321 통과·0 실패·0 skip·0 취소, `herdr-app check mods/side-viewer` 통과.
+- **남은 위험(실제 앱):** Herdr pane을 위로 스크롤하면 준비 줄이 보이는지(`hc read`에는 없었다). 셸 pane 안에서 새 zsh를 띄운 뒤 첫 `>_`는 alt+q로 쓰던 글을 미는데, 그 zsh가 vi 키맵이면 쓰던 글이 준비 줄과 함께 실행될 수 있다(README Limits에 적음).
+- **절차:** 작업자가 테스트 import 한 줄을 `sed -i`로 고쳤다(계약의 셸 편집 금지 위반, 스스로 보고). 결과는 위 검사로 확인했다.
