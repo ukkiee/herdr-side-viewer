@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, refusalOf, saveFailed, startSave } from "./edit-state.js";
 
 const A = "/work/a.md";
 
@@ -184,6 +184,64 @@ test("overwriting with nothing to overwrite leaves the edits alone", () => {
   const edits = typed(noEdits(), A, "one\n", "mine\n");
   assert.deepEqual(saveOf(overwritten(edits, A), A), { path: A, text: "mine\n", expected: "one\n" });
   assert.deepEqual(overwritten(noEdits(), A), noEdits());
+});
+
+// writeTextFile's refusals, as Herdr words them (src/mod_files.rs, and Rust's io errors).
+test("a refused save is read as changed on disk, no permission, too large, or something else", () => {
+  assert.equal(refusalOf(new Error("The file changed outside Herdr. Reload before saving; your draft is still here.")), "changed");
+  assert.equal(refusalOf(new Error("The file changed while saving. Reload before saving.")), "changed");
+  assert.equal(refusalOf(new Error("Permission denied (os error 13)")), "permission");
+  assert.equal(refusalOf("Operation not permitted (os error 1)"), "permission");
+  assert.equal(refusalOf(new Error("Read-only file system (os error 30)")), "permission");
+  assert.equal(refusalOf(new Error("Text file exceeds 1 MiB")), "large");
+  assert.equal(refusalOf(new Error("No space left on device (os error 28)")), "other");
+  assert.equal(refusalOf(undefined), "other");
+});
+
+test("a failed save keeps the edits and says why", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const permission = saveFailed(edits, A, new Error("Permission denied (os error 13)"));
+  assert.equal(shownText(permission, A, "one\n"), "mine\n");
+  assert.deepEqual(saveOf(permission, A), { path: A, text: "mine\n", expected: "one\n" });
+  assert.deepEqual(barOf(permission, A), { kind: "failed", message: "이 파일에 쓸 권한이 없습니다." });
+  assert.equal(barOf(saveFailed(edits, A, new Error("Text file exceeds 1 MiB")), A).message, "저장하기에는 너무 큽니다.");
+  assert.equal(barOf(saveFailed(edits, A, new Error("No space left on device (os error 28)")), A).message,
+    "저장하지 못했습니다: No space left on device (os error 28)");
+});
+
+test("a failure bar goes once the text is typed back to what is on disk, or the save goes through", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = saveFailed(edits, A, new Error("Permission denied (os error 13)"));
+  assert.equal(barOf(typed(edits, A, "one\n", "one\n"), A), null);
+  edits = typed(edits, A, "one\n", "mine!\n");
+  assert.equal(barOf(edits, A).kind, "failed");
+  assert.equal(barOf(saved(edits, A, "mine!\n"), A), null);
+});
+
+test("a save of up to 1,048,576 UTF-8 bytes goes ahead; a larger one is stopped before writing", () => {
+  const at = "a".repeat(1048576);
+  let edits = typed(noEdits(), A, "one\n", at);
+  let save = startSave(edits, A);
+  assert.deepEqual(save.write, { path: A, text: at, expected: "one\n" });
+  assert.equal(barOf(save.edits, A), null);
+
+  edits = typed(noEdits(), A, "one\n", at + "b");
+  save = startSave(edits, A);
+  assert.equal(save.write, null);
+  assert.equal(barOf(save.edits, A).message, "저장하기에는 너무 큽니다.");
+  assert.equal(unsaved(save.edits, A), true);
+
+  // Bytes, not characters: "가" is three bytes in UTF-8 and "😀" four.
+  const hangul = "가".repeat(349525) + "a"; // 1,048,576 bytes, 349,526 characters
+  assert.notEqual(startSave(typed(noEdits(), A, "one\n", hangul), A).write, null);
+  assert.equal(startSave(typed(noEdits(), A, "one\n", hangul + "a"), A).write, null);
+  const emoji = "😀".repeat(262144); // 1,048,576 bytes
+  assert.notEqual(startSave(typed(noEdits(), A, "one\n", emoji), A).write, null);
+  assert.equal(startSave(typed(noEdits(), A, "one\n", emoji + "a"), A).write, null);
+});
+
+test("starting a save with nothing to save writes nothing", () => {
+  assert.deepEqual(startSave(noEdits(), A), { edits: noEdits(), write: null });
 });
 
 test("a deleted file's edits stay even when typed back to the text read before", () => {
