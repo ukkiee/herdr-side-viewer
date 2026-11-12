@@ -8,6 +8,8 @@
 //   onLink: (url, cx) => void
 //   codeCards,    the viewer's CodeCards (code-card.js), prepared for this text
 //   images,       the document's image copies (markdown-image-loader.js, forDocument)
+//   onTerminal: (command, cx) => void   a shell code block's `>_`
+//   onCheckbox: (line, cx) => void   a click on a checkbox, with its source line
 // }
 //
 // The rendering draws markdown-blocks.js's blocks one by one, each kind in its own function:
@@ -35,13 +37,15 @@ function documentOf(text) {
   return parsed.doc;
 }
 
-export function renderMarkdown(t, { text, generation, file, onLink, codeCards, images }) {
+export function renderMarkdown(t, { text, generation, file, onLink, codeCards, images, onTerminal, onCheckbox }) {
   const scroll = div().id("side-viewer-scroll").flex_1().min_h(0).overflow_y_scrollbar();
   const doc = documentOf(text);
   const ctx = {
     t, onLink, footnotes: doc.footnotes,
     takeCard: codeCards?.drawing() ?? null,
     images,
+    onTerminal: onTerminal ?? null,
+    onCheckbox,
     // A TextView sees one block, so reference-style links need the definitions next to them.
     references: doc.references.length ? `\n\n${doc.references.join("\n")}` : "",
     // A TextView keeps drawing its first text under the same id. Unsaved edits change the
@@ -129,10 +133,11 @@ function renderMarker(ctx, item, key, depth) {
   return depth === 0 ? dot.bg(t.foreground) : dot.border(1).border_color(t.foreground);
 }
 
-// The checkbox's look only: a click does nothing yet.
-function renderCheckbox(ctx, item, _key) {
+// A click turns the box over in the source, through onCheckbox with the item's source line.
+function renderCheckbox(ctx, item, key) {
   const { t } = ctx;
-  const box = h_flex().size(14).rounded(3).border(1).items_center().justify_center();
+  const box = h_flex().id(`side-viewer-checkbox-${key}`).size(14).rounded(3).border(1).items_center().justify_center()
+    .when(Boolean(ctx.onCheckbox), (el) => el.cursor_pointer().on_click((_event, cx) => ctx.onCheckbox(item.line, cx)));
   return item.checked
     ? box.border_color(t.accent).bg(t.accent).text_color(t.accent_foreground).text_size(10).child("✓")
     : box.border_color(t.muted);
@@ -195,7 +200,7 @@ function renderImageBlock(ctx, block, key) {
 // A code block is a card (code-card.js). Inside a list item or a quote it takes the column
 // that item's or quote's other blocks take.
 function renderCodeBlock(ctx, block, key) {
-  return renderCodeCard(ctx.t, ctx.takeCard, block, key);
+  return renderCodeCard(ctx.t, ctx.takeCard, block, key, ctx.onTerminal);
 }
 
 // The footnotes' text, numbered as their marks in the body, at the end of the document.

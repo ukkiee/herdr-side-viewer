@@ -5,7 +5,7 @@
 // code-view.js, image-view.js, notice-view.js), which get what to show and callbacks from here.
 // The decisions live in modules without Herdr imports, each with its own tests: document.js,
 // views.js, image-copies.js, svg-preview.js, history.js, request.js, links.js, original.js,
-// edit-state.js and viewer-tab.js.
+// edit-state.js, viewer-tab.js and checkbox.js.
 import { View } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
 import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes } from "herdr";
@@ -13,8 +13,9 @@ import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, 
 import * as fs from "fs/promises";
 import { contentOf } from "./document.js";
 import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState } from "./views.js";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
 import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab } from "./viewer-tab.js";
+import { toggleCheckbox } from "./checkbox.js";
 import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, COPY, LIST } from "./image-copies.js";
 import { PREVIEW_FOLDER, previewName, pictureOf } from "./svg-preview.js";
 import { start, open, back, canGoBack } from "./history.js";
@@ -25,6 +26,7 @@ import { renderHeader } from "./header.js";
 import { renderBar } from "./conflict-bar.js";
 import { renderMarkdown } from "./markdown-view.js";
 import { CodeCards } from "./code-card.js";
+import { ShellPane } from "./shell-pane.js";
 import { renderCode } from "./code-view.js";
 import { renderImage } from "./image-view.js";
 import { renderNotice } from "./notice-view.js";
@@ -70,8 +72,12 @@ export default class SideViewer extends View {
     this.edits = noEdits();
     // Whether a save is under way: a second cmd+S waits for it instead of writing twice.
     this.saving = false;
+    // Checkbox clicks that came during a save, as { file, line }, taken when it ends.
+    this.clicks = [];
     // The markdown view's code block cards and their editor state (code-card.js).
     this.codeCards = new CodeCards();
+    // The shell pane a shell code block's `>_` puts its command into (shell-pane.js).
+    this.shellPane = new ShellPane();
     // The viewer's own keyboard target: cmd+S is heard on the root that tracks it, whether
     // it or the editor inside it holds the keyboard.
     this.focus = cx.focus_handle();
@@ -539,9 +545,43 @@ export default class SideViewer extends View {
       } finally {
         this.saving = false;
         cx.notify();
+        this.takeClicks(cx);
       }
     });
     return true;
+  }
+
+  // A click on a checkbox in the rendering, at source line `line` (checkbox.js). A file
+  // without edits is saved at once; with edits, the click joins them (edit-state.js).
+  toggleCheckbox(line, cx) {
+    const content = this.content;
+    const file = content.file;
+    if (content.state !== "markdown" || !file) return;
+    // Taken against the text a save under way writes, the click would be left unsaved, or
+    // undone by the save; it waits for the save to end (takeClicks).
+    if (this.saving) {
+      this.clicks.push({ file, line });
+      return;
+    }
+    const text = toggleCheckbox(shownText(this.edits, file, content.text), line);
+    if (text === null) return;
+    const click = checkboxToggled(this.edits, file, content.text, text);
+    this.edits = click.edits;
+    // The source's editor holds the same text, for when it is shown.
+    if (content.editor && content.editor.value() !== text) content.editor.set_value(text);
+    this.generation++;
+    this.prepareCards(file, content, cx);
+    this.images.prepare(file, text, false, cx);
+    if (click.write) this.save(cx);
+    cx.notify();
+  }
+
+  // The checkbox clicks that waited for a save, in order. Clicks on a file no longer shown
+  // are dropped.
+  takeClicks(cx) {
+    const clicks = this.clicks;
+    this.clicks = [];
+    for (const { file, line } of clicks) if (file === this.content.file) this.toggleCheckbox(line, cx);
   }
 
   // The bar's "discard my edits and read again". The editor goes back to the last read at
@@ -600,6 +640,12 @@ export default class SideViewer extends View {
         if (result?.code === 0) return;
       }
     });
+  }
+
+  // A shell code block's `>_`: into the shell pane below this viewer, which starts in the
+  // conversation's folder, or in the document's folder when the viewer is a tab of its own.
+  insertIntoTerminal(command, cx) {
+    this.shellPane.insert(command, { file: this.file, viewerTab: this.viewerTab === true }, cx);
   }
 
   revealInFinder(_cx) {
@@ -691,6 +737,8 @@ export default class SideViewer extends View {
         file: this.file,
         codeCards: this.codeCards,
         images: this.images.forDocument(content.file),
+        onTerminal: (command, cx) => this.insertIntoTerminal(command, cx),
+        onCheckbox: (line, cx) => this.toggleCheckbox(line, cx),
       });
     }
     if (content.state === "image" || content.state === "svg") {

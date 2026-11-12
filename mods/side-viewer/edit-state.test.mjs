@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, refusalOf, saveFailed, startSave, takeEdit, putEdit } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, refusalOf, saveFailed, startSave, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
 
 const A = "/work/a.md";
 
@@ -291,4 +291,58 @@ test("a deleted file's edits stay even when typed back to the text read before",
   edits = typed(edits, A, "one\n", "one\n");
   assert.equal(unsaved(edits, A), true);
   assert.equal(barOf(edits, A).message, "파일이 지워졌습니다.");
+});
+
+test("a checkbox clicked in a file without edits is saved at once, expecting the disk text", () => {
+  const click = checkboxToggled(noEdits(), A, "- [ ] a\n", "- [x] a\n");
+  assert.deepEqual(click.write, { path: A, text: "- [x] a\n", expected: "- [ ] a\n" });
+  // The box shows its new state while the save is under way.
+  assert.equal(shownText(click.edits, A, "- [ ] a\n"), "- [x] a\n");
+  // Once written, nothing is left unsaved.
+  assert.equal(unsaved(saved(click.edits, A, "- [x] a\n"), A), false);
+});
+
+test("a checkbox save refused because the disk changed keeps the click and raises the bar", () => {
+  const click = checkboxToggled(noEdits(), A, "- [ ] a\n", "- [x] a\n");
+  // writeTextFile refused; reading again finds someone else's text.
+  const read = diskRead(click.edits, A, "- [ ] a\n- [ ] b\n");
+  assert.equal(read.step, "keep");
+  assert.equal(barOf(read.edits, A).message, "밖에서 바뀌었습니다");
+  assert.equal(shownText(read.edits, A, "- [ ] a\n- [ ] b\n"), "- [x] a\n");
+  // The bar's two buttons work on the click as on any edit.
+  assert.deepEqual(saveOf(overwritten(read.edits, A), A), { path: A, text: "- [x] a\n", expected: "- [ ] a\n- [ ] b\n" });
+  assert.equal(unsaved(discarded(read.edits, A), A), false);
+});
+
+test("a checkbox clicked in a file with edits joins them and stays unsaved", () => {
+  const edits = typed(noEdits(), A, "# T\n- [ ] a\n", "# Title\n- [ ] a\n");
+  const click = checkboxToggled(edits, A, "# T\n- [ ] a\n", "# Title\n- [x] a\n");
+  assert.equal(click.write, null);
+  assert.equal(unsaved(click.edits, A), true);
+  assert.deepEqual(saveOf(click.edits, A), { path: A, text: "# Title\n- [x] a\n", expected: "# T\n- [ ] a\n" });
+});
+
+test("a checkbox clicked while the bar is up joins the edits and the bar stays", () => {
+  let edits = typed(noEdits(), A, "- [ ] a\n", "- [ ] a!\n");
+  edits = diskRead(edits, A, "- [ ] a\n- [ ] b\n").edits;
+  const click = checkboxToggled(edits, A, "- [ ] a\n- [ ] b\n", "- [x] a!\n");
+  assert.equal(click.write, null);
+  assert.equal(barOf(click.edits, A).message, "밖에서 바뀌었습니다");
+  assert.equal(shownText(click.edits, A, "- [ ] a\n- [ ] b\n"), "- [x] a!\n");
+});
+
+test("clicking a checkbox back to the text on disk leaves nothing unsaved", () => {
+  // The first click was refused for a reason other than a change on disk.
+  const edits = saveFailed(checkboxToggled(noEdits(), A, "- [ ] a\n- [ ] b\n", "- [x] a\n- [ ] b\n").edits, A, new Error("disk full"));
+  const click = checkboxToggled(edits, A, "- [ ] a\n- [ ] b\n", "- [ ] a\n- [ ] b\n");
+  assert.equal(click.write, null);
+  assert.equal(unsaved(click.edits, A), false);
+});
+
+test("a checkbox click in a file too large to save raises the bar instead of writing", () => {
+  const big = "- [ ] a\n" + "a".repeat(1024 * 1024);
+  const click = checkboxToggled(noEdits(), A, big, big.replace("[ ]", "[x]"));
+  assert.equal(click.write, null);
+  assert.equal(barOf(click.edits, A).message, "저장하기에는 너무 큽니다.");
+  assert.equal(unsaved(click.edits, A), true);
 });

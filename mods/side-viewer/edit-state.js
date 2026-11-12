@@ -141,6 +141,18 @@ export function barOf(edits, file) {
   return { kind: bar.kind, message: MESSAGES[bar.reason] ?? `저장하지 못했습니다: ${bar.detail}` };
 }
 
+// A checkbox in the rendering of `file` was clicked: `text` is the shown text with that box
+// turned over (checkbox.js), `disk` the file's text as last read. Returns { edits, write } as
+// startSave does. A file with edits takes the click as one more edit and stays unsaved
+// (write is null). A file without edits is saved at once against `disk`; it gets an entry
+// first, so a refused save raises the bar over the click like over any edit.
+export function checkboxToggled(edits, file, disk, text) {
+  if (!file) return { edits, write: null };
+  const next = typed(edits, file, disk, text);
+  if (unsaved(edits, file)) return { edits: next, write: null };
+  return startSave(next, file);
+}
+
 function messageOf(error) {
   return String(error?.message ?? error ?? "");
 }
