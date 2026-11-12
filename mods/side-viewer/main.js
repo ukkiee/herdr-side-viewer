@@ -24,7 +24,7 @@ import { watchedFolder, linkAction, touches } from "./links.js";
 import { openOriginalCommands } from "./original.js";
 import { renderHeader } from "./header.js";
 import { renderBar } from "./conflict-bar.js";
-import { renderMarkdown } from "./markdown-view.js";
+import { renderMarkdown, markdownCache } from "./markdown-view.js";
 import { CodeCards } from "./code-card.js";
 import { ShellPane } from "./shell-pane.js";
 import { renderCode } from "./code-view.js";
@@ -82,6 +82,8 @@ export default class SideViewer extends View {
     this.clicks = [];
     // The markdown view's code block cards and their editor state (code-card.js).
     this.codeCards = new CodeCards();
+    // The markdown view's parse of the text it last drew (markdown-view.js).
+    this.markdownCache = markdownCache();
     // The shell pane a shell code block's `>_` puts its command into (shell-pane.js).
     this.shellPane = new ShellPane();
     // The viewer's own keyboard target: cmd+S is heard on the root that tracks it, whether
@@ -789,6 +791,7 @@ export default class SideViewer extends View {
         images: this.images.forDocument(content.file),
         onTerminal: (command, cx) => this.insertIntoTerminal(command, cx),
         onCheckbox: (line, cx) => this.toggleCheckbox(line, cx),
+        cache: this.markdownCache,
       });
     }
     if (content.state === "image" || content.state === "svg") {

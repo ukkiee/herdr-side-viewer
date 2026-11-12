@@ -10,6 +10,7 @@
 //   images,       the document's image copies (markdown-image-loader.js, forDocument)
 //   onTerminal: (command, cx) => void   a shell code block's `>_`
 //   onCheckbox: (line, cx) => void   a click on a checkbox, with its source line
+//   cache,        the copy's markdownCache()
 // }
 //
 // The rendering draws markdown-blocks.js's blocks one by one, each kind in its own function:
@@ -30,16 +31,21 @@ const HEADING_SIZE = { 1: 24, 2: 19, 3: 16 };
 // One line of body text, so a list marker sits level with the item's first line.
 const LINE = 20;
 
-// The view is drawn again on every notify; the text only changes with a new generation.
-let parsed = { text: null, doc: null };
-function documentOf(text) {
-  if (parsed.text !== text) parsed = { text, doc: parseMarkdown(text) };
-  return parsed.doc;
+// The parse of the last text a viewer copy drew, as { text, doc }. Each copy keeps its own
+// (main.js): module scope is shared by every copy, which would parse over each other's.
+export function markdownCache() {
+  return { text: null, doc: null };
 }
 
-export function renderMarkdown(t, { text, generation, file, onLink, codeCards, images, onTerminal, onCheckbox }) {
+// The view is drawn again on every notify; the text only changes with a new generation.
+function documentOf(cache, text) {
+  if (cache.text !== text) Object.assign(cache, { text, doc: parseMarkdown(text) });
+  return cache.doc;
+}
+
+export function renderMarkdown(t, { text, generation, file, onLink, codeCards, images, onTerminal, onCheckbox, cache }) {
   const scroll = div().id("side-viewer-scroll").flex_1().min_h(0).overflow_y_scrollbar();
-  const doc = documentOf(text);
+  const doc = documentOf(cache, text);
   const ctx = {
     t, onLink, footnotes: doc.footnotes,
     takeCard: codeCards?.drawing() ?? null,
