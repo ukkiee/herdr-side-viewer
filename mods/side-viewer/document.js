@@ -11,12 +11,26 @@ const NOTICES = {
   missing: "body.missing",
   unreadable: "body.unreadable",
   unsupported: "body.unsupported",
+  unreachable: "body.unreachable",
+  windows: "body.windows",
 };
 
 // The text shown in place of the content in tr's language (i18n.js), or null for a state
-// that draws the content.
+// that draws the content. `state` is a state's name, or a content whose notice names its
+// machine ({ state: "unreachable", machine }).
 export function noticeFor(state, tr) {
-  return typeof NOTICES[state] === "string" ? wordsOf(tr)(NOTICES[state]) : null;
+  const content = typeof state === "object" && state ? state : { state };
+  const key = NOTICES[content.state];
+  return typeof key === "string" ? wordsOf(tr)(key, { machine: content.machine }) : null;
+}
+
+// The content for a read of a file on `machine` that was refused, by the kind of refusal
+// (remote-results.js failureOf): the machine out of reach, a Windows machine, or a file that
+// cannot be read.
+export function failedContentOf(failure, machine) {
+  if (failure === "unreachable") return { state: "unreachable", machine };
+  if (failure === "windows") return { state: "windows" };
+  return { state: "unreadable" };
 }
 
 // `text` is what reading the file gave: a string, or null when the file is not there.

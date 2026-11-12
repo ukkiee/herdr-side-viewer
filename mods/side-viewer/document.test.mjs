@@ -1,7 +1,7 @@
 // node --test: what the viewer shows for a file and its text, without Herdr.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { contentOf, labelOf, noticeFor } from "./document.js";
+import { contentOf, labelOf, noticeFor, failedContentOf } from "./document.js";
 import { translator } from "./i18n.js";
 
 const ko = translator("ko");
@@ -66,6 +66,25 @@ test("the notices in English", () => {
     "Can't read this file.",
     "The viewer can't open this kind of file.",
   ]);
+});
+
+test("a read the machine refused because it cannot be reached says which machine, not that the file is gone", () => {
+  const content = failedContentOf("unreachable", "nuc-pro");
+  assert.deepEqual(content, { state: "unreachable", machine: "nuc-pro" });
+  assert.equal(noticeFor(content, ko), "nuc-pro 기계에 연결할 수 없어요.");
+  assert.equal(noticeFor(content, en), "Can't reach the machine nuc-pro.");
+});
+
+test("a read on a Windows machine says its files can't be shown yet", () => {
+  const content = failedContentOf("windows", "win-box");
+  assert.deepEqual(content, { state: "windows" });
+  assert.equal(noticeFor(content, ko), "Windows 기계의 파일은 아직 볼 수 없어요.");
+  assert.equal(noticeFor("windows", en), "Files on Windows machines can't be shown yet.");
+});
+
+test("any other refused read is a file that cannot be read, as before", () => {
+  assert.deepEqual(failedContentOf("other", "nuc-pro"), { state: "unreadable" });
+  assert.deepEqual(failedContentOf("missing", "nuc-pro"), { state: "unreadable" });
 });
 
 test("a state that draws content has no notice, in either language", () => {
