@@ -35,10 +35,11 @@ case "$file" in *[[:cntrl:]]*) original ;; esac
 json_file=$(printf '%s' "$file" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
 # Runs herdr-app with a time limit, so a Herdr that does not answer cannot swallow the click.
-# Succeeds only if the command exited 0 and its answer holds no "error".
-herdr_do() {
+# Leaves what it printed in $said. Succeeds only if it exited 0 in time.
+herdr_run() {
+  said=
   answer=$(mktemp "${TMPDIR:-/tmp}/side-viewer.XXXXXX") || return 1
-  "$herdr" do "$@" > "$answer" 2>&1 &
+  "$herdr" "$@" > "$answer" 2>&1 &
   pid=$!
   ticks=$(( ${SIDE_VIEWER_TIMEOUT:-5} * 20 ))
   while kill -0 "$pid" 2>/dev/null; do
@@ -52,10 +53,27 @@ herdr_do() {
   done
   wait "$pid"
   code=$?
-  if grep -q '"error"' "$answer"; then code=1; fi
+  said=$(cat "$answer")
   rm -f "$answer"
   return "$code"
 }
+
+# A command succeeds only if it also answered without an "error".
+herdr_do() {
+  herdr_run do "$@" || return 1
+  case "$said" in *'"error"'*) return 1 ;; esac
+}
+
+# The focused space, from `herdr-app status`. A remote space's id starts with its machine
+# (`<machine>/<id>`), and its files are not on this Mac, so a viewer there could not show
+# this one (ADR 0002). The viewer gets the id as its space value (machine.js). An answer
+# without a plain id counts as a failure.
+herdr_run status || original
+space=$(printf '%s\n' "$said" | sed -n 's/^[[:space:]]*"space"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+case "$space" in
+  */*) original ;;
+  ''|*[!A-Za-z0-9_-]*) original ;;
+esac
 
 # A side viewer already showing in this tab takes the file, so no pane is added. The command
 # reaches showing viewers only, which is why an answer is waited for: none within about 0.4 s
