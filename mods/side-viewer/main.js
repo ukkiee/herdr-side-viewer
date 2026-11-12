@@ -4,14 +4,15 @@
 // open.sh and watching. Drawing is in header.js and the views' modules (markdown-view.js,
 // code-view.js, image-view.js, notice-view.js), which get what to show and callbacks from here.
 // The decisions live in modules without Herdr imports, each with its own tests: document.js,
-// views.js, image-copies.js, history.js, request.js, links.js and original.js.
+// views.js, image-copies.js, history.js, request.js, links.js, original.js and edit-state.js.
 import { View } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
 import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder } from "herdr";
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
 import { contentOf } from "./document.js";
-import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf } from "./views.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved } from "./edit-state.js";
 import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, COPY, LIST } from "./image-copies.js";
 import { start, open, back, canGoBack } from "./history.js";
 import { takeRequest } from "./request.js";
@@ -56,6 +57,13 @@ export default class SideViewer extends View {
     this.watchTurn = 0;
     // The body's width, from its size report. Null until the first one.
     this.room = null;
+    // Unsaved edits by file (edit-state.js). They live as long as this copy does.
+    this.edits = noEdits();
+    // Whether a save is under way: a second cmd+S waits for it instead of writing twice.
+    this.saving = false;
+    // The viewer's own keyboard target: cmd+S is heard on the root that tracks it, whether
+    // it or the editor inside it holds the keyboard.
+    this.focus = cx.focus_handle();
     this.show(given?.file ?? props()?.file, cx);
     this.watch(cx);
     this.listen(cx);
@@ -71,6 +79,11 @@ export default class SideViewer extends View {
     cx.spawn(async (cx) => {
       for (;;) {
         const command = await nextCommand();
+        // pane.go gave this copy the keyboard (mod.json "focusable"), or a popup over it closed.
+        if (command === "focus") {
+          this.focus.focus();
+          continue;
+        }
         if (command !== "show") continue;
         const folder = `${appHome()}/data/side-viewer`;
         const request = await takeRequest(files, { folder, answered: this.answered, now: Date.now() });
@@ -137,13 +150,15 @@ export default class SideViewer extends View {
       if (turn !== this.reads) return;
       this.reading = null;
       this.probed = result.probe;
-      this.apply(result.content, cx);
+      this.apply(file, result.content, cx);
       if (this.again) this.load(cx);
     });
   }
 
-  // Puts a finished read on screen. Null means the file is as it was at the last read.
-  apply(content, cx) {
+  // Puts a finished read of `file` on screen. Null means the file is as it was at the last read.
+  // `text` stays the disk text; a file with unsaved edits shows those instead (edit-state.js),
+  // so a read never drops them.
+  apply(file, content, cx) {
     const shown = this.content;
     // Unchanged code is compared all the same, so its colors follow a change of theme.
     const next = content ?? (shown.state === "code" ? { state: "code", text: shown.text, language: shown.language } : null);
@@ -154,12 +169,15 @@ export default class SideViewer extends View {
     if (step === "keep") return;
     if (step === "retext") {
       shown.text = next.text;
-      shown.editor.set_value(next.text);
+      const text = shownText(this.edits, shown.file, next.text);
+      if (shown.editor.value() !== text) shown.editor.set_value(text);
       cx.notify();
       return;
     }
+    next.file = file;
     // Editor state cannot be created while drawing, so it is made here, once the text is in.
-    if (next.state === "code") next.editor = this.makeEditor(next, syntax);
+    const options = editorOf(next.state);
+    if (options) next.editor = this.makeEditor(next, syntax, options);
     this.setContent(next, cx);
   }
 
@@ -254,20 +272,65 @@ export default class SideViewer extends View {
     };
   }
 
-  // Read-only editor state for the code view. A language of null, or one the editor does
-  // not know, draws as plain text.
-  makeEditor({ text, language }, syntax) {
+  // Editor state for the code view and the markdown source, holding the file's unsaved edits
+  // if it has any. `options` comes from views.js (editorOf). A language of null, or one the
+  // editor does not know, draws as plain text.
+  makeEditor(content, syntax, options) {
     const font = settings()?.font_family;
-    return EditorState.new({
-      value: text, readonly: true, soft_wrap: false,
-      ...(language ? { language } : {}),
+    const editor = EditorState.new({
+      value: shownText(this.edits, content.file, content.text), readonly: false, ...options,
+      ...(content.language ? { language: content.language } : {}),
       ...(typeof font === "string" && font ? { font_family: font } : {}),
       syntax,
     });
+    editor.on("change", (_event, cx) => this.edited(editor, cx));
+    return editor;
+  }
+
+  // The editor's text changed, by typing or by set_value. An editor that is no longer on
+  // screen is ignored: its content has been replaced.
+  edited(editor, cx) {
+    const content = this.content;
+    if (content.editor !== editor) return;
+    const was = unsaved(this.edits, content.file);
+    this.edits = typed(this.edits, content.file, content.text, editor.value());
+    // The rendering draws the edited text, and the markdown element needs a new id for it.
+    if (content.state === "markdown") this.generation++;
+    if (unsaved(this.edits, content.file) !== was) cx.notify();
+  }
+
+  // Writes the shown file's unsaved edits. Returns false when there is nothing to save.
+  // writeTextFile refuses when the file no longer matches the text read before the edit;
+  // a refused or failed save keeps the edits as they are.
+  save(cx) {
+    const request = saveOf(this.edits, this.file);
+    if (!request || this.saving) return false;
+    this.saving = true;
+    cx.spawn(async (cx) => {
+      try {
+        await writeTextFile(request.path, request.text, request.expected);
+        this.edits = saved(this.edits, request.path, request.text);
+        if (this.content.file === request.path) this.content.text = request.text;
+      } catch {
+        // Kept as unsaved; nothing on screen says why yet.
+      } finally {
+        this.saving = false;
+        cx.notify();
+      }
+    });
+    return true;
+  }
+
+  // Keys reach here while the viewer or the editor inside it holds the keyboard.
+  keyDown(event, cx) {
+    if (event.keystroke === "cmd-s" && this.save(cx)) cx.stop_propagation();
   }
 
   toggleRaw(cx) {
     this.raw = !this.raw;
+    // The source's editor leaves the screen and takes the keyboard with it; the viewer keeps
+    // it, so cmd+S still saves from the rendering.
+    if (!this.raw) this.focus.focus();
     cx.notify();
   }
 
@@ -351,8 +414,10 @@ export default class SideViewer extends View {
       canGoBack: canGoBack(this.visits),
       state: this.content.state,
       raw: this.raw,
+      unsaved: unsaved(this.edits, this.file),
       onBack: (cx) => this.goBack(cx),
       onToggleRaw: (cx) => this.toggleRaw(cx),
+      onSave: (cx) => this.save(cx),
       onOriginal: (cx) => this.openOriginal(cx),
       onFinder: (cx) => this.revealInFinder(cx),
     };
@@ -361,14 +426,16 @@ export default class SideViewer extends View {
   // The body, by what this.content holds.
   renderBody(t) {
     const content = this.content;
+    // The code view and the markdown source are the same editable editor; the source wraps
+    // its lines (views.js, editorOf).
+    if (editable(content.state, this.raw)) return renderCode(t, content);
     if (content.state === "markdown") {
       return renderMarkdown(t, {
-        text: content.text, raw: this.raw, generation: this.generation,
+        text: shownText(this.edits, content.file, content.text), raw: this.raw, generation: this.generation,
         onLink: (url, cx) => this.followLink(url, cx),
         file: this.file,
       });
     }
-    if (content.state === "code") return renderCode(t, content);
     if (content.state === "image") {
       return renderImage(t, { content, room: this.room, onRoom: (width, cx) => this.setRoom(width, cx) });
     }
@@ -378,6 +445,7 @@ export default class SideViewer extends View {
   render(_cx) {
     const t = theme();
     return v_flex().id("side-viewer").size_full().min_h(0).bg(t.background).text_color(t.foreground)
+      .track_focus(this.focus).on_key_down((event, cx) => this.keyDown(event, cx))
       .child(renderHeader(t, this.header()))
       .child(this.renderBody(t));
   }

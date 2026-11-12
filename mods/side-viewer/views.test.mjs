@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf } from "./views.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const probe = (bytes) => ({ found: true, readable: true, bytes, modified: 1, head: [] });
@@ -181,4 +181,23 @@ test("code drawn under another theme gets a new editor, whose colors are fixed w
 test("changed code in the same language keeps its editor and only gets the new text", () => {
   assert.equal(refreshOf({ state: "code", text: "x", language: "go", editor: {} }, { state: "code", text: "y", language: "go" }), "retext");
   assert.equal(refreshOf({ state: "code", text: "x", language: "go" }, { state: "code", text: "y", language: "go" }), "replace");
+});
+
+test("typing goes into the markdown source and the code view, nowhere else", () => {
+  assert.equal(editable("markdown", true), true);
+  assert.equal(editable("code", false), true);
+  assert.equal(editable("code", true), true);
+  assert.equal(editable("markdown", false), false);
+  assert.equal(editable("image", false), false);
+  for (const notice of ["none", "loading", "empty", "missing", "unreadable", "unsupported", "large"]) {
+    assert.equal(editable(notice, false), false, notice);
+    assert.equal(editable(notice, true), false, notice);
+  }
+});
+
+test("the markdown source's editor wraps long lines, the code view's does not", () => {
+  assert.deepEqual(editorOf("markdown"), { soft_wrap: true });
+  assert.deepEqual(editorOf("code"), { soft_wrap: false });
+  assert.equal(editorOf("image"), null);
+  assert.equal(editorOf("missing"), null);
 });

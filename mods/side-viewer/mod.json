@@ -1,1 +1,1 @@
-{ "place": "none", "title": "Side Viewer" }
+{ "place": "none", "title": "Side Viewer", "focusable": true }
