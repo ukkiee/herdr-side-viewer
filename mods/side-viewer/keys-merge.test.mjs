@@ -1,7 +1,43 @@
 // node --test: merging the keys the mod expects into the person's keys.json, without Herdr.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergeKeys } from "./keys-merge.js";
+import fs from "node:fs";
+import path from "node:path";
+import { tmpdir } from "node:os";
+import { mergeKeys, replaceKeys } from "./keys-merge.js";
+
+// replaceKeys writes the merged text over the person's keys.json the way install.sh does.
+test("replacing keys.json keeps its permissions, and a link stays a link", () => {
+  const dir = fs.mkdtempSync(path.join(tmpdir(), "side-viewer-keys-"));
+  try {
+    const real = path.join(dir, "dotfiles", "keys.json"), link = path.join(dir, "keys.json");
+    fs.mkdirSync(path.dirname(real));
+    fs.writeFileSync(real, "{}\n", { mode: 0o600 });
+    fs.chmodSync(real, 0o600);
+    fs.symlinkSync(real, link);
+    replaceKeys({ fs, path }, link, '{"global":{}}\n', 4242);
+    assert.equal(fs.readFileSync(link, "utf8"), '{"global":{}}\n');
+    assert.equal(fs.lstatSync(link).isSymbolicLink(), true);
+    assert.equal(fs.statSync(real).mode & 0o777, 0o600);
+    assert.deepEqual(fs.readdirSync(path.dirname(real)), ["keys.json"]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a keys.json readable by others stays so", () => {
+  const dir = fs.mkdtempSync(path.join(tmpdir(), "side-viewer-keys-"));
+  try {
+    const file = path.join(dir, "keys.json");
+    fs.writeFileSync(file, "{}\n");
+    fs.chmodSync(file, 0o644);
+    replaceKeys({ fs, path }, file, "{ }\n", 4242);
+    assert.equal(fs.statSync(file).mode & 0o777, 0o644);
+    assert.equal(fs.readFileSync(file, "utf8"), "{ }\n");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 // The binding from the spec (AC-5): cmd-o in global opens the path picker.
 const wanted = { global: { "cmd-o": "mod.open:side-viewer" } };

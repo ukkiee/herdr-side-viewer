@@ -51,6 +51,23 @@ export function mergeKeys(current, wanted) {
   return { text: changed ? JSON.stringify(keys, null, 2) + "\n" : null, lines };
 }
 
+// Writes `text` over the keys.json at `file` for install.sh, with Node's `fs` and `path`
+// handed in. It is written beside the real file with that file's permissions and renamed over
+// it: a write that fails halfway leaves the person's keys as they were, a keys.json that is a
+// link stays a link, and one only its owner may read stays so. `pid` names the file beside.
+export function replaceKeys({ fs, path }, file, text, pid) {
+  const target = fs.realpathSync(file);
+  const temp = path.join(path.dirname(target), `.keys.json.${pid}.tmp`);
+  try {
+    fs.writeFileSync(temp, text, { mode: 0o600 });
+    fs.chmodSync(temp, fs.statSync(target).mode & 0o7777);
+    fs.renameSync(temp, target);
+  } catch (error) {
+    try { fs.unlinkSync(temp); } catch {}
+    throw error;
+  }
+}
+
 function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

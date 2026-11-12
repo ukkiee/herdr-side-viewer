@@ -50,23 +50,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 const [file, wantedFile, merger] = process.argv.slice(2);
-const { mergeKeys } = await import(pathToFileURL(merger).href);
+const { mergeKeys, replaceKeys } = await import(pathToFileURL(merger).href);
 const current = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
 const { text, lines } = mergeKeys(current, JSON.parse(fs.readFileSync(wantedFile, "utf8")));
 for (const line of lines) console.log(`  ${line}`);
-if (text !== null) {
-  // Written beside the real file and renamed over it: a write that fails halfway leaves the
-  // person's keys as they were, and a keys.json that is a link stays a link.
-  const target = fs.realpathSync(file);
-  const temp = path.join(path.dirname(target), `.keys.json.${process.pid}.tmp`);
-  try {
-    fs.writeFileSync(temp, text);
-    fs.renameSync(temp, target);
-  } catch (error) {
-    try { fs.unlinkSync(temp); } catch {}
-    throw error;
-  }
-}
+if (text !== null) replaceKeys({ fs, path }, file, text, process.pid);
 EOF
 then
   echo "keys.json was not changed. Add these keys to it by hand:"
