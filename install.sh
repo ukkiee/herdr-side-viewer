@@ -37,6 +37,42 @@ sh "$here/mods/side-viewer/router/build.sh"
 mkdir -p "$home/mods/side-viewer"
 cp -R "$here/mods/side-viewer/." "$home/mods/side-viewer/"
 
+# The keys in this repository's keys.json are merged into the person's: keys-merge.js decides,
+# and a key they already use for something else stays theirs. Without Node they are told the
+# lines to add, and the rest of the install does not need Node.
+keys="$home/keys.json"
+echo "Shortcut keys ($keys):"
+if ! command -v node >/dev/null 2>&1; then
+  echo "node not found: keys.json was not changed. Add these keys to it by hand:"
+  cat "$here/keys.json"
+elif ! node --input-type=module - "$keys" "$here/keys.json" "$here/mods/side-viewer/keys-merge.js" <<'EOF'
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+const [file, wantedFile, merger] = process.argv.slice(2);
+const { mergeKeys } = await import(pathToFileURL(merger).href);
+const current = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+const { text, lines } = mergeKeys(current, JSON.parse(fs.readFileSync(wantedFile, "utf8")));
+for (const line of lines) console.log(`  ${line}`);
+if (text !== null) {
+  // Written beside the real file and renamed over it: a write that fails halfway leaves the
+  // person's keys as they were, and a keys.json that is a link stays a link.
+  const target = fs.realpathSync(file);
+  const temp = path.join(path.dirname(target), `.keys.json.${process.pid}.tmp`);
+  try {
+    fs.writeFileSync(temp, text);
+    fs.renameSync(temp, target);
+  } catch (error) {
+    try { fs.unlinkSync(temp); } catch {}
+    throw error;
+  }
+}
+EOF
+then
+  echo "keys.json was not changed. Add these keys to it by hand:"
+  cat "$here/keys.json"
+fi
+
 # macOS starts the router without this shell's environment, so it only finds the defaults.
 if [ ! -x "$HOME/.local/bin/herdr-app" ]; then
   echo "Note: the router runs $HOME/.local/bin/herdr-app, which is not there. Until it is, every file opens in its original app."

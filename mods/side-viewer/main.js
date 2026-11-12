@@ -21,11 +21,11 @@ import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForR
 import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, statusOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
 import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab, unplacedNotice } from "./viewer-tab.js";
 import { toggleCheckbox } from "./checkbox.js";
-import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, COPY, LIST } from "./image-copies.js";
+import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, LIST } from "./image-copies.js";
 import { PREVIEW_FOLDER, previewName, pictureOf } from "./svg-preview.js";
 import { start, open, back, canGoBack } from "./history.js";
 import { takeRequest } from "./request.js";
-import { watchedFolder, linkAction, touches } from "./links.js";
+import { watchedFolder, linkAction, touches, unshownNotice } from "./links.js";
 import { openOriginalCommands } from "./original.js";
 import { renderHeader } from "./header.js";
 import { renderMarkdown, markdownCache } from "./markdown-view.js";
@@ -100,7 +100,7 @@ export default class SideViewer extends View {
     // it or the editor inside it holds the keyboard.
     this.focus = cx.focus_handle();
     // Copies of the images inside the shown markdown document (markdown-image-loader.js).
-    this.images = new MarkdownImages({ sweep: () => this.sweep(), dropOlder: (path) => this.dropOlder(path) });
+    this.images = new MarkdownImages({ sweep: () => this.sweep(), dropOlder: (path) => this.dropOlder(path), access: () => this.access() });
     // Whether this copy is a viewer tab, a tab whose only pane is it (viewer-tab.js), rather
     // than a viewer beside a conversation. Its props say so, and they never change.
     const tab = viewerTabOf(props()) ?? viewerTabOf(given);
@@ -392,9 +392,6 @@ export default class SideViewer extends View {
     const found = viewOf(file, await this.listed());
     if (!found) return { content: { state: "unsupported" }, probe: null };
     const access = this.access();
-    // An image is drawn from a copy that readImage makes of a file on this Mac, so an image
-    // on another machine is a kind this viewer cannot show.
-    if (found.view === "image" && access.remote) return { content: { state: "unsupported" }, probe: null };
     const probe = readProbe((await access.run("sh", ["-c", PROBE, "sh", file])).stdout);
     // An image goes on: its bytes are not read again anyway, and showing it has to touch
     // its copy, or the 30-day cleanup would take it. An svg's text goes with it, for edits.
@@ -403,10 +400,10 @@ export default class SideViewer extends View {
       if (blocker) return { content: { state: blocker }, probe: null, text: blocker === "missing" ? null : undefined };
       // An svg with nothing in it yet has no picture to copy, only its source to write in.
       if (blankSvg(file, probe)) {
-        const text = await readTextFile(file);
+        const text = await access.read(file);
         return { content: text === null ? { state: "missing" } : sourceOnlySvg(text), probe: null, text };
       }
-      const content = await this.readImage(file, probe);
+      const content = await this.readImage(access, file, probe);
       return { content, probe: null, text: content.text };
     }
     if (sameProbe(known, file, probe)) return { content: null, probe: known };
@@ -438,13 +435,14 @@ export default class SideViewer extends View {
     return this.groups;
   }
 
-  // An image is drawn from a copy in the data folder. Only a file whose bytes are an
-  // image's is copied, so nothing else can be pulled into the app home through here.
-  async readImage(file, probe) {
+  // An image is drawn from a copy in the data folder on this Mac, made through `access` from
+  // the file on its machine. Only a file whose bytes are an image's is copied, so nothing else
+  // can be pulled into the app home through here.
+  async readImage(access, file, probe) {
     const kind = kindOf(file, probe.head);
     if (!kind) return { state: "unsupported" };
-    const path = `${FOLDER}/${copyName(file, probe, kind)}`;
-    const copied = await exec("sh", ["-c", COPY, "sh", file, `${appHome()}/${path}`]);
+    const path = `${FOLDER}/${copyName(access.key(file), probe, kind)}`;
+    const copied = await access.copy(file, `${appHome()}/${path}`);
     if (copied.code !== 0) return { state: "unreadable" };
     // The same copy as the one on screen: its size, and an svg's text, are known, so the
     // file is not read again. The name holds the size and time, so the bytes are the same.
@@ -460,7 +458,7 @@ export default class SideViewer extends View {
     if (!shown) this.dropOlder(path).catch(() => null);
     const state = imageState(file, kind, probe.bytes);
     if (state !== "svg") return { state, path, size };
-    const text = shown?.text ?? await readTextFile(file);
+    const text = shown?.text ?? await access.read(file);
     // Gone between the probe and the read: the next read says so.
     if (text === null) return { state: "missing" };
     return { state, path, size, text };
@@ -738,10 +736,21 @@ export default class SideViewer extends View {
     if (this.file) exec("open", ["-R", this.file]).catch(() => null);
   }
 
-  // A click on a link in the markdown view. links.js decides; a local file that is not
-  // markdown is only shown in Finder, never opened.
+  // A click on a link in the markdown view. links.js decides; a file on this Mac that is not
+  // markdown is only shown in Finder, never opened. On another machine `~` is that machine's
+  // home, and a file the viewer cannot show is announced.
   followLink(url, cx) {
-    const step = linkAction(url, this.file, home(), this.groups);
+    const access = this.access();
+    if (!access.remote) return this.takeLink(linkAction(url, this.file, home(), this.groups), cx);
+    const file = this.file;
+    cx.spawn(async (cx) => {
+      const folder = await access.home().catch(() => null);
+      this.takeLink(linkAction(url, file, folder, this.groups, true), cx);
+    });
+  }
+
+  // Carries out linkAction's `step`.
+  takeLink(step, cx) {
     if (step.action === "show") {
       this.show(step.file, cx);
       this.nameTab();
@@ -750,6 +759,8 @@ export default class SideViewer extends View {
       exec("open", [step.url]).catch(() => null);
     } else if (step.action === "reveal") {
       exec("open", ["-R", step.file]).catch(() => null);
+    } else if (step.action === "unshown") {
+      notify(unshownNotice(step.file, this.words()));
     }
   }
 
