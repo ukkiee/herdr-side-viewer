@@ -262,6 +262,17 @@ test("a file with unsaved edits that is now gone, empty or too large comes back 
     { state: "svg", text: "<svg/>", path: null, size: null });
 });
 
+test("an edited svg that grew past the text limit or stopped being svg comes back as its source, other pictures do not", () => {
+  const svg = viewOf("/work/logo.svg", groups);
+  const grown = { state: "image", path: "/work/logo.svg", size: { width: 10, height: 10 } };
+  assert.deepEqual(editedContentOf("/work/logo.svg", grown, svg, "<svg/>"), { state: "svg", text: "<svg/>", path: null, size: null });
+  assert.deepEqual(editedContentOf("/work/logo.svg", { state: "unsupported" }, svg, "<svg/>"), { state: "svg", text: "<svg/>", path: null, size: null });
+  const png = viewOf("/work/shot.png", groups);
+  const picture = { state: "image", path: "/work/shot.png", size: { width: 10, height: 10 } };
+  assert.equal(editedContentOf("/work/shot.png", picture, png, "x"), picture);
+  assert.deepEqual(editedContentOf("/work/shot.png", { state: "unsupported" }, png, "x"), { state: "unsupported" });
+});
+
 test("a read that can be drawn, or a file without edits, keeps the read's own content", () => {
   const md = viewOf("/work/plan.md", groups);
   const read = { state: "markdown", text: "# new\n" };

@@ -116,8 +116,9 @@ The mod shows files, not agents, so it has no agent statuses.
   its editor and only gets the new text. A deleted file turns into the "gone" notice, and
   its content comes back when the file does. "Loading" shows only for a newly opened file.
   A file with unsaved edits is never read over them: see "Changed outside". Nor is it
-  replaced by a notice: coming back to one that is now gone, empty, too large or unreadable
-  shows its editor with the edits (views.js, `editedContentOf`), and the bar says what it can.
+  replaced by a notice: coming back to one that is now gone, empty, too large or unreadable,
+  or to an svg now past 1 MiB (a picture alone) or no longer svg, shows its editor with the
+  edits (views.js, `editedContentOf`), and the bar says what it can.
 - **Theme.** The code view's colors are fixed when its editor is made, so each check also
   compares them with the theme: after a theme change the open code is redrawn with the new
   colors within 15 seconds. Code block cards take the new colors at the same check.
