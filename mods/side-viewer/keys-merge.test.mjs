@@ -43,6 +43,19 @@ test("a free cmd-o is added to global and every other key and section stays as i
   assert.ok(result.lines.some((line) => line.includes("cmd-o")));
 });
 
+test("a keys.json that already has the line is left as it is", () => {
+  const text = '{\n  "global": { "cmd-o": "mod.open:side-viewer", "alt-1": "space.select:1" }\n}\n';
+  const result = mergeKeys(text, wanted);
+  assert.equal(result.text, null);
+});
+
+test("merging twice leaves one line and the second time writes nothing", () => {
+  const once = mergeKeys(JSON.stringify(person), wanted);
+  const twice = mergeKeys(once.text, wanted);
+  assert.equal(twice.text, null);
+  assert.equal(once.text.split('"cmd-o"').length - 1, 1);
+});
+
 test("a keys.json without a global section gets one", () => {
   const result = mergeKeys('{ "terminal": { "ctrl-1": "terminal" } }', wanted);
   assert.deepEqual(JSON.parse(result.text), {

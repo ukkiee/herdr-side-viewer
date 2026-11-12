@@ -21,11 +21,19 @@ export function mergeKeys(current, wanted) {
   }
   const keys = JSON.parse(current);
   const lines = [];
+  let changed = false;
   for (const [section, binds] of Object.entries(wanted)) {
     for (const [key, action] of Object.entries(binds)) {
+      if (same(keys[section]?.[key], action)) continue;
       (keys[section] ??= {})[key] = action;
+      changed = true;
       lines.push(`${key} → ${JSON.stringify(action)} (${section})`);
     }
   }
-  return { text: JSON.stringify(keys, null, 2) + "\n", lines };
+  return { text: changed ? JSON.stringify(keys, null, 2) + "\n" : null, lines };
+}
+
+// An action is a string or a {command, args} object.
+function same(a, b) {
+  return a !== undefined && JSON.stringify(a) === JSON.stringify(b);
 }
