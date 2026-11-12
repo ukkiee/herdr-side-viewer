@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noEdits, typed, unsaved, shownText, saveOf, saved } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, refusalOf, saveFailed, startSave } from "./edit-state.js";
 
 const A = "/work/a.md";
 
@@ -82,4 +82,172 @@ test("typing the text back to what is on disk leaves nothing unsaved", () => {
   edits = typed(edits, A, "# A\n", "# A\n");
   assert.equal(unsaved(edits, A), false);
   assert.equal(shownText(edits, A, "# A\n"), "# A\n");
+});
+
+test("a file with no edits that changed on disk is read again, as before", () => {
+  const read = diskRead(noEdits(), A, "new\n");
+  assert.equal(read.step, "show");
+  assert.equal(unsaved(read.edits, A), false);
+  assert.equal(barOf(read.edits, A), null);
+  // A file without edits that is gone shows the v1 notice: nothing to keep.
+  assert.equal(diskRead(noEdits(), A, null).step, "show");
+});
+
+test("a file with edits that changed on disk keeps the edits on screen and raises the bar", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const read = diskRead(edits, A, "theirs\n");
+  assert.equal(read.step, "keep");
+  assert.equal(unsaved(read.edits, A), true);
+  assert.equal(shownText(read.edits, A, "theirs\n"), "mine\n");
+  assert.deepEqual(barOf(read.edits, A), { kind: "conflict", message: "밖에서 바뀌었습니다" });
+  // A save still expects the text the edit started from, so writeTextFile refuses it.
+  assert.deepEqual(saveOf(read.edits, A), { path: A, text: "mine\n", expected: "one\n" });
+});
+
+test("a file with edits that is read again unchanged raises no bar", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const read = diskRead(edits, A, "one\n");
+  assert.equal(read.step, "keep");
+  assert.equal(barOf(read.edits, A), null);
+  assert.equal(unsaved(read.edits, A), true);
+});
+
+test("a file with edits that is deleted keeps the edits and says it is gone", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const read = diskRead(edits, A, null);
+  assert.equal(read.step, "keep");
+  assert.equal(shownText(read.edits, A, "one\n"), "mine\n");
+  assert.deepEqual(barOf(read.edits, A), { kind: "failed", message: "파일이 지워졌습니다." });
+});
+
+test("a file whose disk text comes back to what the edit started from drops the bar", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, "theirs\n").edits;
+  edits = diskRead(edits, A, "one\n").edits;
+  assert.equal(barOf(edits, A), null);
+  assert.equal(unsaved(edits, A), true);
+});
+
+test("a disk that now holds the edited text leaves nothing unsaved", () => {
+  // As when the viewer's own save is read back before the save has finished.
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const read = diskRead(edits, A, "mine\n");
+  assert.equal(read.step, "show");
+  assert.equal(unsaved(read.edits, A), false);
+  assert.equal(barOf(read.edits, A), null);
+});
+
+test("a disk that cannot be read leaves the edits and the bar as they are", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, "theirs\n").edits;
+  const read = diskRead(edits, A, undefined);
+  assert.equal(read.step, "keep");
+  assert.equal(barOf(read.edits, A).kind, "conflict");
+});
+
+test("typing goes on under the bar, and the bar stays until one of its buttons is pressed", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, "theirs\n").edits;
+  edits = typed(edits, A, "one\n", "mine, more\n");
+  assert.equal(barOf(edits, A).kind, "conflict");
+  assert.equal(shownText(edits, A, "one\n"), "mine, more\n");
+  // Typing back to the text the edit started from is still not what is on disk now.
+  edits = typed(edits, A, "one\n", "one\n");
+  assert.equal(barOf(edits, A).kind, "conflict");
+  assert.equal(unsaved(edits, A), true);
+});
+
+test("discarding drops the edits and the bar, so the file shows what is on disk", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, "theirs\n").edits;
+  const after = discarded(edits, A);
+  assert.equal(unsaved(after, A), false);
+  assert.equal(barOf(after, A), null);
+  assert.equal(shownText(after, A, "theirs\n"), "theirs\n");
+  assert.equal(saveOf(after, A), null);
+});
+
+test("overwriting saves my text, expecting what is on disk now", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, "theirs\n").edits;
+  edits = overwritten(edits, A);
+  assert.equal(barOf(edits, A), null);
+  assert.deepEqual(saveOf(edits, A), { path: A, text: "mine\n", expected: "theirs\n" });
+  // A later change on disk is a conflict again, against the text overwritten.
+  edits = diskRead(edits, A, "theirs again\n").edits;
+  assert.equal(barOf(edits, A).kind, "conflict");
+  edits = overwritten(edits, A);
+  assert.deepEqual(saveOf(edits, A), { path: A, text: "mine\n", expected: "theirs again\n" });
+});
+
+test("overwriting with nothing to overwrite leaves the edits alone", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  assert.deepEqual(saveOf(overwritten(edits, A), A), { path: A, text: "mine\n", expected: "one\n" });
+  assert.deepEqual(overwritten(noEdits(), A), noEdits());
+});
+
+// writeTextFile's refusals, as Herdr words them (src/mod_files.rs, and Rust's io errors).
+test("a refused save is read as changed on disk, no permission, too large, or something else", () => {
+  assert.equal(refusalOf(new Error("The file changed outside Herdr. Reload before saving; your draft is still here.")), "changed");
+  assert.equal(refusalOf(new Error("The file changed while saving. Reload before saving.")), "changed");
+  assert.equal(refusalOf(new Error("Permission denied (os error 13)")), "permission");
+  assert.equal(refusalOf("Operation not permitted (os error 1)"), "permission");
+  assert.equal(refusalOf(new Error("Read-only file system (os error 30)")), "permission");
+  assert.equal(refusalOf(new Error("Text file exceeds 1 MiB")), "large");
+  assert.equal(refusalOf(new Error("No space left on device (os error 28)")), "other");
+  assert.equal(refusalOf(undefined), "other");
+});
+
+test("a failed save keeps the edits and says why", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const permission = saveFailed(edits, A, new Error("Permission denied (os error 13)"));
+  assert.equal(shownText(permission, A, "one\n"), "mine\n");
+  assert.deepEqual(saveOf(permission, A), { path: A, text: "mine\n", expected: "one\n" });
+  assert.deepEqual(barOf(permission, A), { kind: "failed", message: "이 파일에 쓸 권한이 없습니다." });
+  assert.equal(barOf(saveFailed(edits, A, new Error("Text file exceeds 1 MiB")), A).message, "저장하기에는 너무 큽니다.");
+  assert.equal(barOf(saveFailed(edits, A, new Error("No space left on device (os error 28)")), A).message,
+    "저장하지 못했습니다: No space left on device (os error 28)");
+});
+
+test("a failure bar goes once the text is typed back to what is on disk, or the save goes through", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = saveFailed(edits, A, new Error("Permission denied (os error 13)"));
+  assert.equal(barOf(typed(edits, A, "one\n", "one\n"), A), null);
+  edits = typed(edits, A, "one\n", "mine!\n");
+  assert.equal(barOf(edits, A).kind, "failed");
+  assert.equal(barOf(saved(edits, A, "mine!\n"), A), null);
+});
+
+test("a save of up to 1,048,576 UTF-8 bytes goes ahead; a larger one is stopped before writing", () => {
+  const at = "a".repeat(1048576);
+  let edits = typed(noEdits(), A, "one\n", at);
+  let save = startSave(edits, A);
+  assert.deepEqual(save.write, { path: A, text: at, expected: "one\n" });
+  assert.equal(barOf(save.edits, A), null);
+
+  edits = typed(noEdits(), A, "one\n", at + "b");
+  save = startSave(edits, A);
+  assert.equal(save.write, null);
+  assert.equal(barOf(save.edits, A).message, "저장하기에는 너무 큽니다.");
+  assert.equal(unsaved(save.edits, A), true);
+
+  // Bytes, not characters: "가" is three bytes in UTF-8 and "😀" four.
+  const hangul = "가".repeat(349525) + "a"; // 1,048,576 bytes, 349,526 characters
+  assert.notEqual(startSave(typed(noEdits(), A, "one\n", hangul), A).write, null);
+  assert.equal(startSave(typed(noEdits(), A, "one\n", hangul + "a"), A).write, null);
+  const emoji = "😀".repeat(262144); // 1,048,576 bytes
+  assert.notEqual(startSave(typed(noEdits(), A, "one\n", emoji), A).write, null);
+  assert.equal(startSave(typed(noEdits(), A, "one\n", emoji + "a"), A).write, null);
+});
+
+test("starting a save with nothing to save writes nothing", () => {
+  assert.deepEqual(startSave(noEdits(), A), { edits: noEdits(), write: null });
+});
+
+test("a deleted file's edits stay even when typed back to the text read before", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, null).edits;
+  edits = typed(edits, A, "one\n", "one\n");
+  assert.equal(unsaved(edits, A), true);
+  assert.equal(barOf(edits, A).message, "파일이 지워졌습니다.");
 });

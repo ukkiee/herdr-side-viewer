@@ -31,7 +31,7 @@ test("every other listed extension gets the code view", () => {
 
 test("a file outside the listed extensions has no view", () => {
   assert.equal(viewOf("/work/report.pdf", groups), null);
-  assert.equal(viewOf("/work/page.html", groups), null);
+  assert.equal(viewOf("/work/page.xhtml", groups), null);
   assert.equal(viewOf("/work/README", groups), null);
   assert.equal(viewOf("/work/notes.md/README", groups), null);
   assert.equal(viewOf("/work/plan.md", null), null);
@@ -50,6 +50,15 @@ test("code files get their editor language", () => {
   assert.equal(language("util.h"), "c");
   assert.equal(language("util.cc"), "cpp");
   assert.equal(language("job.rbw"), "ruby");
+});
+
+test("html files, with the extensions macOS gives the same file type, open in the code view with HTML colors", () => {
+  // macOS files html, htm, shtml and shtm under one type (public.html), so taking over
+  // html brings all four to the router.
+  for (const name of ["page.html", "page.htm", "page.shtml", "page.shtm", "INDEX.HTML"]) {
+    assert.deepEqual(viewOf(`/work/${name}`, groups), { view: "code", language: "html" }, name);
+  }
+  assert.equal(editable(viewOf("/work/page.html", groups).view, false), true);
 });
 
 test("TypeScript and JSX use JavaScript colors", () => {
