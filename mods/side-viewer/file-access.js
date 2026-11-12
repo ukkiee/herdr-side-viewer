@@ -23,14 +23,32 @@
 //                             file does, from `cksum <path>` (remote-results.js changeMark).
 //                             Rejects when the command cannot start or the machine is
 //                             unreachable (remote-results.js failureOf tells which).
+//   access.copy(path, copy)   Promise<{ code, stdout, stderr }>: puts the bytes of the file `path`
+//                             there at `copy`, a path on this Mac, by image-copies.js's COPY
+//                             rule (a copy already there is only touched). Nonzero code: no
+//                             copy. Rejects as exec does.
+//   access.key(path)          a name for the file `path` there that no file of the same path on
+//                             another machine shares, for naming its copies.
 // runHc(args, { timeout })    Promise<{ code, stdout, stderr }>: `hc <args>` on this Mac, the one
 //                             on PATH or else ~/.local/bin/hc (machine.js FIND_HC). Rejects as
 //                             exec does; an hc found nowhere exits nonzero.
 //
 // Other tickets' functions join the access; these keep their names, arguments and results.
 import { exec, readTextFile, home } from "herdr";
-import { EXISTS, existingOf, HOME_FOLDER, homeOf, hcCommand } from "./machine.js";
+import { EXISTS, existingOf, HOME_FOLDER, homeOf, hcCommand, FIND_HC } from "./machine.js";
+import { COPY } from "./image-copies.js";
 import { changeMark } from "./remote-results.js";
+
+// Run on this Mac as `sh -c REMOTE_COPY sh <machine> <file> <copy>`: COPY's rule with the bytes
+// of `hc exec --on <machine> cat <file>`, which passes them through unchanged (a 315,093-byte
+// png from nuc-pro had the same sha256 there and here). They land beside the copy first, so a
+// read that fails or breaks off never leaves a copy that later reads would only touch.
+const REMOTE_COPY = `${FIND_HC}
+umask 077
+mkdir -p "$(dirname "$3")" || exit 1
+if [ -f "$3" ]; then touch "$3"; exit 0; fi
+"$hc" exec --on "$1" cat "$2" > "$3.part" && mv "$3.part" "$3" || { rm -f "$3.part"; exit 1; }
+`;
 
 const accesses = new Map();
 
@@ -55,6 +73,8 @@ function localAccess() {
     exists: (paths) => existsWith(run, paths),
     home: async () => home(),
     mark: (path, options) => markWith(run, path, options),
+    copy: (path, copy) => exec("sh", ["-c", COPY, "sh", path, copy]),
+    key: (path) => path,
   };
 }
 
@@ -76,6 +96,8 @@ function remoteAccess(machine) {
       return folder;
     },
     mark: (path, options) => markWith(run, path, options),
+    copy: (path, copy) => exec("sh", ["-c", REMOTE_COPY, "sh", machine, path, copy]),
+    key: (path) => `${machine}:${path}`,
   };
 }
 

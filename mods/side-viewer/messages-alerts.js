@@ -1,6 +1,7 @@
 // The words of the viewer's notifications (herdr notify): a code block the `>_` button could
-// not put into the terminal (terminal-insert.js) and a new viewer tab that could not be shown
-// (viewer-tab.js). Keys start with "alerts.".
+// not put into the terminal (terminal-insert.js), a new viewer tab that could not be shown
+// (viewer-tab.js) and a link to another machine's file the viewer cannot show (links.js).
+// Keys start with "alerts.".
 
 export const en = {
   "alerts.notInserted": "Not inserted into the terminal",
@@ -12,6 +13,7 @@ export const en = {
   "alerts.failed": "Couldn't open or find the shell pane.",
   "alerts.unplacedTitle": "Couldn't switch to the new tab",
   "alerts.unplacedBody": "The '{name}' tab was opened but couldn't be found to move or show. Pick it from the tab bar.",
+  "alerts.unshown": "Can't show this file",
 };
 
 export const ko = {
@@ -24,4 +26,5 @@ export const ko = {
   "alerts.failed": "셸 pane을 열거나 찾지 못했습니다.",
   "alerts.unplacedTitle": "새 탭으로 넘어가지 못했습니다",
   "alerts.unplacedBody": "'{name}' 탭을 열었지만 찾지 못해 옮기거나 보이지 못했습니다. 탭 막대에서 고르세요.",
+  "alerts.unshown": "이 파일은 보여 줄 수 없어요",
 };
