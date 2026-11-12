@@ -6,6 +6,7 @@
     "js", "mjs", "jscript", "javascript", "cjs", "jsx", "ts", "tsx", "css", "scss",
     "py", "go", "rs", "rb", "rbw", "java", "jav", "kt", "swift",
     "c", "h", "cpp", "cp", "c++", "cc", "cxx",
-    "sh", "zsh", "sql", "xml", "csv"
+    "sh", "zsh", "sql", "xml", "csv",
+    "html", "htm", "shtml", "shtm"
   ]
 }
