@@ -62,6 +62,18 @@ say() {
     en.changed) say_fmt='Changed:%s' ;;
     ko.kept) say_fmt='유지를 선택함:%s' ;;
     en.kept) say_fmt='Chose to keep:%s' ;;
+    ko.app_gone) say_fmt='%s: 원래 앱 %s 이 없어 %s 으로 돌립니다.' ;;
+    en.app_gone) say_fmt='%s: original app %s not found, switching to %s.' ;;
+    ko.no_record) say_fmt='%s: 기록된 원래 앱이 없어 %s 으로 돌립니다.' ;;
+    en.no_record) say_fmt='%s: no original app recorded, switching to %s.' ;;
+    ko.failed_error) say_fmt='실패: %s (오류: %s)' ;;
+    en.failed_error) say_fmt='Failed: %s (error: %s)' ;;
+    ko.failed_no_app) say_fmt='실패: %s (앱 없음: %s)' ;;
+    en.failed_no_app) say_fmt='Failed: %s (app not found: %s)' ;;
+    ko.failed_no_type) say_fmt='실패: %s (파일 종류 없음)' ;;
+    en.failed_no_type) say_fmt='Failed: %s (no file type)' ;;
+    ko.failed_timeout) say_fmt='실패: %s (시간 초과)' ;;
+    en.failed_timeout) say_fmt='Failed: %s (timed out)' ;;
     *) printf '%s\n' "$say_key"; return ;;
   esac
   printf "$say_fmt\n" "$@"
@@ -131,7 +143,7 @@ run_plan() {
     if [ "$code" -eq 3 ] && [ -n "$second_choice" ]; then
       other=$("$second_choice" "$ext" "$app")
       if [ -n "$other" ] && [ "$other" != "$app" ]; then
-        echo "$ext: 원래 앱 $app 이 없어 $other 으로 돌립니다."
+        say app_gone "$ext" "$app" "$other"
         app=$other
         "$router" --set-default-app "$ext" "$app" < /dev/null > /dev/null 2> "$errors"
         code=$?
@@ -156,13 +168,13 @@ run_plan() {
           kept="$kept $group"
         else
           failed=1
-          echo "실패: $group (오류: $(tr '\n' ' ' < "$errors"))" >&2
+          say failed_error "$group" "$(tr '\n' ' ' < "$errors")" >&2
         fi
         ;;
-      3) failed=1; echo "실패: $group (앱 없음: $app)" >&2 ;;
-      4) failed=1; echo "실패: $group (파일 종류 없음)" >&2 ;;
-      5) failed=1; echo "실패: $group (시간 초과)" >&2 ;;
-      *) failed=1; echo "실패: $group (오류: $(tr '\n' ' ' < "$errors"))" >&2 ;;
+      3) failed=1; say failed_no_app "$group" "$app" >&2 ;;
+      4) failed=1; say failed_no_type "$group" >&2 ;;
+      5) failed=1; say failed_timeout "$group" >&2 ;;
+      *) failed=1; say failed_error "$group" "$(tr '\n' ' ' < "$errors")" >&2 ;;
     esac
   done < "$types"
   rm -f "$plan" "$errors" "$types"
@@ -276,7 +288,7 @@ restore() {
       [ -n "$app" ] || { how=ask; app=$(sibling_record "$ext"); }
       if [ -z "$app" ]; then
         app=$(fallback_app "$ext")
-        echo "$ext: 기록된 원래 앱이 없어 $app 으로 돌립니다."
+        say no_record "$ext" "$app"
       fi
     fi
     printf '%s\t%s\t%s\t%s\n' "$type" "$ext" "$app" "$how" >> "$wishes"

@@ -419,6 +419,66 @@ for (const [what, languages, line] of [
   });
 }
 
+for (const [languages, stdout, stderr] of [
+  [
+    KOREAN,
+    "macOS 확인 창이 4번 뜹니다. 창마다 Side Viewer Router로 바꾸는 쪽을 고르세요.\n",
+    `실패: md (파일 종류 없음)\n실패: png (시간 초과)\n실패: py (오류: )\n실패: ts (앱 없음: ${ROUTER_ID})\n`,
+  ],
+  [
+    ENGLISH,
+    "macOS will show 4 confirmation windows. In each window, choose to change to Side Viewer Router.\n",
+    `Failed: md (no file type)\nFailed: png (timed out)\nFailed: py (error: )\nFailed: ts (app not found: ${ROUTER_ID})\n`,
+  ],
+]) {
+  test(`make-default reports each kind of failure on stderr and exits 1 (${languages === KOREAN ? "Korean" : "English"})`, () => {
+    const w = world({ extensions: { markdown: ["md"], image: ["png"], code: ["py", "ts"] }, defaults: { md: "com.example.Notes", png: "com.apple.Preview", py: "com.example.Editor", ts: "com.example.Player" }, languages });
+    w.fail("md", 4);
+    w.fail("png", 5);
+    w.fail("py", 9);
+    w.fail("ts", 3);
+    const r = w.takeover("make-default", "code");
+    assert.equal(r.status, 1);
+    assert.equal(r.stdout, stdout);
+    assert.equal(r.stderr, stderr);
+  });
+}
+
+test("restore speaks English when it falls back to another app, and says one window in the singular", () => {
+  const w = world({ extensions: { markdown: ["md", "mdx"], image: [], code: [] }, defaults: { md: ROUTER_ID, mdx: ROUTER_ID }, record: "md\tcom.example.Gone\n", languages: ENGLISH });
+  w.gone("com.example.Gone");
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(
+    r.stdout,
+    "mdx: no original app recorded, switching to com.apple.TextEdit.\n" +
+      "macOS will show 2 confirmation windows. In each window, choose to change back to the original app.\n" +
+      "md: original app com.example.Gone not found, switching to com.apple.TextEdit.\n" +
+      "Changed: md mdx\n",
+  );
+  const one = world({ extensions: { markdown: ["md"], image: [], code: [] }, defaults: { md: ROUTER_ID }, record: "md\tcom.example.Notes\n", languages: ENGLISH });
+  assert.match(one.takeover("restore").stdout, /^macOS will show 1 confirmation window\. In each window, choose to change back to the original app\.$/m);
+});
+
+test("restore says in Korean, word for word as before, which app it uses when nothing was recorded", () => {
+  const w = world({ extensions: { markdown: ["mdx"], image: [], code: [] }, defaults: { mdx: ROUTER_ID } });
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(
+    r.stdout,
+    "mdx: 기록된 원래 앱이 없어 com.apple.TextEdit 으로 돌립니다.\nmacOS 확인 창이 1번 뜹니다. 창마다 원래 앱으로 바꾸는 쪽을 고르세요.\n바뀜: mdx\n",
+  );
+});
+
+test("restore says in English which extensions stay with the router", () => {
+  const w = world({ extensions: { markdown: [], image: [], code: ["rb", "rbw"] }, defaults: { rb: "com.example.IDE" }, sameType: { rbw: "rb" }, languages: ENGLISH });
+  w.only("rbw", ROUTER_ID);
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, "Nothing to change.\nStayed with the router: rbw (no app but the router handles these extensions)\n");
+  assert.doesNotMatch(r.stdout + r.stderr, HANGUL);
+});
+
 test("one run reads the language once, however many lines it prints", () => {
   const w = world({ extensions: { markdown: ["md"], image: ["png"], code: ["py"] }, defaults: { md: "com.example.Notes", png: "com.apple.Preview", py: "com.example.Editor" }, languages: ENGLISH });
   w.keep("png");
