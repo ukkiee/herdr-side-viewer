@@ -4,7 +4,7 @@
 
 **Blocked by:** 12 (integrated)
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-23, "구현 결정"의 "언어(AC-23)", "테스트 결정")
 
@@ -38,3 +38,7 @@
   - 작업자(`dae4dec`): `router.test.mjs` 52 통과(36→52)·0 실패·0 skip, `herdr-app check` 통과. 영어 기대 줄은 단언 단위로 실패한 뒤 고쳤다. 지금 동작을 고정하는 한국어 시험은 처음부터 초록. `takeover.sh`의 한글은 표 12줄뿐.
   - 통합 담당(`dae4dec`): `node --test mods/side-viewer/` 345 통과·0 실패·0 skip·0 취소, `herdr-app check mods/side-viewer` 통과.
 - **문서(19)로:** README "Take over the extensions"가 한국어 안내만 인용한다(영어 줄도 적기). 실패 줄의 오류 글이 이제 `printf %s`로 글자 그대로 찍힌다(예전 `echo`는 백슬래시를 해석했을 수 있음).
+
+### 2026-11-12 완료 (주 진행자)
+
+- 리뷰·재검토 모두 통과(마지막 sv2-rv10과 F-2 직접 재검토), 통합 검증(티켓 12·19) 통과, 최종 단계(change-review phase=final: PR 초안·회고 후보, 원본 해시 일치) 완료. 통합 head `d990852`: `node --test mods/side-viewer/` 362 통과·0 실패·0 skip·0 취소, `herdr-app check` 통과. push·PR은 하지 않았다(사용자: "pr 올리기전까지만").

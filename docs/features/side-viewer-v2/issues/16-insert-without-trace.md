@@ -4,7 +4,7 @@
 
 **Blocked by:** 07 (integrated)
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-16, "구현 결정"의 "터미널에 넣기")
 
@@ -69,3 +69,7 @@
 - **재검토(`d2c89e7..917a781`, sv2-rv7):** 통과. RV6-1~6, RV3-1~3, R14-Q2 해결, RV6-7 결정대로. 신규 RV7-1(Minor: 준비 줄이 늦을 때 알림이 `;7~`·exec zsh를 말함)·RV7-2(Optional: 옛 설명) → sv2-fix5 `4a38bc6`로 고침(`unready` 알림 "셸이 아직 명령을 받을 준비가 되지 않았습니다. 잠시 뒤 다시 누르세요."). RV7-3(대기 끝 순간의 좁은 경합)은 고치지 않음. 통합 담당(`4a38bc6`): 328 통과·0 실패·0 skip·0 취소, check 통과.
 - **재검토(`917a781..4a38bc6`, sv2-rv8):** 통과, 결함 없음. RV8-1(이 티켓의 `unready` 누락)은 이 기록으로 고침. RV8-2(Optional: `terminal-insert.js` 주석과 RECIPE의 "no key was sent"를 "the insert key was not sent"로 좁히기)는 남김. 보고서: 실행 scratchpad의 `review/rereview-rv7.md`, `rereview-rv8.md`.
 - **실제 앱(`917a781` 설치본, RECIPE v2 18~20·24번과 20번의 exec zsh):** 통과. 화면에 준비 줄이 남지 않음, 클립보드 그대로, `exec zsh` 뒤 argv가 `["zsh"]`로 바뀌어 다시 준비해 들어감, 같은 인자로 다시 `exec zsh`하면 알림과 `;7~`(설계대로) 뒤 다음 누름에 들어감, 같은 zsh에서 누를 때마다 다시 준비하지 않음. 기록: 실행 scratchpad의 `live-check.md`.
+
+### 2026-11-12 완료 (주 진행자)
+
+- 리뷰·재검토 모두 통과(마지막 sv2-rv10과 F-2 직접 재검토), 통합 검증(티켓 12·19) 통과, 최종 단계(change-review phase=final: PR 초안·회고 후보, 원본 해시 일치) 완료. 통합 head `d990852`: `node --test mods/side-viewer/` 362 통과·0 실패·0 skip·0 취소, `herdr-app check` 통과. push·PR은 하지 않았다(사용자: "pr 올리기전까지만").

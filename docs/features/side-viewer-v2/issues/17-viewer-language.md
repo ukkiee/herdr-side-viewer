@@ -4,7 +4,7 @@
 
 **Blocked by:** 12 (integrated)
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-23, "구현 결정"의 "언어(AC-23)", "테스트 결정")
 
@@ -47,3 +47,7 @@
 
 - **리뷰(sv2-rv9, `92a499a..5041503`, 17·18):** 통과. 한국어 34개가 통합 전과 글자 그대로(스크립트 대조), 언어 규칙·다시 읽기·공유 상태·라우터 `say`(sh·dash, `%`·백슬래시 값) 이상 없음. F-1(Minor: `tr` 검사가 중간 단계를 안 봄) → sv2-fix6 `883f513`(변이 5종 실패 확인). 재검토 sv2-rv10에서 F-2(Minor: 화살표 함수·계산된 호출) → sv2-fix7. 선택 개선 O-1(라우터 usage 줄), O-2(빈 머리줄 `Side Viewer`, 문서에 적음). 보고서: 실행 scratchpad의 `review/review-rv9.md`, `rereview-rv10.md`.
 - **F-2 수정·재검토(주 진행자 직접):** sv2-fix7 `e62d83f`(통합 `6fcd0a5`): `i18n.test.mjs`가 화살표 정의(`name = (…) =>`, `name: (…) =>`)와 표 호출(`NAME[key](…)`, 예: `STATUS_BUTTONS`)도 검사하고 표를 찾는지 단언한다. 바뀐 파일이 테스트 하나라 재검토는 주 진행자가 직접 했다: 사본에서 `header.js`의 `STATUS_BUTTONS[button](t, { tr, … })`에서 `tr`을 빼자 `i18n.test.mjs` 1 실패(되돌린 실제 트리는 362 통과·0 실패·0 skip·0 취소, check 통과). 작업자는 F-1 변이 5종도 여전히 실패함을 확인했다. 남은 한계(주석에 적음): 괄호 없는 한 매개변수 화살표, 매개변수에 괄호가 든 정의, 변수를 거친 호출은 못 찾음(지금 코드에는 없음).
+
+### 2026-11-12 완료 (주 진행자)
+
+- 리뷰·재검토 모두 통과(마지막 sv2-rv10과 F-2 직접 재검토), 통합 검증(티켓 12·19) 통과, 최종 단계(change-review phase=final: PR 초안·회고 후보, 원본 해시 일치) 완료. 통합 head `d990852`: `node --test mods/side-viewer/` 362 통과·0 실패·0 skip·0 취소, `herdr-app check` 통과. push·PR은 하지 않았다(사용자: "pr 올리기전까지만").

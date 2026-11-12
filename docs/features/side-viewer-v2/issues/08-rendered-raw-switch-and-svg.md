@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-12 전환 쪽, AC-18, AC-1과 AC-6의 svg 쪽)
 
@@ -42,3 +42,7 @@
 - **리뷰 후보:** `rendered.svg`·`source.svg` 아이콘이 이제 쓰이지 않는다. `links.js`의 `rawMarkdown` 주석이 지금 코드와 맞지 않는다(함수는 `links.test.mjs`가 써서 남김).
 - **절차 메모:** 작업자가 `views.test.mjs` 첫 편집을 heredoc·sed로 했다가 커밋 전에 되돌리고 Edit 도구로 다시 썼다(어느 커밋에도 없음). 작업자가 임시 폴더를 `rm -rf $S/$n`으로 지우려다 Claude Code 권한 확인에 걸렸고, 주 진행자가 승인하지 않아 자동 거부된 뒤 작업자가 고쳐 썼다.
 - **문서 메모(12):** RECIPE "Done when" 후보: 마크다운·svg 머리줄에 "렌더링 | 원문" 두 칸 전환이 있고 cmd+E가 없다 / svg는 그림으로 열리고 원문에서 고칠 수 있다(xml 색, 줄 접기) / 고친 svg를 렌더링으로 바꾸면 저장 전에 고친 그림이 보이고 파일은 그대로, cmd+S로 저장된다 / svgz에는 전환이 없다. README: 데이터 폴더에 `data/side-viewer/previews/`(고친 svg 미리 보기)가 생기고 30일 정리는 images와 같다.
+
+### 2026-11-12 완료 (주 진행자)
+
+- 리뷰·재검토 모두 통과(마지막 sv2-rv10과 F-2 직접 재검토), 통합 검증(티켓 12·19) 통과, 최종 단계(change-review phase=final: PR 초안·회고 후보, 원본 해시 일치) 완료. 통합 head `d990852`: `node --test mods/side-viewer/` 362 통과·0 실패·0 skip·0 취소, `herdr-app check` 통과. push·PR은 하지 않았다(사용자: "pr 올리기전까지만").

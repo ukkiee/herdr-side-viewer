@@ -4,7 +4,7 @@
 
 **Blocked by:** 02, 04, 08 (모두 integrated)
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-22, AC-1·AC-19의 빈 파일 문장, "구현 결정"의 "빈 파일(AC-22)", "상태와 실패")
 
@@ -46,3 +46,7 @@
 
 - **리뷰(`6e631dc..b059939`, 새 컨텍스트 리뷰어 sv2-rv4):** 통과. 결함 없음. 실제 앱 필요(R13-1): 0바이트 파일에 써서 cmd+S할 때 `writeTextFile(path, text, "")`가 써지는지(`herdr.d.ts`는 null만 "새로 만들기"; `""`는 "빈 글과 같을 때만"일 가능성이 높으나 미확인). 틀리면 cmd+S가 막대 없이 "저장 안 됨"만 남긴다. 선택 개선 O13-1·O13-2(테스트가 main.js 연결을 손으로 다시 씀, 관계없는 `editable` 단언). 보고서: 실행 scratchpad의 `review/review13.md`.
 - **결정 변경:** 손 확인에서 사용자가 빈 md를 안내 없이 빈 문서로 여는 것 대신 "안내는 해주되 고를 수 있게, svg도 렌더링 원문 보이게"로 고쳤다. 명세 AC-22를 고치고 티켓 14로 넘긴다. 빈 코드 파일은 이 티켓대로 빈 편집기다.
+
+### 2026-11-12 완료 (주 진행자)
+
+- 리뷰·재검토 모두 통과(마지막 sv2-rv10과 F-2 직접 재검토), 통합 검증(티켓 12·19) 통과, 최종 단계(change-review phase=final: PR 초안·회고 후보, 원본 해시 일치) 완료. 통합 head `d990852`: `node --test mods/side-viewer/` 362 통과·0 실패·0 skip·0 취소, `herdr-app check` 통과. push·PR은 하지 않았다(사용자: "pr 올리기전까지만").

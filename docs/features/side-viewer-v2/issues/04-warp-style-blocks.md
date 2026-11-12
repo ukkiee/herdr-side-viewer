@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-12 본문 쪽, AC-13)
 
@@ -42,3 +42,7 @@
 - **남은 위험(경계 4에서 볼 것):** 제목 크기·굵기, 인용의 흐린 글자, 각주의 작은 글자가 감싼 div에서 TextView로 상속되는지 확인하지 못했다(안 먹으면 제목이 본문 크기로 보인다). TextView 자체 여백 때문에 문단 간격이 벌어질 수 있다. 꾸밈이 든 표 칸(TextView)의 폭. 글이 바뀌면(저장 전 미리 보기) 드래그로 고른 글자가 풀린다.
 - **정리할 것:** `markdown-view.js`의 raw 분기(`rawMarkdown` TextView)는 02 통합 뒤 쓰이지 않는다. 원문 전환을 맡는 08이 정리한다.
 - **문서 메모(12):** README: 마크다운 보기는 읽기 폭 제한 없이 pane 폭을 쓰고 블록마다 그린다. 수식·HTML 태그·GitHub 알림 상자·정의 목록은 그리지 않는다. RECIPE "Done when" 후보: `markdown-sample.md`에서 제목 4단계 크기, 점 두 단계·번호·체크박스, 빈 줄로 나뉜 목록이 따로 보이는지, 표 정렬과 줄 사이 선, 구분선, 인용 막대, 각주 위첨자와 끝 목록, 문서 맨 위 폴더·이름, 링크(같은 폴더 md는 뷰어, 웹은 브라우저), 참조식 링크 `[x][ref]`.
+
+### 2026-11-12 완료 (주 진행자)
+
+- 리뷰·재검토 모두 통과(마지막 sv2-rv10과 F-2 직접 재검토), 통합 검증(티켓 12·19) 통과, 최종 단계(change-review phase=final: PR 초안·회고 후보, 원본 해시 일치) 완료. 통합 head `d990852`: `node --test mods/side-viewer/` 362 통과·0 실패·0 skip·0 취소, `herdr-app check` 통과. push·PR은 하지 않았다(사용자: "pr 올리기전까지만").

@@ -4,7 +4,7 @@
 
 **Blocked by:** 17, 18
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-23, "구현 결정"의 "언어(AC-23)", "테스트 결정")
 
@@ -36,3 +36,7 @@
 - **실제 앱(설치본 `ab2abcb`):** `("ko-KR")`에서 한국어. 사용자가 `defaults write -g AppleLanguages -array en-US ko-KR`(주 진행자의 같은 명령은 권한 확인에서 거절) → 새 탭으로 새 뷰어 → 그 탭과 대화 옆 뷰어가 바로 영어("Rendered | Source", 툴팁 "Open in New Tab", 원문 수정 시 "Edited"+"Save", 빈 md "This file is empty."). 사용자가 `-array ko-KR`로 되돌림 → 새 뷰어를 열었다 닫으니 한국어로 돌아옴. 시험 탭은 닫음.
 - **미실행:** Herdr를 다시 켠 뒤 공유 상태가 남는지(RECIPE 31의 앱 부분), 영어의 좁은 머리줄·알림 폭, 라우터 영어 안내의 실제 출력(가짜 `defaults` 시험 52개로만; 기본 앱을 바꾸는 명령은 돌리지 않음).
 - **재검토(sv2-rv10, `5041503..54048cd`):** 통과. 문서 인용·언어 규칙·RECIPE 30·31·그림(개인 정보 없음) 확인. F-2(Minor, `tr` 검사가 화살표 함수·계산된 호출을 못 봄)는 sv2-fix7이 고친다. O-1(라우터 usage 줄은 영어뿐이라는 말이 README에 없음), O-3, O-4는 선택 개선으로 남김.
+
+### 2026-11-12 완료 (주 진행자)
+
+- 리뷰·재검토 모두 통과(마지막 sv2-rv10과 F-2 직접 재검토), 통합 검증(티켓 12·19) 통과, 최종 단계(change-review phase=final: PR 초안·회고 후보, 원본 해시 일치) 완료. 통합 head `d990852`: `node --test mods/side-viewer/` 362 통과·0 실패·0 skip·0 취소, `herdr-app check` 통과. push·PR은 하지 않았다(사용자: "pr 올리기전까지만").

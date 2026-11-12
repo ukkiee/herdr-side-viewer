@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-19, 명세의 "연결 파일" 표)
 
@@ -42,3 +42,7 @@
   - `mods/side-viewer/image-view.js`: `renderImage(t, {content, room, onRoom})`. 폭(`room`)은 `main.js`의 `setRoom`이 들고 있다.
   - `mods/side-viewer/notice-view.js`: `renderNotice(t, state)`.
 - **문서 메모:** 없음. `install.sh`는 폴더 전체를 복사하므로 새 모듈도 설치된다.
+
+### 2026-11-12 완료 (주 진행자)
+
+- 리뷰·재검토 모두 통과(마지막 sv2-rv10과 F-2 직접 재검토), 통합 검증(티켓 12·19) 통과, 최종 단계(change-review phase=final: PR 초안·회고 후보, 원본 해시 일치) 완료. 통합 head `d990852`: `node --test mods/side-viewer/` 362 통과·0 실패·0 skip·0 취소, `herdr-app check` 통과. push·PR은 하지 않았다(사용자: "pr 올리기전까지만").

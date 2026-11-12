@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-4, AC-5)
 
@@ -44,3 +44,7 @@
 - **경계 4 재현 주의(12):** Herdr는 같은 폴더에 임시 파일을 만들어 rename으로 바꾸므로 `chmod 444` 파일은 저장이 **성공할 가능성이 크다**(소스 근거). "권한 없음"은 폴더를 `chmod 555`로 잠그거나 파일을 `chmod 000`으로 해서 재현한다.
 - **자리(11용):** `mods/side-viewer/edit-state.js`에 `diskRead`(읽은 디스크 글로 할 일: show/keep와 막대), `barOf`, `discarded`, `overwritten`, `startSave`(1 MiB 사전 차단), `refusalOf`, `saveFailed`, `SAVE_LIMIT`. 항목에 `bar`(`{kind: "conflict", disk}` 또는 `{kind: "failed", reason, detail?}`)가 붙을 수 있다. 체크박스의 바로 저장이 실패를 막대로 보이려면 먼저 항목을 만들어야 한다. `main.js`는 `load`의 읽기 완료에서 `diskRead`로 판단하고, 고친 내용이 있고 그 파일의 편집기가 화면에 있으면 다시 그리지 않는다. 새 메서드 `discard`, `overwrite`, `bar`. 막대는 `mods/side-viewer/conflict-bar.js`의 `renderBar`, 머리줄과 본문 사이.
 - **절차 메모:** 작업자가 테스트 한 묶음을 셸 heredoc로 덧붙였다(계약은 Edit·Write 도구). 결과물에는 차이가 없다.
+
+### 2026-11-12 완료 (주 진행자)
+
+- 리뷰·재검토 모두 통과(마지막 sv2-rv10과 F-2 직접 재검토), 통합 검증(티켓 12·19) 통과, 최종 단계(change-review phase=final: PR 초안·회고 후보, 원본 해시 일치) 완료. 통합 head `d990852`: `node --test mods/side-viewer/` 362 통과·0 실패·0 skip·0 취소, `herdr-app check` 통과. push·PR은 하지 않았다(사용자: "pr 올리기전까지만").

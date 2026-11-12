@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-17)
 
@@ -40,3 +40,7 @@
 - **미실행:** 경계 4(코드 묶음을 넘겨받은 Mac에서 html cmd-클릭). 티켓 12에서 사용자가 넘겨받기를 고른 뒤 확인한다. 색상 언어 `html`은 Herdr 바이너리에 syntect HTML 문법이 있는 것만 확인했고 화면의 색은 보지 않았다.
 - **위험(`미확인`, 명세 그대로):** 기본 브라우저를 바꾸면 macOS가 html을 브라우저로 되가져갈 수 있다.
 - **문서 메모(12):** README 확장자 표 code 줄에 `html` `htm` `shtml` `shtm`를 더한다. README의 빠진 확장자 설명에서 `html`을 빼고, code 묶음 주의로 "기본 브라우저를 바꾸면 macOS가 html을 브라우저로 되가져갈 수 있다(미확인)", `shtml`·`shtm`은 같은 파일 종류라 함께 넘어온다, `xhtml`은 다른 종류라 들어가지 않는다를 적는다. 창 수 34 → 35번, code 묶음 27 → 28종. RECIPE의 언어 이름 목록에 `html`을 더하고, 제외 항목의 "`html` (tied to …)"를 지우고 형제 목록에 `htm shtml shtm`을 더한다. v1 명세의 "`html`은 넣지 않는다"는 v2 AC-17이 덮는다.
+
+### 2026-11-12 완료 (주 진행자)
+
+- 리뷰·재검토 모두 통과(마지막 sv2-rv10과 F-2 직접 재검토), 통합 검증(티켓 12·19) 통과, 최종 단계(change-review phase=final: PR 초안·회고 후보, 원본 해시 일치) 완료. 통합 head `d990852`: `node --test mods/side-viewer/` 362 통과·0 실패·0 skip·0 취소, `herdr-app check` 통과. push·PR은 하지 않았다(사용자: "pr 올리기전까지만").

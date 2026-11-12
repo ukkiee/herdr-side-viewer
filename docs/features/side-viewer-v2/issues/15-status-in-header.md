@@ -4,7 +4,7 @@
 
 **Blocked by:** 03, 10, 11, 14 (모두 integrated)
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-2, AC-3, AC-4, AC-5, AC-10, AC-21의 "편집됨"과 AC-4의 표시, "구현 결정"의 "화면", "상태와 실패")
 
@@ -46,3 +46,7 @@
 
 - **리뷰(`c5851f3..d2c89e7`, 새 컨텍스트 리뷰어 sv2-rv6):** 티켓 15·L-1·체크 표시에는 결함 없음. `statusOf`의 문구·버튼이 명세와 같고, CR-2·RV2-1의 판단 뜻이 그대로이며, 머리줄 순서·`flex_shrink(0.01)`·빨강·tooltip·충돌 버튼 연결, 안내 화면의 새 탭 규칙, 뷰어 탭·체크박스가 상태를 쓰는 길이 맞다. 남은 것은 주석의 "bar"(RV6-3, `views.js`·`edit-state.js`)뿐이고 sv2-fix4가 고친다. 보고서: 실행 scratchpad의 `review/review-rv6.md`.
 - **실제 앱(설치본 `b97bbf3`):** 원문에서 한 글자 고침 → 머리줄 "편집됨"+[저장], 막대 없음. 파일을 mv로 치움 → 빨간 "파일이 지워졌어요"+[저장]. cmd+S → 그대로 "파일이 지워졌어요"(L-1 해결), 파일은 만들어지지 않음. 좁은 pane의 말줄임·마우스 올림 전문은 12에서 본다.
+
+### 2026-11-12 완료 (주 진행자)
+
+- 리뷰·재검토 모두 통과(마지막 sv2-rv10과 F-2 직접 재검토), 통합 검증(티켓 12·19) 통과, 최종 단계(change-review phase=final: PR 초안·회고 후보, 원본 해시 일치) 완료. 통합 head `d990852`: `node --test mods/side-viewer/` 362 통과·0 실패·0 skip·0 취소, `herdr-app check` 통과. push·PR은 하지 않았다(사용자: "pr 올리기전까지만").

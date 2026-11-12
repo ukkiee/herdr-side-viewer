@@ -4,7 +4,7 @@
 
 **Blocked by:** 04
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-14)
 
@@ -38,3 +38,7 @@
 - **자리:** `mods/side-viewer/markdown-images.js`(순수): `imageFileOf(src, file)`, `imageBoxOf(size, room)`(`MAX_HEIGHT` 420, 원래보다 키우지 않음), `imagesOf(blocks)`. `mods/side-viewer/markdown-image-loader.js`: `MarkdownImages`(`prepare`, `forDocument`). v1과 같은 사본 흐름(PROBE → `blockerOf` → `kindOf` → `copyName` → `COPY` → `sizeOf`), 30일 정리와 옛 사본 지우기는 main.js의 `sweep`·`dropOlder`를 함께 쓴다. `image-copies.js`는 고치지 않았다.
 - **남은 위험(경계 4에서 볼 것):** 블록 폭 보고 전까지 그림 자리 높이가 0이라 처음 열 때 그림이 뒤늦게 나온다. 그림 파일만 바뀌고 문서 글이 그대로면 문서를 다시 열거나 글이 바뀔 때까지 옛 그림이 남는다(문서를 연 뒤 생긴 그림 파일도 같다). 원격 그림 자리에 빈 블록 하나만큼 간격이 남는다.
 - **문서 메모(12):** README: 마크다운 본문의 줄 하나짜리 로컬 그림은 데이터 폴더 사본으로 그리고 이미지 보기와 같은 30일 규칙을 따른다. 원격 그림과 문단 속 그림은 그리지 않는다. RECIPE "Done when" 후보: 시험 문서의 그림, 없는 경로의 "그림을 못 읽음: <경로>", 좁은 pane에서 그림이 줄어드는지.
+
+### 2026-11-12 완료 (주 진행자)
+
+- 리뷰·재검토 모두 통과(마지막 sv2-rv10과 F-2 직접 재검토), 통합 검증(티켓 12·19) 통과, 최종 단계(change-review phase=final: PR 초안·회고 후보, 원본 해시 일치) 완료. 통합 head `d990852`: `node --test mods/side-viewer/` 362 통과·0 실패·0 skip·0 취소, `herdr-app check` 통과. push·PR은 하지 않았다(사용자: "pr 올리기전까지만").

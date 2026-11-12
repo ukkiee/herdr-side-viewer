@@ -4,7 +4,7 @@
 
 **Blocked by:** 13 (integrated)
 
-**Status:** integrated
+**Status:** done
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-22, AC-1·AC-19의 빈 파일 문장, "구현 결정"의 "빈 파일(AC-22)")
 
@@ -51,3 +51,7 @@
 - **판정:** R14-1(4 KiB를 넘는 공백뿐인 svg·비ASCII 공백 svg는 "열 수 없음") → 코드는 두고 명세 "빈 파일(AC-22)"에 판단 범위를 적음. R14-2(고친 글을 다 지우면 렌더링에 "비어 있음") → AC-6과 같은 규칙으로 명세에 적음. R14-Q1(명세 "상태와 실패"의 티켓 13 시절 문장) → 고침. R14-Q2(RECIPE "never on a notice" 문구) → 손 확인 뒤 README 문장(RV3-1~3)·preview.png 교체와 함께 고친다. 선택 개선 R14-O1·R14-O2는 남긴다.
 - **확인:** 고친 svg가 밖에서 비면 막대가 뜨는 동작 변화는 AC-4에 맞다(전 동작이 AC-4를 어겼다).
 - **실제 앱 필요:** 0바이트 md·svg·코드에서 cmd+S(R13-1), 빈 md·svg 안내 모양, 원문에 써서 렌더링한 미리 보기, 밖에서 비었을 때 막대.
+
+### 2026-11-12 완료 (주 진행자)
+
+- 리뷰·재검토 모두 통과(마지막 sv2-rv10과 F-2 직접 재검토), 통합 검증(티켓 12·19) 통과, 최종 단계(change-review phase=final: PR 초안·회고 후보, 원본 해시 일치) 완료. 통합 head `d990852`: `node --test mods/side-viewer/` 362 통과·0 실패·0 skip·0 취소, `herdr-app check` 통과. push·PR은 하지 않았다(사용자: "pr 올리기전까지만").

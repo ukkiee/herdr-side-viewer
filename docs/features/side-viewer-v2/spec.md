@@ -1,6 +1,6 @@
 # 명세: 사이드 뷰어 v2
 
-Status: ready-for-agent
+Status: done
 
 통합 기준: 브랜치 `feat/side-viewer-v2`, 기준 SHA `ead36fd3130fa0fb4901c3ca7fb760c8dbd60eb1` (`main`)
 
