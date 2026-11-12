@@ -108,7 +108,8 @@ export class CodeCards {
 
 // A code block's card. `take` is a CodeCards drawing cursor, or null; a block without a
 // prepared card (nothing prepared yet) shows its code as plain text in the same card.
-export function renderCodeCard(t, take, block, key) {
+// `onTerminal: (command, cx) => void` is the viewer's `>_`, or null for no such button.
+export function renderCodeCard(t, take, block, key, onTerminal = null) {
   const card = take?.(block) ?? null;
   const kind = card ?? codeLanguageOf(block.lang);
   const fill = cardFill(t);
@@ -120,7 +121,7 @@ export function renderCodeCard(t, take, block, key) {
       .child(card ? renderCode(id, card) : renderPlain(block))
       .child(h_flex().w_full().min_w(0).h(20).items_center().justify_between().gap(8)
         .child(div().min_w(0).truncate().text_size(12).text_color(t.muted).child(kind.label))
-        .child(h_flex().flex_none().items_center().gap(4).children(renderActions(t, id, card, block)))));
+        .child(h_flex().flex_none().items_center().gap(4).children(renderActions(t, id, card, block, kind.shell ? onTerminal : null)))));
 }
 
 // The gradient on a dark theme, drawn as a rounded shape over the card's plain bottom color.
@@ -166,10 +167,22 @@ function renderPlain(block) {
     .map((line) => div().w_full().min_w(0).min_h(ROW).child(line)));
 }
 
-// The buttons at the card's bottom right. A shell block's run-in-terminal button goes before
-// the copy button (card.shell says whether the block is one).
-function renderActions(t, id, card, block) {
-  return [renderCopy(t, id, card, block)];
+// The buttons at the card's bottom right. A shell block's `>_` goes before the copy button;
+// `onTerminal` is null for any other block.
+function renderActions(t, id, card, block, onTerminal) {
+  const copy = renderCopy(t, id, card, block);
+  return onTerminal ? [renderTerminal(t, id, block, onTerminal), copy] : [copy];
+}
+
+// Puts the block into the shell pane below the viewer, without Enter (shell-pane.js).
+function renderTerminal(t, id, block, onTerminal) {
+  return h_flex().id(`${id}-terminal`).flex_none().size(20).rounded(4).items_center().justify_center()
+    .cursor_pointer().text_color(t.muted).hover((style) => style.bg(t.hover).text_color(t.foreground))
+    .on_click((_event, cx) => {
+      cx.stop_propagation();
+      onTerminal(block.text, cx);
+    })
+    .child(svg("mods/side-viewer/terminal.svg").size(16));
 }
 
 // Puts the whole block on the clipboard, then shows a check mark for a moment.

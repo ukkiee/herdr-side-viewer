@@ -9,7 +9,8 @@
 //   onLink: (url, cx) => void
 //   codeCards,    the viewer's CodeCards (code-card.js), prepared for this text
 //   images,       the document's image copies (markdown-image-loader.js, forDocument)
-//   onCheckbox: (line, cx) => void, a click on a checkbox, with its source line
+//   onTerminal: (command, cx) => void   a shell code block's `>_`
+//   onCheckbox: (line, cx) => void   a click on a checkbox, with its source line
 // }
 //
 // The rendering draws markdown-blocks.js's blocks one by one, each kind in its own function:
@@ -38,7 +39,7 @@ function documentOf(text) {
   return parsed.doc;
 }
 
-export function renderMarkdown(t, { text, raw, generation, file, onLink, codeCards, images, onCheckbox }) {
+export function renderMarkdown(t, { text, raw, generation, file, onLink, codeCards, images, onTerminal, onCheckbox }) {
   const scroll = div().id("side-viewer-scroll").flex_1().min_h(0).overflow_y_scrollbar();
   if (raw) {
     // The source is drawn by the same element, fenced as one code block.
@@ -53,6 +54,7 @@ export function renderMarkdown(t, { text, raw, generation, file, onLink, codeCar
     t, onLink, footnotes: doc.footnotes,
     takeCard: codeCards?.drawing() ?? null,
     images,
+    onTerminal: onTerminal ?? null,
     onCheckbox,
     // A TextView sees one block, so reference-style links need the definitions next to them.
     references: doc.references.length ? `\n\n${doc.references.join("\n")}` : "",
@@ -208,7 +210,7 @@ function renderImageBlock(ctx, block, key) {
 // A code block is a card (code-card.js). Inside a list item or a quote it takes the column
 // that item's or quote's other blocks take.
 function renderCodeBlock(ctx, block, key) {
-  return renderCodeCard(ctx.t, ctx.takeCard, block, key);
+  return renderCodeCard(ctx.t, ctx.takeCard, block, key, ctx.onTerminal);
 }
 
 // The footnotes' text, numbered as their marks in the body, at the end of the document.
