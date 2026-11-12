@@ -7,13 +7,17 @@
 //     absolute paths from that terminal's text (`hc read <terminal> --lines 1000`), latest first,
 //     at most CHECK_LIMIT; cwd null leaves relative paths out; groups: extensions.json
 //   existingPaths(candidates, output) -> string[]
-//     the candidates the machine has, at most PICK_LIMIT; output: the existence check run once on
-//     that machine with the candidates, printing each existing path on a line of its own
+//     the candidates the machine has, at most PICK_LIMIT; output: the paths among them that are
+//     files there, one per line, as file-access.js exists gives them (from one command run
+//     on that machine, machine.js EXISTS) joined with newlines
+//   readFailureOf(read), pickerFailureOf(error) -> { state, reason }
+//     a failed `hc read` of the terminal as an error, and what the picker shows for an error
 //   filterPaths(paths, typed) -> string[]
 //     the paths containing what was typed, ignoring case
 //   openTargetOf({ conversation, panes }) -> { viewer: pane } | { split: { pane, direction } }
 //     where the pick opens: the side viewer shown in the conversation's tab, else a split
 import { viewOf } from "./views.js";
+import { failureOf } from "./remote-results.js";
 
 // How many candidates go to the existence check at most. False ones ("Next.js", a path that
 // was only mentioned) drop out there, so this is larger than what the picker shows.
@@ -51,10 +55,32 @@ export function pathCandidates({ text, cwd, home, groups }) {
 export const PICK_LIMIT = 30;
 
 // The candidates (pathCandidates) that the existence check found on the machine, in their
-// order, at most PICK_LIMIT. `output` is that check's output: one existing path per line.
+// order, at most PICK_LIMIT. `output` is the paths file-access.js exists gave, one per line.
 export function existingPaths(candidates, output) {
   const exists = new Set(String(output ?? "").split(/\r?\n/));
   return candidates.filter((path) => exists.has(path)).slice(0, PICK_LIMIT);
+}
+
+// A failed `hc read` of the conversation's terminal ({ code, stdout, stderr }) as what to throw:
+// hc's JSON error from stderr ({"error":{"kind","message","hint"}}, exit 3 for a terminal
+// that is gone), which remote-results.js failureOf reads, else an Error of its words.
+export function readFailureOf(read) {
+  const said = String(read.stderr || read.stdout || "").trim();
+  try {
+    const json = JSON.parse(said);
+    if (json?.error) return json;
+  } catch {}
+  return new Error(said || `hc read exited ${read.code}`);
+}
+
+// What the picker shows when finding paths failed with `error`, as { state, reason }: a
+// machine out of reach or a Windows machine has its own state, anything else is "failed" with
+// the first line of its words as `reason`.
+export function pickerFailureOf(error) {
+  const failure = failureOf(error);
+  const state = failure === "unreachable" || failure === "windows" ? failure : "failed";
+  const reason = String(error?.error?.message ?? error?.message ?? error).split("\n")[0];
+  return { state, reason };
 }
 
 // The paths that contain `typed`, ignoring case. Nothing typed keeps them all.

@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { pathCandidates, existingPaths, filterPaths, conversationOf, openTargetOf } from "./path-picker.js";
+import { pathCandidates, existingPaths, filterPaths, conversationOf, openTargetOf, readFailureOf, pickerFailureOf } from "./path-picker.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const HOME = "/Users/me";
@@ -170,4 +170,26 @@ test("without a shown side viewer in its tab a pick splits the conversation to t
   assert.deepEqual(openTargetOf({ conversation: "p1", panes: alone }), { split: { pane: "p1", direction: "right" } });
   const zoomed = [{ ...conversation, zoomed: true }, viewer];
   assert.deepEqual(openTargetOf({ conversation: "p1", panes: zoomed }), { split: { pane: "p1", direction: "right" } });
+});
+
+// `hc read t9999 --lines 1` for a terminal that is gone: exit 3, on stderr.
+const NO_TERMINAL = { code: 3, stdout: "", stderr: '{"error":{"hint":"see `hc ls --all`","kind":"not_found","message":"no terminal \\"t9999\\""}}\n' };
+
+test("a failed read of the conversation's terminal fails the picker with hc's own words", () => {
+  assert.deepEqual(pickerFailureOf(readFailureOf(NO_TERMINAL)), { state: "failed", reason: 'no terminal "t9999"' });
+});
+
+test("a read that says nothing fails the picker with its exit code", () => {
+  assert.deepEqual(pickerFailureOf(readFailureOf({ code: 5, stdout: "", stderr: "" })), { state: "failed", reason: "hc read exited 5" });
+  assert.deepEqual(pickerFailureOf(readFailureOf({ code: 1, stdout: "", stderr: "sh: hc: not found\n" })), { state: "failed", reason: "sh: hc: not found" });
+});
+
+test("a machine out of reach or a Windows machine gets its own state, not a failure", () => {
+  assert.equal(pickerFailureOf(new Error("machine linux-box is unreachable")).state, "unreachable");
+  assert.equal(pickerFailureOf(new Error("`herdr.exec`: [hc] timed out after 1005 ms: ended")).state, "unreachable");
+  assert.equal(pickerFailureOf(new Error("cannot start sh: program not found")).state, "windows");
+});
+
+test("a failure's reason is its first line", () => {
+  assert.deepEqual(pickerFailureOf(new Error("first\nsecond")), { state: "failed", reason: "first" });
 });

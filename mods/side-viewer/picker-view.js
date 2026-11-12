@@ -8,26 +8,15 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, ScrollHandle } from "gpui-base";
 import { hc, focused, panes, spaces, machines, readTextFile, appHome, closeOverlay, props } from "herdr";
-import { conversationOf, pathCandidates, existingPaths, filterPaths } from "./path-picker.js";
+import { conversationOf, pathCandidates, existingPaths, filterPaths, readFailureOf, pickerFailureOf } from "./path-picker.js";
 import { machineOf, spaceValue } from "./machine.js";
 import { accessOf } from "./file-access.js";
-import { failureOf, unavailable } from "./remote-results.js";
+import { unavailable } from "./remote-results.js";
 import { wordsOf } from "./i18n.js";
 
 // How tall the list may grow before it scrolls, and one row's height, px.
 const LIST_MAX = 352;
 const ROW = 32;
-
-// A failed `hc read` says why on stderr as {"error":{"kind","message","hint"}} (rc 3 for
-// `no terminal "t9"`, rc 4 for `unknown machine "x"`), the shape failureOf reads.
-function hcError(read) {
-  const said = String(read.stderr || read.stdout || "").trim();
-  try {
-    const json = JSON.parse(said);
-    if (json?.error) return json;
-  } catch {}
-  return new Error(said || `hc read exited ${read.code}`);
-}
 
 export class PathPicker {
   // open({ file, conversation, space }, cx): main.js's openPicked. tr: the viewer's
@@ -76,9 +65,7 @@ export class PathPicker {
         this.paths = await this.existing();
         this.state = this.paths.length ? "listed" : "none";
       } catch (error) {
-        const failure = failureOf(error);
-        this.state = failure === "unreachable" || failure === "windows" ? failure : "failed";
-        this.reason = String(error?.error?.message ?? error?.message ?? error).split("\n")[0];
+        ({ state: this.state, reason: this.reason } = pickerFailureOf(error));
       }
       cx.notify();
     });
@@ -90,7 +77,7 @@ export class PathPicker {
     const access = accessOf(this.machine);
     const home = await access.home();
     const read = await hc(["read", this.conversation.terminal, "--lines", "1000"]);
-    if (read.code !== 0) throw hcError(read);
+    if (read.code !== 0) throw readFailureOf(read);
     const groups = JSON.parse(await readTextFile(`${appHome()}/mods/side-viewer/extensions.json`));
     const candidates = pathCandidates({ text: read.stdout, cwd: this.conversation.cwd, home, groups });
     const found = await access.exists(candidates);
