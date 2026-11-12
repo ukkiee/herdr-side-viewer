@@ -113,6 +113,7 @@ export default class SideViewer extends View {
       }
       this.ensurePreview(cx);
       this.generation++;
+      if (content.file === handoff.file) this.renderingFollows(cx);
       this.probed = null;
       this.load(cx);
       cx.notify();
@@ -181,8 +182,19 @@ export default class SideViewer extends View {
       content.editor.set_value(content.text);
     }
     if (content.state === "markdown") this.generation++;
+    if (content.file === file) this.renderingFollows(cx);
     this.probed = null;
     this.load(cx);
+  }
+
+  // The markdown rendering's code cards and pictures follow the text now shown. Whatever puts
+  // text into the editor with set_value calls this itself: set_value is not seen to report a
+  // "change" (edited).
+  renderingFollows(cx) {
+    const content = this.content;
+    if (content.state !== "markdown") return;
+    this.prepareCards(content.file, content, cx);
+    this.images.prepare(content.file, shownText(this.edits, content.file, content.text), false, cx);
   }
 
   // A viewer tab's name follows the shown file: after a link, back, and an open request.
@@ -503,8 +515,9 @@ export default class SideViewer extends View {
     return editor;
   }
 
-  // The editor's text changed, by typing or by set_value. An editor that is no longer on
-  // screen is ignored: its content has been replaced.
+  // The editor's text changed by typing. Text put in with set_value is followed by its
+  // caller (renderingFollows). An editor that is no longer on screen is ignored: its content
+  // has been replaced.
   edited(editor, cx) {
     const content = this.content;
     if (content.editor !== editor) return;
@@ -598,6 +611,7 @@ export default class SideViewer extends View {
       content.editor.set_value(content.text);
     }
     if (content.state === "markdown") this.generation++;
+    if (content.file === file) this.renderingFollows(cx);
     this.probed = null;
     this.load(cx);
     cx.notify();
