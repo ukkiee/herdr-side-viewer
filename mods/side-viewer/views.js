@@ -39,6 +39,20 @@ export function viewOf(file, groups) {
   return null;
 }
 
+// Whether the body for a content state takes typing: the code view, and the markdown view
+// while it shows the source (`raw`). The rendering, images and notices do not.
+export function editable(state, raw) {
+  return state === "code" || (state === "markdown" && raw === true);
+}
+
+// The editor state options a content state gets once its text is read, or null for one
+// drawn without an editor. The markdown source wraps long lines to the pane; code does not.
+export function editorOf(state) {
+  if (state === "markdown") return { soft_wrap: true };
+  if (state === "code") return { soft_wrap: false };
+  return null;
+}
+
 // Why a file is not drawn, as a notice state, or null when it can be read and drawn.
 // `found` is what viewOf gave, `probe` what readProbe gave.
 export function blockerOf(found, probe) {
