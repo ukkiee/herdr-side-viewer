@@ -59,6 +59,21 @@ export function diskRead(edits, file, text) {
   return { edits: withBar(edits, file, bar), step: "keep" };
 }
 
+// The bar's "discard my edits and read again": the file shows what is on disk.
+export function discarded(edits, file) {
+  return without(edits, file);
+}
+
+// The bar's "overwrite with mine": the edit now stands against the disk text the bar found,
+// so the save that follows (saveOf) expects that text and replaces it. Without a conflict
+// the edits are left as they are.
+export function overwritten(edits, file) {
+  const entry = file ? edits[file] : null;
+  if (entry?.bar?.kind !== "conflict") return edits;
+  if (entry.text === entry.bar.disk) return without(edits, file);
+  return { ...edits, [file]: { disk: entry.bar.disk, text: entry.text } };
+}
+
 const MESSAGES = {
   conflict: "밖에서 바뀌었습니다",
   deleted: "파일이 지워졌습니다.",

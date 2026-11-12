@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten } from "./edit-state.js";
 
 const A = "/work/a.md";
 
@@ -155,6 +155,35 @@ test("typing goes on under the bar, and the bar stays until one of its buttons i
   edits = typed(edits, A, "one\n", "one\n");
   assert.equal(barOf(edits, A).kind, "conflict");
   assert.equal(unsaved(edits, A), true);
+});
+
+test("discarding drops the edits and the bar, so the file shows what is on disk", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, "theirs\n").edits;
+  const after = discarded(edits, A);
+  assert.equal(unsaved(after, A), false);
+  assert.equal(barOf(after, A), null);
+  assert.equal(shownText(after, A, "theirs\n"), "theirs\n");
+  assert.equal(saveOf(after, A), null);
+});
+
+test("overwriting saves my text, expecting what is on disk now", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, "theirs\n").edits;
+  edits = overwritten(edits, A);
+  assert.equal(barOf(edits, A), null);
+  assert.deepEqual(saveOf(edits, A), { path: A, text: "mine\n", expected: "theirs\n" });
+  // A later change on disk is a conflict again, against the text overwritten.
+  edits = diskRead(edits, A, "theirs again\n").edits;
+  assert.equal(barOf(edits, A).kind, "conflict");
+  edits = overwritten(edits, A);
+  assert.deepEqual(saveOf(edits, A), { path: A, text: "mine\n", expected: "theirs again\n" });
+});
+
+test("overwriting with nothing to overwrite leaves the edits alone", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  assert.deepEqual(saveOf(overwritten(edits, A), A), { path: A, text: "mine\n", expected: "one\n" });
+  assert.deepEqual(overwritten(noEdits(), A), noEdits());
 });
 
 test("a deleted file's edits stay even when typed back to the text read before", () => {
