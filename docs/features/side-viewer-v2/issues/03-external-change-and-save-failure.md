@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** integrated
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-4, AC-5)
 
@@ -21,11 +21,26 @@
 - 경계 3: `herdr-app check mods/side-viewer`와 막대가 보이는 상태의 임시 사본 check
 - 경계 4: 고치는 중에 셸에서 같은 파일을 바꾸기, 권한을 없앤 파일에 저장, 파일을 지운 뒤 저장, 1 MiB 넘게 붙여 넣고 저장
 
-- [ ] 고친 내용이 있을 때 밖에서 바뀌면 막대가 뜨고 다시 읽지 않는다
-- [ ] 두 버튼이 명세대로 동작한다
-- [ ] 저장 순간 디스크가 다르면 쓰지 않고 막대가 뜬다
-- [ ] 세 가지 저장 실패가 이유와 함께 보이고 수정이 남는다
-- [ ] 고친 내용이 없으면 v1처럼 다시 읽는다
-- [ ] mod 오류가 나지 않는다
+- [x] 고친 내용이 있을 때 밖에서 바뀌면 막대가 뜨고 다시 읽지 않는다 (경계 1·3과 코드 대조. 실제 앱 확인은 미실행, 12에서 한다)
+- [x] 두 버튼이 명세대로 동작한다 (경계 1·3과 코드 대조. 실제 앱 확인은 미실행, 12에서 한다)
+- [x] 저장 순간 디스크가 다르면 쓰지 않고 막대가 뜬다 (경계 1·3과 코드 대조. 실제 앱 확인은 미실행, 12에서 한다)
+- [x] 세 가지 저장 실패가 이유와 함께 보이고 수정이 남는다 (경계 1·3과 코드 대조. 실제 앱 확인은 미실행, 12에서 한다)
+- [x] 고친 내용이 없으면 v1처럼 다시 읽는다 (경계 1·3과 코드 대조. 실제 앱 확인은 미실행, 12에서 한다)
+- [x] mod 오류가 나지 않는다 (경계 1·3과 코드 대조. 실제 앱 확인은 미실행, 12에서 한다)
 
 **완료 조건:** 위 항목 전부, 경계 1·3 통과.
+
+## Comments
+
+### 2026-11-12 통합 (주 진행자)
+
+- **결과:** 브랜치 `sv2/03-external-change-and-save-failure`의 `3b2dcce`·`9f209d8`·`effa181`·`29e9e8d`(편집 상태 해석: 디스크 변경, 지워짐, 두 버튼, 1 MiB, 저장 거부), `9c43a2f`(막대와 main.js 연결), `7240875`(통합 tip 반영)를 `feat/side-viewer-v2`에 fast-forward로 합쳤다.
+- **완료 조건:** 경계 1·3 통과.
+  - 작업자(`7240875`): `node --test mods/side-viewer/edit-state.test.mjs` 27 통과·0 실패·0 skip, `herdr-app check mods/side-viewer` 통과, 충돌 막대가 보이는 임시 사본과 실패 막대(버튼 없음) 사본의 check 통과. 막대 버튼을 일부러 깨면 check가 실패해 막대가 실제로 그려진다는 것도 확인했다.
+  - 통합 담당(`7240875`): `node --test mods/side-viewer/` 209 통과·0 실패·0 skip·0 취소, `herdr-app check mods/side-viewer` 통과.
+- **저장 실패를 가르는 근거(Herdr 소스 `src/mod_files.rs`, 실측 없음):** 1 MiB 초과는 `"Text file exceeds 1 MiB"`(UTF-8 바이트). 디스크가 `expected`와 다르면 `"The file changed outside Herdr. …"`이고, **지워진 파일도 같은 문구로 거부된다.** 그래서 거부 뒤 다시 읽어 null이면 "파일이 지워졌습니다."로 가른다. 권한은 Rust io 오류의 `(os error 13|1|30)`으로 가른다. `herdr-app check`는 비동기 작업을 끝까지 돌리지 않아 오류 문구를 실측하지 못했다.
+- **결정(주 진행자):** 세 이유 밖의 저장 실패(디스크 가득 참 등)는 "저장하지 못했습니다: <오류>"를 막대에 보인다. 명세 문구에 없던 것을 작업자가 더했고, 조용히 삼키지 않는 쪽이 AC-5의 "고친 내용은 그대로 남는다"·"mod 오류가 나지 않는다"와 맞아 받아들였다. 명세 "화면"의 안내 문구에 함께 적었다.
+- **미실행:** 경계 4(고치는 중 셸에서 같은 파일 바꾸기, 권한 없는 파일에 저장, 지운 뒤 저장, 1 MiB 넘게 붙여 넣고 저장). 티켓 12에서 확인한다.
+- **경계 4 재현 주의(12):** Herdr는 같은 폴더에 임시 파일을 만들어 rename으로 바꾸므로 `chmod 444` 파일은 저장이 **성공할 가능성이 크다**(소스 근거). "권한 없음"은 폴더를 `chmod 555`로 잠그거나 파일을 `chmod 000`으로 해서 재현한다.
+- **자리(11용):** `mods/side-viewer/edit-state.js`에 `diskRead`(읽은 디스크 글로 할 일: show/keep와 막대), `barOf`, `discarded`, `overwritten`, `startSave`(1 MiB 사전 차단), `refusalOf`, `saveFailed`, `SAVE_LIMIT`. 항목에 `bar`(`{kind: "conflict", disk}` 또는 `{kind: "failed", reason, detail?}`)가 붙을 수 있다. 체크박스의 바로 저장이 실패를 막대로 보이려면 먼저 항목을 만들어야 한다. `main.js`는 `load`의 읽기 완료에서 `diskRead`로 판단하고, 고친 내용이 있고 그 파일의 편집기가 화면에 있으면 다시 그리지 않는다. 새 메서드 `discard`, `overwrite`, `bar`. 막대는 `mods/side-viewer/conflict-bar.js`의 `renderBar`, 머리줄과 본문 사이.
+- **절차 메모:** 작업자가 테스트 한 묶음을 셸 heredoc로 덧붙였다(계약은 Edit·Write 도구). 결과물에는 차이가 없다.
