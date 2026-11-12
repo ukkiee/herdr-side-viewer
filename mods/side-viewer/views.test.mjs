@@ -8,6 +8,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, switchable, editedContentOf, opensInTab } from "./views.js";
 
+import { contentOf } from "./document.js";
+import { noEdits, typed, diskRead, shownText, barOf } from "./edit-state.js";
+
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const probe = (bytes) => ({ found: true, readable: true, bytes, modified: 1, head: [] });
 
@@ -87,12 +90,24 @@ test("an image is drawn up to exactly 20 MB and not beyond", () => {
   assert.equal(blockerOf(found, probe(20971521)), "large");
 });
 
-test("a file that is gone, unreadable, empty or of no view is stopped with its reason", () => {
+test("a file that is gone, unreadable or of no view is stopped with its reason", () => {
   const found = viewOf("/work/app.ts", groups);
   assert.equal(blockerOf(null, probe(10)), "unsupported");
   assert.equal(blockerOf(found, { found: false }), "missing");
   assert.equal(blockerOf(found, { found: true, readable: false }), "unreadable");
-  assert.equal(blockerOf(found, probe(0)), "empty");
+});
+
+test("an empty markdown or code file is read into its editable view; an empty picture gets the empty notice", () => {
+  for (const name of ["plan.md", "app.ts", "server.log"]) {
+    assert.equal(blockerOf(viewOf(`/work/${name}`, groups), probe(0)), null, name);
+  }
+  for (const name of ["logo.svg", "shot.png", "logo.svgz"]) {
+    assert.equal(blockerOf(viewOf(`/work/${name}`, groups), probe(0)), "empty", name);
+  }
+  assert.equal(editable("code", false), true);
+  assert.equal(editable("markdown", true), true);
+  assert.equal(editable("markdown", false), false);
+  assert.equal(editable("empty", true), false);
 });
 
 // The probe is the script the mod runs to learn about a file before reading it.
@@ -260,6 +275,22 @@ test("a file with unsaved edits that is now gone, empty or too large comes back 
     { state: "code", text: "x = 1\n", language: "python" });
   assert.deepEqual(editedContentOf("/work/logo.svg", { state: "missing" }, viewOf("/work/logo.svg", groups), "<svg/>"),
     { state: "svg", text: "<svg/>", path: null, size: null });
+});
+
+test("an edited markdown or code file emptied outside keeps the edits on screen and raises the changed-outside bar", () => {
+  for (const [file, before] of [["/work/plan.md", "# plan\n"], ["/work/main.py", "x = 1\n"]]) {
+    const found = viewOf(file, groups);
+    // The viewer's read of the emptied file, as main.js does it: no blocker, then contentOf.
+    assert.equal(blockerOf(found, probe(0)), null, file);
+    const read = contentOf(file, "", found);
+    const edits = typed(noEdits(), file, before, before + "more\n");
+    const step = diskRead(edits, file, "");
+    assert.equal(step.step, "keep", file);
+    const content = editedContentOf(file, read, found, step.edits[file].disk);
+    assert.equal(content.state, found.view, file);
+    assert.equal(shownText(step.edits, file, content.text), before + "more\n", file);
+    assert.deepEqual(barOf(step.edits, file), { kind: "conflict", message: "밖에서 바뀌었습니다" }, file);
+  }
 });
 
 test("an edited svg that grew past the text limit or stopped being svg comes back as its source, other pictures do not", () => {

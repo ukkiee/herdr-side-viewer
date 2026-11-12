@@ -393,8 +393,7 @@ export default class SideViewer extends View {
     const remembered = settledProbe(file, probe, Math.floor(Date.now() / 1000));
     const blocker = blockerOf(found, probe);
     if (blocker) {
-      const text = blocker === "missing" ? null : blocker === "empty" ? "" : undefined;
-      return { content: { state: blocker }, probe: remembered, text };
+      return { content: { state: blocker }, probe: remembered, text: blocker === "missing" ? null : undefined };
     }
     const text = await readTextFile(file);
     return { content: contentOf(file, text, found), probe: remembered, text };

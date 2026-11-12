@@ -77,12 +77,13 @@ export function editorOf(state) {
 }
 
 // Why a file is not drawn, as a notice state, or null when it can be read and drawn.
-// `found` is what viewOf gave, `probe` what readProbe gave.
+// `found` is what viewOf gave, `probe` what readProbe gave. Only a picture is stopped for
+// being empty: an empty markdown or code file opens in its view, ready to be written in.
 export function blockerOf(found, probe) {
   if (!found) return "unsupported";
   if (!probe.found) return "missing";
   if (!probe.readable) return "unreadable";
-  if (probe.bytes === 0) return "empty";
+  if (probe.bytes === 0 && found.view === "image") return "empty";
   if (probe.bytes > (found.view === "image" ? IMAGE_LIMIT : TEXT_LIMIT)) return "large";
   return null;
 }
