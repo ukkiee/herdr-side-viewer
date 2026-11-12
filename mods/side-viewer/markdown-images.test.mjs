@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { imageFileOf, imageBoxOf, imagesOf } from "./markdown-images.js";
 import { parseMarkdown } from "./markdown-blocks.js";
 
-const DOC = "/Users/me/repo/docs/features/side-viewer-v2/markdown-sample.md";
+const DOC = "/Users/me/repo/docs/samples/markdown-sample.md";
 
 test("a relative image path is taken from the document's folder, `..` included", () => {
-  assert.equal(imageFileOf("../../../preview.png", DOC), "/Users/me/repo/preview.png");
-  assert.equal(imageFileOf("shots/a.png", DOC), "/Users/me/repo/docs/features/side-viewer-v2/shots/a.png");
-  assert.equal(imageFileOf("./my pic.png", DOC), "/Users/me/repo/docs/features/side-viewer-v2/my pic.png");
+  assert.equal(imageFileOf("../../preview.png", DOC), "/Users/me/repo/preview.png");
+  assert.equal(imageFileOf("shots/a.png", DOC), "/Users/me/repo/docs/samples/shots/a.png");
+  assert.equal(imageFileOf("./my pic.png", DOC), "/Users/me/repo/docs/samples/my pic.png");
 });
 
 test("an absolute image path is used as written", () => {
@@ -16,7 +16,7 @@ test("an absolute image path is used as written", () => {
 });
 
 test("a percent-encoded name is the file with the decoded name", () => {
-  assert.equal(imageFileOf("my%20pic.png", DOC), "/Users/me/repo/docs/features/side-viewer-v2/my pic.png");
+  assert.equal(imageFileOf("my%20pic.png", DOC), "/Users/me/repo/docs/samples/my pic.png");
   assert.equal(imageFileOf("/tmp/100%.png", DOC), "/tmp/100%.png");
 });
 
