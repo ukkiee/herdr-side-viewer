@@ -4,7 +4,7 @@ A document to check, in one place, how each element of the side viewer's markdow
 
 ## Text styles
 
-**Bold**, *italic*, ~~strikethrough~~, `inline code`, [a document in the same folder](../side-viewer/spec.md), [a web link](https://herdr.dev).
+**Bold**, *italic*, ~~strikethrough~~, `inline code`, [a document in the same folder](code-sample.md), [a web link](https://herdr.dev).
 
 ### Third-level heading
 
@@ -61,7 +61,7 @@ A code block without a language
 
 ## Image in the body
 
-![The repository's preview picture](../../../preview.png)
+![The repository's preview picture](../../preview.png)
 
 ## Footnotes
 

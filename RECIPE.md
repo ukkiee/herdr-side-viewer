@@ -83,7 +83,7 @@ Top to bottom:
     `불러오는 중…` (loading), `이 파일은 비어 있습니다.` (an empty `svgz` or picture; an
     empty or blank markdown or svg shows it on its rendering side, under the folder and
     name for markdown, with the `렌더링 | 원문` switch to a source ready to type, and an
-    empty or blank code file opens as an empty code view: v2 AC-22),
+    empty or blank code file opens as an empty code view),
     `이 파일은 더 이상 없습니다.` (gone), `이 파일을 읽을 수 없습니다.` (unreadable),
     `뷰어에서 열기에는 너무 큽니다.` (too large),
     `이 종류의 파일은 뷰어에서 열 수 없습니다.` (no view for this file).
@@ -381,7 +381,7 @@ Platform:
   opens a new one.
 - `herdr-app check` draws once, with no file and an empty shared state, so it only ever
   sees the English `No file to open.` It does not finish async work either, so what a save failure really says was never seen
-  through it. The tickets checked other screens with temporary copies whose first scene was
+  through it. Another screen can only be checked with a temporary copy whose first scene is
   changed; nothing after a read or a click is covered by check.
 - Language names the editor knows are not documented. `toml`, `swift`, `kotlin`, `scss`,
   `xml` and `html` are guesses (`html` was only found in Herdr's binary, its colors not seen
@@ -394,8 +394,13 @@ Platform:
   the editor gets no `s` (seen in the app). Herdr's keys and menu don't take cmd+S.
 - `writeTextFile(path, text, expected)` refuses with `The file changed outside Herdr. …`
   when the file is not `expected`, and with the same words when it is gone; so a refusal is
-  followed by a read, and null means deleted. Over 1 MiB it says `exceeds 1 MiB`. Both from
-  Herdr's source (`src/mod_files.rs`), not seen in the app.
+  followed by a read, and null means deleted (seen in the app, for a change and for a deleted
+  file). Over 1 MiB it says `exceeds 1 MiB`, from Herdr's source (`src/mod_files.rs`), not
+  seen in the app: the viewer never sends that much.
+- Herdr API errors arrive with a `` `herdr.<function>`: `` prefix in front of the wording
+  (`` `herdr.writeTextFile`: The file changed outside Herdr. … ``). Code that branches on an
+  error's wording strips that prefix first, and its tests expect the exact text the real app
+  gave, prefix included, not wording copied from `herdr.d.ts` or Herdr's source.
 - Herdr saves through a temporary file in the same folder and a rename. A read-only file
   (`chmod 444`) in a writable folder is therefore probably saved anyway; no permission is a
   folder without write (`chmod 555`) or a file with mode 000.
@@ -411,7 +416,7 @@ Platform:
   are dropped instead of handed to it.
 - A mod has no per-character style: text inside a block is a `TextView`. Whether a
   wrapping `div`'s size, weight and color reach the `TextView` (headings, quotes, footnotes)
-  was not seen before ticket 12.
+  is not documented; step 32 of Done when checks it on screen.
 - `hc keys` can't type `"` `|` `$` `>` `&` `~` or Korean, and `hc send` presses Enter and
   pastes after a draft (waiting up to 60 seconds after the person's last key). So `>_` never
   sends the command as a line: the shell is prepared once with a zle widget on
@@ -454,7 +459,8 @@ macOS:
   confirmation window, once per file type, on take-over and on restore alike. No app can
   dismiss it. "Keep" comes back as an error with the default unchanged; `takeover.sh` tells
   it from a failure by comparing the default before and after.
-- A 30-second wait per window was too short for a person to read and answer; it is 300.
+- Each window gets up to 300 seconds: a person needs that long to read both app names and
+  answer.
 - The windows come one after another in the same place and each names both apps, so they
   are easy to answer the same way every time. On restore the button that names the router
   means keep. Nothing is lost by that: the next run asks only for what is still left.
@@ -475,8 +481,8 @@ macOS:
   changes is not known.
 - The router must never come to the front, or "the app in front" would be itself:
   `LSBackgroundOnly` and activation policy `prohibited`.
-- Quitting right after a file lost a second file macOS sent meanwhile; the router waits
-  2 seconds without files.
+- Quitting right after a file would lose a second file macOS sends meanwhile, so the router
+  waits 2 seconds without files.
 - macOS starts the router without your shell's environment: it uses
   `~/.local/bin/herdr-app` and `~/.config/herdr-app` whatever `HERDR_APP_HOME` was at
   install time. `SIDE_VIEWER_DATA` is for tests; the mod always uses the app home.
@@ -506,14 +512,12 @@ Limits and assumptions:
 
 ## Done when
 
-Two lists: v1's, with the items v2 changed rewritten, and v2's. The AC numbers in the v1
-list are those of `docs/features/side-viewer/spec.md`, in the v2 list those of
-`docs/features/side-viewer-v2/spec.md`. Both lists are done by hand in the app; nothing
-drives the Herdr window. The words on screen and the command output in both lists are as a
-Korean screen shows them (macOS's first preferred language Korean); v2 steps 30 and 31
-check English.
+Each step is one check, done by hand in the app; nothing drives the Herdr window. The
+words on screen and the command output are as a Korean screen shows them (macOS's first
+preferred language Korean); steps 45 and 46 check English. Step 48 gives the extensions
+back, so it comes last.
 
-### v1
+### Install, router and viewing
 
 Set up: run `./install.sh`, then in a terminal
 `router() { "$HOME/Applications/Side Viewer Router.app/Contents/MacOS/SideViewerRouter" "$@"; }`.
@@ -523,171 +527,163 @@ and a path in code formatting.
 
 1. `./install.sh` prints `check passed`, `built …/Side Viewer Router.app`, and the
    `--make-default` command. Where the router was already built, `router --status` reads
-   the same before and after: installing changes no default app. (AC-10)
+   the same before and after: installing changes no default app.
 2. `router --status` prints one line per extension: extension, current default app, recorded
-   original app or `-`. (AC-5)
+   original app or `-`.
 3. `router --make-default` first prints `macOS 확인 창이 N번 뜹니다.`, and exactly N windows
    follow. Pick the router in every window but one, and keep the current app in that one:
    the output lists the kept extensions under `유지를 선택함`, the rest under `바뀜`, the
-   exit code is 3, and `router --status` agrees. No code extension changed. (AC-5)
+   exit code is 3, and `router --status` agrees. No code extension changed.
 4. `router --make-default` again asks only for what was kept; pick the router. Afterwards
-   no line of `original-apps.tsv` names `dev.ukkiee.side-viewer-router`. (AC-5)
+   no line of `original-apps.tsv` names `dev.ukkiee.side-viewer-router`.
 5. `router --make-default code` announces its windows and takes over the code extensions,
    `html htm shtml shtm` among them in one window. Where the router held nothing before,
    that is at most 35 windows; where step 3–4 ran first, at most the 28 code ones. The
    count printed matches the windows that come. Run it only if you choose to take over the
-   code group (README, "Taking over the code extensions"). (AC-5; v2 AC-17)
+   code group (README, "Taking over the code extensions").
 6. With no side viewer in the tab, cmd-click the markdown path: a pane appears to the right
    of the focused pane with the document rendered, the file name and folder in the header.
    The same works for the relative path, the line-number path (shown from the top) and the
-   code-formatted path. (AC-1, AC-8)
+   code-formatted path.
 7. Cmd-click the code path with the viewer showing: the pane count stays, the content
-   becomes the code with line numbers and syntax colors, in an editor you can type in (v2
-   list, 4). `←` appears; clicking it shows the markdown again, and `←` is gone. (AC-2,
-   AC-3; v2 AC-1)
+   becomes the code with line numbers and syntax colors, in an editor you can type in (step
+   21). `←` appears; clicking it shows the markdown again, and `←` is gone.
 8. Cmd-click the image path: the picture shows, no wider than the pane, and shrinks as the
-   pane is narrowed. A `.log` or `.csv` file shows as code without colors. (AC-3)
+   pane is narrowed. A `.log` or `.csv` file shows as code without colors.
 9. In another tab without a viewer, cmd-click a path: a new pane appears in that tab.
-   (AC-1, AC-2)
 10. With a file showing, change it on disk: the content updates without a click. Delete it:
-    `이 파일은 더 이상 없습니다.` Put it back: the content returns. (AC-6)
+    `이 파일은 더 이상 없습니다.` Put it back: the content returns.
 11. In a markdown document, click a link to another markdown file (relative link): it opens
     in the same viewer and `←` returns. An `https` link opens in the browser. A link to a
-    local non-markdown file only shows it in Finder. (AC-7)
-12. The `렌더링 | 원문` switch shows for a drawn markdown document (and an svg, v2 list)
+    local non-markdown file only shows it in Finder.
+12. The `렌더링 | 원문` switch shows for a drawn markdown document (and an svg, step 30)
     only, never on a notice state (an empty markdown or svg rendering keeps it with its
-    notice text, v2 AC-22), and its other cell flips the view. `원래 앱으로 열기` opens the
+    notice text, step 22), and its other cell flips the view. `원래 앱으로 열기` opens the
     file in its original app and the side viewer does not change. `Finder에서 보기` opens a
     Finder window with the file selected. Narrow the pane: name and folder are cut short,
-    the switch and the three buttons stay. (AC-8; v2 AC-12)
+    the switch and the three buttons stay.
 13. Open, one at a time: a text file over 1 MB with a listed extension, an image over
     20 MB, an empty `.png`, a file with mode 000, and a text file renamed to `.png`. Each
     shows its notice (`뷰어에서 열기에는 너무 큽니다.` for the two large ones,
     `이 파일은 비어 있습니다.`, `이 파일을 읽을 수 없습니다.`,
     `이 종류의 파일은 뷰어에서 열 수 없습니다.`) with `원래 앱으로 열기` and `Finder에서 보기`
     working and no `새 탭으로 열기`, and `herdr-app status` reports no mod error. An empty
-    markdown, svg or code file opens in its view instead; v2 step 5 checks it. (AC-9; v2 AC-22)
+    markdown, svg or code file opens in its view instead; step 22 checks it.
 14. `herdr-app do pane.split --direction right --mod side-viewer --props '{"file":"/etc/hosts"}'`
     shows `이 종류의 파일은 뷰어에서 열 수 없습니다.` with `원래 앱으로 열기` and
-    `Finder에서 보기`. (AC-9)
+    `Finder에서 보기`.
 15. In Finder, open a taken-over file with Herdr not in front: it opens in the original app
     `router --status` lists, and no side viewer opens or changes. A `.mdx` file with no
-    recorded original app opens in TextEdit. (AC-4)
+    recorded original app opens in TextEdit.
 16. In a terminal, with a real markdown file:
     `SIDE_VIEWER_HERDR_APP=/nonexistent sh "$HOME/Applications/Side Viewer Router.app/Contents/Resources/open.sh" /path/to/file.md /Applications/Herdr.app`
-    opens the file in its original app, and no side viewer opens. (AC-11)
+    opens the file in its original app, and no side viewer opens.
 17. `node --test mods/side-viewer/` passes with no failures; it covers the cases where
-    `herdr-app` is missing, errors, or does not answer. (AC-11, AC-2, AC-3, AC-7, AC-9)
-18. `router --restore` announces its windows, and exactly that many follow; pick the original
-    app in each (the button that names the other app, not the router). `바뀜` lists only extensions that left the router; any that stay are under
-    `라우터에 남음`, and `router --status` then shows the router for those and no others.
-    An extension the router got from building alone beside a sibling in another app (the
-    router and `-` in `router --status` before the first `--make-default`, such as `rbw`
-    beside `rb` or `cp` beside `cpp`) is among them, and its files still open from Finder
-    in TextEdit (Preview for images). Every other file opens from Finder in the app it
-    opened in before the take-over, except where restore gives a file type one app (see
-    Watch out). (AC-5)
+    `herdr-app` is missing, errors, or does not answer.
 
-### v2
+### Editing, cards, tabs and language
 
-Set up, before v1's step 18 (the router must hold the markdown and image groups; the
-`html` step also needs the code group). From the repository root, in a terminal:
+Set up (the router holds the markdown and image groups from steps 3–4; the `html` step
+also needs the code group from step 5). From the repository root, in a terminal:
 
 ```sh
-mkdir -p ~/sv2-check
-cp docs/features/side-viewer-v2/markdown-sample.md mods/side-viewer/main.js ~/sv2-check/
-printf '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120"><rect width="200" height="120" fill="steelblue"/></svg>\n' > ~/sv2-check/box.svg
-gzip -c ~/sv2-check/box.svg > ~/sv2-check/box.svgz
-printf '<!doctype html>\n<p>hello</p>\n' > ~/sv2-check/page.html
-cp docs/features/side-viewer-v2/markdown-sample.md ~/sv2-conflict.md
+mkdir -p ~/side-viewer-check
+cp docs/samples/markdown-sample.md mods/side-viewer/main.js ~/side-viewer-check/
+printf '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120"><rect width="200" height="120" fill="steelblue"/></svg>\n' > ~/side-viewer-check/box.svg
+gzip -c ~/side-viewer-check/box.svg > ~/side-viewer-check/box.svgz
+printf '<!doctype html>\n<p>hello</p>\n' > ~/side-viewer-check/page.html
+cp docs/samples/markdown-sample.md ~/side-viewer-conflict.md
 ```
 
-The samples in the repository (`docs/features/side-viewer-v2/markdown-sample.md`,
-`docs/features/side-viewer-v2/code-sample.md`) are only read; every step that writes uses
-the copies. `~/sv2-conflict.md` sits directly in the home folder on purpose: such a file is
+The samples in the repository (`docs/samples/markdown-sample.md`,
+`docs/samples/code-sample.md`) are only read; every step that writes uses the copies.
+`~/side-viewer-conflict.md` sits directly in the home folder on purpose: such a file is
 not watched, only checked every 15 seconds, which leaves time to act before the viewer
 notices a change. Have the agent's conversation print the absolute paths of all of these,
 each followed by a space or the end of the line. Keep a terminal open for the shell steps.
 
-1. Open `~/sv2-check/markdown-sample.md`, click `원문`. The source has line numbers and the
-   long paragraph on line 3 wraps to the pane. Type a word: `편집됨` and `저장` appear.
-   Delete the word again: both go. (AC-1, AC-2, AC-7)
-2. Type a word and press cmd+S: both go, and `grep <word> ~/sv2-check/markdown-sample.md`
-   finds it. Type another and click `저장`: the same. Press cmd+S with nothing changed:
-   nothing happens, and `stat -f %m` on the file prints the same time before and after.
-   (AC-2)
-3. In the source change the `## 목록` heading, then click `렌더링`: the rendering shows the
-   new heading, `편집됨` stays, and `grep` finds the old heading in the file. Press
-   cmd+S while the rendering shows: the file now has the new heading. (AC-6, AC-2)
-4. Open `~/sv2-check/main.js`. Type in it: it changes and `편집됨` appears. Line 16 is
-   longer than the pane and does not wrap (scroll sideways to its end); there are line
-   numbers. Save with cmd+S. (AC-1, AC-7, AC-2)
-5. Try to type into the markdown rendering, a `.png` picture, a code block card and a notice
-   (an empty picture, made with `: > ~/sv2-check/empty.png`): nothing changes and no
-   `편집됨` appears. Then make `: > ~/sv2-check/empty.md`, `: > ~/sv2-check/empty.svg`
-   and `: > ~/sv2-check/empty.js` and open each. The markdown shows its folder and name at
-   the top, `이 파일은 비어 있습니다.` under them, and the `렌더링 | 원문` switch; in `원문`
-   type a heading, switch back to `렌더링` to see it drawn, press cmd+S, and `cat` shows it
-   in the file. The svg shows the same notice and switch; in `원문` (xml colors) type
-   `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="18" fill="tomato"/></svg>`,
-   switch to `렌더링` to see the circle, and save with cmd+S. The `.js` opens as an empty
-   code view with no notice; type and save the same way. (AC-1, AC-22)
-6. Edit `~/sv2-check/main.js` without saving. Cmd-click `~/sv2-check/markdown-sample.md`,
-   then `←`: the edit and `편집됨` are back. Do it again through a link in the markdown
-   rendering instead of a cmd-click. Then close the pane: nothing asks. Cmd-click
-   `~/sv2-check/main.js` again: it shows the disk text, no `편집됨`. (AC-3)
-7. With nothing unsaved in `~/sv2-check/markdown-sample.md`, run
-   `echo '밖에서 더한 줄' >> ~/sv2-check/markdown-sample.md`: the view reloads by itself.
-   Now edit it without saving and run the same `echo` again: the content is not replaced,
-   the header's `편집됨` turns into `외부에서 바뀌었어요` in red, `저장` gives way to
-   `다시 읽기` and `덮어쓰기`, there is no bar under the header, and you can keep typing.
-   Click `다시 읽기`: the disk text shows, with the new line, and the status is gone. (AC-4)
-8. Edit again, `echo` again, and click `덮어쓰기`: the status and its buttons go, and
-   `tail -3 ~/sv2-check/markdown-sample.md` shows your text without the last `echo`'s line.
-   (AC-4)
-9. Open `~/sv2-conflict.md`, click `원문`, type a word. Run
-   `echo '밖에서 더한 줄' >> ~/sv2-conflict.md` and press cmd+S within a few seconds: the
-   status says `외부에서 바뀌었어요`, and `tail -2 ~/sv2-conflict.md` shows the `echo`'s
-   line and not your word. (If it said so before cmd+S, the 15-second check got there
-   first: discard and try again.) (AC-4)
-10. No permission: edit `~/sv2-check/main.js`, run `chmod 555 ~/sv2-check` (a read-only
-    file alone, `chmod 444`, probably still saves: Watch out), press cmd+S: the status says
-    `쓰기 권한이 없어요` in red, `저장` stays, and the edit stays. Cmd-click another file's
-    path, then `←`: the status still says why. `chmod 755 ~/sv2-check`, cmd+S: saved, the
-    status goes. (AC-5)
-11. Deleted: edit `~/sv2-check/main.js`, then `mv ~/sv2-check/main.js ~/sv2-check/main.js.bak`:
-    the status says `파일이 지워졌어요` and the edit stays; cmd+S says the same and writes
-    nothing. `mv` it back: the status is `편집됨` again, the edit is still there. Then, with
-    the edit unsaved, cmd-click `~/sv2-check/markdown-sample.md`, run the same `mv` and press
-    `←`: `main.js` comes back in its editor with the edit and `파일이 지워졌어요`, not the
-    `이 파일은 더 이상 없습니다.` notice. `mv` it back. (AC-5, AC-3)
-12. Too large: `head -c 1100000 /dev/zero | tr '\0' a | pbcopy`, paste it into the source of
-    `~/sv2-check/markdown-sample.md`, press cmd+S: the status says `너무 커서 저장할 수
-    없어요`, the file is unchanged, the edit stays. Narrow the pane until the name and folder
-    are gone and the status is cut: the buttons stay whole, and hovering the status shows
-    all of it. Undo the paste (cmd+Z, or select it and delete): the status goes. After steps
-    10–12, `herdr-app status` reports no mod error. (AC-5)
-13. svg: open `~/sv2-check/box.svg`: a blue box, and the header has `렌더링 | 원문`. Click
-    `원문`: the source in `xml` colors, wrapped. Change `steelblue` to `tomato`, click
-    `렌더링`: a red box, while `grep steelblue ~/sv2-check/box.svg` still finds it. cmd+S:
-    `grep tomato` finds it. Open `~/sv2-check/box.svgz`: a picture with no switch.
-    (AC-18, AC-1, AC-6)
-14. Header: on the markdown and the svg the switch reads `렌더링 | 원문`, the cell shown is
-    filled, and cmd+E does nothing. (AC-12)
-15. Open `docs/features/side-viewer-v2/markdown-sample.md` (the repository's copy): the
+18. Open `~/side-viewer-check/markdown-sample.md`, click `원문`. The source has line numbers
+    and the long paragraph on line 3 wraps to the pane. Type a word: `편집됨` and `저장`
+    appear. Delete the word again: both go.
+19. Type a word and press cmd+S: both go, and
+    `grep <word> ~/side-viewer-check/markdown-sample.md` finds it. Type another and click
+    `저장`: the same. Press cmd+S with nothing changed: nothing happens, and `stat -f %m` on
+    the file prints the same time before and after.
+20. In the source change the `## 목록` heading, then click `렌더링`: the rendering shows the
+    new heading, `편집됨` stays, and `grep` finds the old heading in the file. Press
+    cmd+S while the rendering shows: the file now has the new heading.
+21. Open `~/side-viewer-check/main.js`. Type in it: it changes and `편집됨` appears. Line 16
+    is longer than the pane and does not wrap (scroll sideways to its end); there are line
+    numbers. Save with cmd+S.
+22. Try to type into the markdown rendering, a `.png` picture, a code block card and a notice
+    (an empty picture, made with `: > ~/side-viewer-check/empty.png`): nothing changes and
+    no `편집됨` appears. Then make `: > ~/side-viewer-check/empty.md`,
+    `: > ~/side-viewer-check/empty.svg` and `: > ~/side-viewer-check/empty.js` and open
+    each. The markdown shows its folder and name at the top, `이 파일은 비어 있습니다.`
+    under them, and the `렌더링 | 원문` switch; in `원문` type a heading, switch back to
+    `렌더링` to see it drawn, press cmd+S, and `cat` shows it in the file. The svg shows the
+    same notice and switch; in `원문` (xml colors) type
+    `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="18" fill="tomato"/></svg>`,
+    switch to `렌더링` to see the circle, and save with cmd+S. The `.js` opens as an empty
+    code view with no notice; type and save the same way.
+23. Edit `~/side-viewer-check/main.js` without saving. Cmd-click
+    `~/side-viewer-check/markdown-sample.md`, then `←`: the edit and `편집됨` are back. Do
+    it again through a link in the markdown rendering instead of a cmd-click. Then close the
+    pane: nothing asks. Cmd-click `~/side-viewer-check/main.js` again: it shows the disk
+    text, no `편집됨`.
+24. With nothing unsaved in `~/side-viewer-check/markdown-sample.md`, run
+    `echo '밖에서 더한 줄' >> ~/side-viewer-check/markdown-sample.md`: the view reloads by
+    itself. Now edit it without saving and run the same `echo` again: the content is not
+    replaced, the header's `편집됨` turns into `외부에서 바뀌었어요` in red, `저장` gives way
+    to `다시 읽기` and `덮어쓰기`, there is no bar under the header, and you can keep typing.
+    Click `다시 읽기`: the disk text shows, with the new line, and the status is gone.
+25. Edit again, `echo` again, and click `덮어쓰기`: the status and its buttons go, and
+    `tail -3 ~/side-viewer-check/markdown-sample.md` shows your text without the last
+    `echo`'s line.
+26. Open `~/side-viewer-conflict.md`, click `원문`, type a word. Run
+    `echo '밖에서 더한 줄' >> ~/side-viewer-conflict.md` and press cmd+S within a few
+    seconds: the status says `외부에서 바뀌었어요`, and `tail -2 ~/side-viewer-conflict.md`
+    shows the `echo`'s line and not your word. (If it said so before cmd+S, the 15-second
+    check got there first: discard and try again.)
+27. No permission: edit `~/side-viewer-check/main.js`, run `chmod 555 ~/side-viewer-check`
+    (a read-only file alone, `chmod 444`, probably still saves: Watch out), press cmd+S: the
+    status says `쓰기 권한이 없어요` in red, `저장` stays, and the edit stays. Cmd-click
+    another file's path, then `←`: the status still says why. `chmod 755
+    ~/side-viewer-check`, cmd+S: saved, the status goes.
+28. Deleted: edit `~/side-viewer-check/main.js`, then
+    `mv ~/side-viewer-check/main.js ~/side-viewer-check/main.js.bak`: the status says
+    `파일이 지워졌어요` and the edit stays; cmd+S says the same and writes nothing. `mv` it
+    back: the status is `편집됨` again, the edit is still there. Then, with the edit unsaved,
+    cmd-click `~/side-viewer-check/markdown-sample.md`, run the same `mv` and press `←`:
+    `main.js` comes back in its editor with the edit and `파일이 지워졌어요`, not the
+    `이 파일은 더 이상 없습니다.` notice. `mv` it back.
+29. Too large: `head -c 1100000 /dev/zero | tr '\0' a | pbcopy`, paste it into the source of
+    `~/side-viewer-check/markdown-sample.md`, press cmd+S: the status says `너무 커서 저장할
+    수 없어요`, the file is unchanged, the edit stays. Narrow the pane until the name and
+    folder are gone and the status is cut: the buttons stay whole, and hovering the status
+    shows all of it. Undo the paste (cmd+Z, or select it and delete): the status goes. After
+    steps 27–29, `herdr-app status` reports no mod error.
+30. svg: open `~/side-viewer-check/box.svg`: a blue box, and the header has `렌더링 | 원문`.
+    Click `원문`: the source in `xml` colors, wrapped. Change `steelblue` to `tomato`, click
+    `렌더링`: a red box, while `grep steelblue ~/side-viewer-check/box.svg` still finds it.
+    cmd+S: `grep tomato` finds it. Open `~/side-viewer-check/box.svgz`: a picture with no
+    switch.
+31. Header: on the markdown and the svg the switch reads `렌더링 | 원문`, the cell shown is
+    filled, and cmd+E does nothing.
+32. Open `docs/samples/markdown-sample.md` (the repository's copy): the
     document fills the pane's width, body at 13pt, with the folder (dimmed) and the file
     name at the top. Headings in four sizes (the `####` one body size, bold), no underline;
     filled dots, hollow dots one level in, numbers, two checkboxes, and the three lists
     drawn apart; the table as wide as its content, its header bold, lines between rows only,
     `가운데` centered and `오른쪽` right-aligned; a thick rule; the quote with a bar and dim
     text; the footnote as a superscript `1` and a list at the end. Bold, italic,
-    strikethrough and inline code show. The `같은 폴더의 문서 링크` link opens the v1 spec in
-    the viewer, `웹 링크` opens the browser. Also open `README.md`. (AC-12, AC-13)
-16. In the same document the picture under `본문 이미지` shows, centered, no taller than 420
-    and no wider than the pane; narrow the pane and it shrinks. In `~/sv2-check/markdown-sample.md`
-    (whose relative path leads nowhere) the same spot reads
-    `그림을 못 읽음: ../../../preview.png`. (AC-14)
-17. Open `docs/features/side-viewer-v2/code-sample.md`. Labels: `Shell` for `sh`, `bash`
+    strikethrough and inline code show. The `같은 폴더의 문서 링크` link opens
+    `code-sample.md` in the viewer, `웹 링크` opens the browser. Also open `README.md`.
+33. In the same document the picture under `본문 이미지` shows, centered, no taller than 420
+    and no wider than the pane; narrow the pane and it shrinks. In
+    `~/side-viewer-check/markdown-sample.md` (whose relative path leads nowhere) the same
+    spot reads `그림을 못 읽음: ../../preview.png`.
+34. Open `docs/samples/code-sample.md`. Labels: `Shell` for `sh`, `bash`
     and the block without a language, `JavaScript`, `TypeScript`, `Python`, `Rust`, `JSON`,
     and `Code` for `diff`. Syntax colors show. Click a copy button: it becomes a check mark
     for a moment, and `pbpaste` gives the whole block. The `긴 줄` command wraps inside its
@@ -695,79 +691,74 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
     scrolls the document. Click into a card and drag: no cursor, nothing selected, typing
     changes nothing. The card under `1.` starts at the item's text; the card in the quote is
     inside its bar. On a dark theme the cards fade downward; switch Herdr to a light theme:
-    flat cards (within 15 seconds). (AC-15)
-18. Still in the code sample beside a conversation: `>_` is on the `Shell` cards only. Note
+    flat cards (within 15 seconds).
+35. Still in the code sample beside a conversation: `>_` is on the `Shell` cards only. Note
     `pbpaste | shasum`. Click `>_` on `git status --short`: a shell pane opens below the
     viewer, with `git status --short` in its input line, not run, and no other line on its
     screen; its prompt is in the conversation terminal's folder; `pbpaste | shasum` is
     unchanged. Clear the line
     (ctrl+U), click `>_` on the first `Shell` card: the command goes into the same pane, no
-    new one. (AC-16)
-19. Busy shell, shown for real: in that shell pane clear the line and run `sleep 30`. While
+    new one.
+36. Busy shell, shown for real: in that shell pane clear the line and run `sleep 30`. While
     it runs, click `>_`: a notification `터미널에 넣지 않았습니다` says
     `셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.`, and nothing is
-    typed. When `sleep` ends, click `>_` again: the command goes into the same pane. (AC-16)
-20. In that shell type `echo draft` without Enter, click `>_`: the input line holds the
+    typed. When `sleep` ends, click `>_` again: the command goes into the same pane.
+37. In that shell type `echo draft` without Enter, click `>_`: the input line holds the
     command; clear it (ctrl+U) and press Enter on the empty line: `echo draft` comes back.
     The same after ` bindkey -v`: the draft is not run and comes back. Clear the line, run
     `exec zsh` and click `>_`: the command goes in and no other line is left on the screen.
     Clear the line, run `exec zsh` again and click `>_`: a notification
     `터미널에 넣지 못했습니다` comes and the input line may hold `;7~`; clear it and click `>_`
-    again: the command goes in. (AC-16)
-21. In the side viewer showing `~/sv2-check/markdown-sample.md`, click `새 탭으로 열기`: a
-    new tab right after the current one, named `markdown-sample.md`, holding only a side
-    viewer, and it is shown; there is no `←`. Go back and click it again: a second tab.
-    (AC-8, AC-9)
-22. In a viewer tab of `docs/features/side-viewer-v2/markdown-sample.md`, click
-    `같은 폴더의 문서 링크`: the tab is renamed `spec.md`; `←` names it
-    `markdown-sample.md` again. (AC-9)
-23. Edit `~/sv2-check/markdown-sample.md` in the side viewer beside the conversation without
-    saving, click `새 탭으로 열기`: the new tab shows the edit and `편집됨`; the viewer
-    left behind shows the disk text without it. `ls ~/.config/herdr-app/data/side-viewer/`
-    shows no `handoff-*.json` left. Save or discard in the tab. (AC-10)
-24. In a viewer tab of `docs/features/side-viewer-v2/code-sample.md`, click `>_` on a
-    `Shell` card: the shell opens below in `docs/features/side-viewer-v2`. In it run
-    `echo ~/sv2-check/main.js` and cmd-click the printed path: it opens in the viewer tab,
-    the tab is renamed `main.js`, and the tab still has two panes. (AC-11, AC-9, AC-16)
-25. Checkboxes in `~/sv2-check/markdown-sample.md`, rendered, with nothing unsaved: click
-    `남은 할 일`: it checks, no `편집됨` stays, and `grep -n '할 일'` shows `- [x] 남은
+    again: the command goes in.
+38. In the side viewer showing `~/side-viewer-check/markdown-sample.md`, click
+    `새 탭으로 열기`: a new tab right after the current one, named `markdown-sample.md`,
+    holding only a side viewer, and it is shown; there is no `←`. Go back and click it
+    again: a second tab.
+39. In a viewer tab of `docs/samples/markdown-sample.md`, click `같은 폴더의 문서 링크`: the
+    tab is renamed `code-sample.md`; `←` names it `markdown-sample.md` again.
+40. Edit `~/side-viewer-check/markdown-sample.md` in the side viewer beside the conversation
+    without saving, click `새 탭으로 열기`: the new tab shows the edit and `편집됨`; the
+    viewer left behind shows the disk text without it.
+    `ls ~/.config/herdr-app/data/side-viewer/` shows no `handoff-*.json` left. Save or
+    discard in the tab.
+41. In a viewer tab of `docs/samples/code-sample.md`, click `>_` on a `Shell` card: the
+    shell opens below in `docs/samples`. In it run `echo ~/side-viewer-check/main.js` and
+    cmd-click the printed path: it opens in the viewer tab, the tab is renamed `main.js`,
+    and the tab still has two panes.
+42. Checkboxes in `~/side-viewer-check/markdown-sample.md`, rendered, with nothing unsaved:
+    click `남은 할 일`: it checks, no `편집됨` stays, and `grep -n '할 일'` shows `- [x] 남은
     할 일`. Click it again: back to `[ ]`. Then edit the source without saving, return to
     `렌더링` and click the box: `편집됨` stays and the file is unchanged until cmd+S.
-    (AC-21)
-26. Checkbox against an outside change: open `~/sv2-conflict.md` rendered, with nothing
-    unsaved (discard what step 9 left). Run `echo '밖에서 더한 줄' >> ~/sv2-conflict.md`
-    and click `남은 할 일` within a few seconds: the status says `외부에서 바뀌었어요` and
-    `grep -n '할 일' ~/sv2-conflict.md` still shows `- [ ] 남은 할 일`. Both buttons work
-    as in steps 7–8. (AC-21, AC-4)
-27. `html`, only after you chose to take over the code group (v1 step 5): `router
-    --status` names the router for `html htm shtml shtm`. Cmd-click `~/sv2-check/page.html`:
+43. Checkbox against an outside change: open `~/side-viewer-conflict.md` rendered, with
+    nothing unsaved (discard what step 26 left). Run
+    `echo '밖에서 더한 줄' >> ~/side-viewer-conflict.md` and click `남은 할 일` within a few
+    seconds: the status says `외부에서 바뀌었어요` and
+    `grep -n '할 일' ~/side-viewer-conflict.md` still shows `- [ ] 남은 할 일`. Both buttons
+    work as in steps 24–25.
+44. `html`, only after you chose to take over the code group (step 5): `router --status`
+    names the router for `html htm shtml shtm`. Cmd-click `~/side-viewer-check/page.html`:
     the code view with `html` colors; edit and cmd+S save it. From Finder it still opens in
-    the browser. (AC-17)
-28. The v1 list above passes, with its rewritten steps 5, 7, 12, 13 and 14, and
-    `herdr-app status` reports no mod error after this whole list. (AC-19)
-29. `./install.sh` installs this version and passes `herdr-app check`; `node --test
-    mods/side-viewer/` passes with no failures. (AC-20)
-30. English screen. With a side viewer showing `~/sv2-check/markdown-sample.md`, open System
-    Settings → General → Language & Region and put English first under Preferred
-    Languages; `defaults read -g AppleLanguages` now prints an English tag first. The
-    viewer stays Korean. Cmd-click `~/sv2-check/main.js` in a tab without a viewer: the new
-    viewer and the one already open are both English within a few seconds. Then, in a
-    viewer:
+    the browser.
+45. English screen. With a side viewer showing `~/side-viewer-check/markdown-sample.md`,
+    open System Settings → General → Language & Region and put English first under
+    Preferred Languages; `defaults read -g AppleLanguages` now prints an English tag first.
+    The viewer stays Korean. Cmd-click `~/side-viewer-check/main.js` in a tab without a
+    viewer: the new viewer and the one already open are both English within a few seconds.
+    Then, in a viewer:
     - the markdown's switch reads `Rendered | Source`, and the tooltips read
       `Open in New Tab`, `Open in Original App` and `Show in Finder`;
-    - type in the source: `Edited` and `Save` (tooltip `Save (⌘S)`). Run step 7's `echo`:
+    - type in the source: `Edited` and `Save` (tooltip `Save (⌘S)`). Run step 24's `echo`:
       `Changed on disk` with `Reload` and `Overwrite`. Narrow the pane: the name and folder
       are cut first and the buttons stay whole. Click `Reload`;
-    - the picture under `본문 이미지` reads `Couldn't read image: ../../../preview.png`;
-    - `: > ~/sv2-check/empty-en.md` and open it: `This file is empty.`.
+    - the picture under `본문 이미지` reads `Couldn't read image: ../../preview.png`;
+    - `: > ~/side-viewer-check/empty-en.md` and open it: `This file is empty.`.
       `herdr-app do pane.split --direction right --mod side-viewer --props '{"file":"/etc/hosts"}'`
       shows `The viewer can't open this kind of file.`;
-    - in `docs/features/side-viewer-v2/code-sample.md` the card labels are still `Shell`,
-      `JavaScript` and so on. Run `sleep 30` in the shell pane and click `>_`: the
-      notification reads `Not inserted into the terminal` and
+    - in `docs/samples/code-sample.md` the card labels are still `Shell`, `JavaScript` and
+      so on. Run `sleep 30` in the shell pane and click `>_`: the notification reads
+      `Not inserted into the terminal` and
       `Another program (sleep) is running in the shell. Press again when it ends.`, whole.
-    (AC-23)
-31. Korean again, and the router. Put Korean first again and open a new viewer: every
+46. Korean again, and the router. Put Korean first again and open a new viewer: every
     viewer turns Korean, with the words quoted in the steps above. Quit Herdr and open it
     again: the viewers come back in Korean (a moment of English first is the gap in Watch
     out). The router's lines in both languages are checked by
@@ -776,6 +767,19 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
     failure) and fake default-app tools, so no default app changes. Of the
     real commands run only `router --status`: it prints bundle ids, the same in both
     languages. Don't run `--make-default` or `--restore` to see their language; they can
-    bring up confirmation windows. (AC-23)
+    bring up confirmation windows.
+47. `herdr-app status` reports no mod error after steps 1–46.
 
-Clean up: `rm -rf ~/sv2-check ~/sv2-conflict.md`.
+### Giving the extensions back
+
+48. `router --restore` announces its windows, and exactly that many follow; pick the original
+    app in each (the button that names the other app, not the router). `바뀜` lists only
+    extensions that left the router; any that stay are under `라우터에 남음`, and
+    `router --status` then shows the router for those and no others. An extension the
+    router got from building alone beside a sibling in another app (the router and `-` in
+    `router --status` before the first `--make-default`, such as `rbw` beside `rb` or `cp`
+    beside `cpp`) is among them, and its files still open from Finder in TextEdit (Preview
+    for images). Every other file opens from Finder in the app it opened in before the
+    take-over, except where restore gives a file type one app (see Watch out).
+
+Clean up: `rm -rf ~/side-viewer-check ~/side-viewer-conflict.md`.

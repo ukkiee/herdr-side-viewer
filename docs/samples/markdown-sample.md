@@ -4,7 +4,7 @@
 
 ## 글자 꾸밈
 
-**굵게**, *기울임*, ~~취소선~~, `인라인 코드`, [같은 폴더의 문서 링크](../side-viewer/spec.md), [웹 링크](https://herdr.dev).
+**굵게**, *기울임*, ~~취소선~~, `인라인 코드`, [같은 폴더의 문서 링크](code-sample.md), [웹 링크](https://herdr.dev).
 
 ### 세 번째 단계 제목
 
@@ -61,7 +61,7 @@ herdr-app check mods/side-viewer
 
 ## 본문 이미지
 
-![저장소의 미리보기 그림](../../../preview.png)
+![저장소의 미리보기 그림](../../preview.png)
 
 ## 각주
 

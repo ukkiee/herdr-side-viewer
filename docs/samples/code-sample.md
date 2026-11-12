@@ -48,7 +48,7 @@ fn main() {
 ```
 
 ```json
-{ "place": "none", "title": "Markdown Looks (prototype)" }
+{ "place": "none", "title": "Side Viewer", "focusable": true }
 ```
 
 ```diff
@@ -63,7 +63,7 @@ fn main() {
 ## 긴 줄
 
 ```sh
-herdr-app do pane.split '{"direction":"right","pane":"pe428b8c0966c61d4116f7006ae0f4adc","mod":"side-viewer-prototype","props":{"file":"/Users/ukyi/personal/herdr-side-viewer/docs/features/side-viewer-v2/code-sample.md"}}'
+herdr-app do pane.split --direction right --mod side-viewer --props '{"file":"/Users/me/projects/side-viewer/docs/samples/code-sample.md"}' && herdr-app status
 ```
 
 ## 목록 안의 코드
