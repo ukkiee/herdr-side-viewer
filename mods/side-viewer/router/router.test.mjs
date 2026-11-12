@@ -39,7 +39,24 @@ printf '%s\\n' "$*" >> "$FAKE_STATE/open.log"
 exit 0
 `;
 
-function world({ extensions, defaults = {}, sameType = {}, record } = {}) {
+// Stands in for /usr/bin/defaults: logs its arguments and answers `read -g AppleLanguages`
+// with the file `languages`, or fails the way macOS does when that file is missing.
+const FAKE_DEFAULTS = `#!/bin/sh
+printf '%s\\n' "$*" >> "$FAKE_STATE/defaults.log"
+[ "$*" = "read -g AppleLanguages" ] || exit 1
+[ -e "$FAKE_STATE/languages" ] || { echo "The domain/default pair of (kCFPreferencesAnyApplication, AppleLanguages) does not exist" >&2; exit 1; }
+cat "$FAKE_STATE/languages"
+`;
+
+// `defaults read -g AppleLanguages` output, the way macOS prints it.
+const appleLanguages = (...tags) => `(\n${tags.map((tag) => `    "${tag}"`).join(",\n")}\n)\n`;
+const KOREAN = appleLanguages("ko-KR", "en-KR");
+const ENGLISH = appleLanguages("en-KR", "ko-KR");
+const HANGUL = /[가-힣]/;
+
+// languages: what the fake `defaults` answers, null for a failing read. Korean by default, so
+// the Korean lines are checked exactly as the router has always printed them.
+function world({ extensions, defaults = {}, sameType = {}, record, languages = KOREAN } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "side-viewer-router-"));
   const state = join(dir, "state");
   const data = join(dir, "data");
@@ -47,8 +64,11 @@ function world({ extensions, defaults = {}, sameType = {}, record } = {}) {
   for (const d of [state, data, bin]) mkdirSync(d);
   writeFileSync(join(dir, "router"), FAKE_ROUTER);
   writeFileSync(join(bin, "open"), FAKE_OPEN);
+  writeFileSync(join(bin, "defaults"), FAKE_DEFAULTS);
   chmodSync(join(dir, "router"), 0o755);
   chmodSync(join(bin, "open"), 0o755);
+  chmodSync(join(bin, "defaults"), 0o755);
+  if (languages !== null) writeFileSync(join(state, "languages"), languages);
   writeFileSync(
     join(dir, "extensions.json"),
     JSON.stringify(extensions ?? { markdown: ["md"], image: ["png", "jpg", "jpeg"], code: ["txt", "py"] }),
@@ -79,6 +99,8 @@ function world({ extensions, defaults = {}, sameType = {}, record } = {}) {
     gone: (...ids) => writeFileSync(join(state, "gone"), ids.map((id) => `${id}\n`).join("")),
     openOriginal: (file) => spawnSync("/bin/sh", [join(here, "open-original.sh"), file], { env, encoding: "utf8" }),
     opened: () => (existsSync(join(state, "open.log")) ? readFileSync(join(state, "open.log"), "utf8") : ""),
+    // Every `defaults` call, one line of arguments each.
+    defaultsCalls: () => (existsSync(join(state, "defaults.log")) ? readFileSync(join(state, "defaults.log"), "utf8").trim().split("\n") : []),
   };
   // Setting the scene is not a request the person would be asked about.
   writeFileSync(join(state, "quiet"), "");
@@ -363,6 +385,108 @@ test("make-default does not try another app when the router itself is not found"
   const r = w.takeover("make-default");
   assert.equal(r.status, 1);
   assert.deepEqual(w.requests(), [`md ${ROUTER_ID}`]);
+});
+
+test("make-default speaks English when the first preferred language is not Korean, with the same exit code and line order", () => {
+  const w = world({ extensions: { markdown: ["md"], image: ["png"], code: [] }, defaults: { md: "com.example.Notes", png: "com.apple.Preview" }, languages: ENGLISH });
+  w.keep("png");
+  const r = w.takeover("make-default");
+  assert.equal(r.status, 3);
+  assert.equal(
+    r.stdout,
+    "macOS will show 2 confirmation windows. In each window, choose to change to Side Viewer Router.\nChanged: md\nChose to keep: png\n",
+  );
+  assert.equal(r.stderr, "");
+});
+
+for (const [what, languages, line] of [
+  ["Korean first", appleLanguages("ko-KR", "en-US"), "바꿀 것이 없습니다.\n"],
+  ["bare ko", appleLanguages("ko"), "바꿀 것이 없습니다.\n"],
+  ["a locale-style ko tag", appleLanguages("ko_KR.UTF-8"), "바꿀 것이 없습니다.\n"],
+  ["an unquoted upper-case tag", "(\n    KO\n)\n", "바꿀 것이 없습니다.\n"],
+  ["English first, Korean second", ENGLISH, "Nothing to change.\n"],
+  ["a tag that only starts with the letters ko", appleLanguages("kok-IN"), "Nothing to change.\n"],
+  ["an empty list", "(\n)\n", "Nothing to change.\n"],
+  ["an empty answer", "", "Nothing to change.\n"],
+  ["an answer that is not a list", "ko-KR\n", "Nothing to change.\n"],
+  ["a read that fails", null, "Nothing to change.\n"],
+]) {
+  test(`the router's language with ${what}`, () => {
+    const w = world({ defaults: { md: "com.example.Notes" }, languages });
+    const r = w.takeover("restore");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, line);
+  });
+}
+
+for (const [languages, stdout, stderr] of [
+  [
+    KOREAN,
+    "macOS 확인 창이 4번 뜹니다. 창마다 Side Viewer Router로 바꾸는 쪽을 고르세요.\n",
+    `실패: md (파일 종류 없음)\n실패: png (시간 초과)\n실패: py (오류: )\n실패: ts (앱 없음: ${ROUTER_ID})\n`,
+  ],
+  [
+    ENGLISH,
+    "macOS will show 4 confirmation windows. In each window, choose to change to Side Viewer Router.\n",
+    `Failed: md (no file type)\nFailed: png (timed out)\nFailed: py (error: )\nFailed: ts (app not found: ${ROUTER_ID})\n`,
+  ],
+]) {
+  test(`make-default reports each kind of failure on stderr and exits 1 (${languages === KOREAN ? "Korean" : "English"})`, () => {
+    const w = world({ extensions: { markdown: ["md"], image: ["png"], code: ["py", "ts"] }, defaults: { md: "com.example.Notes", png: "com.apple.Preview", py: "com.example.Editor", ts: "com.example.Player" }, languages });
+    w.fail("md", 4);
+    w.fail("png", 5);
+    w.fail("py", 9);
+    w.fail("ts", 3);
+    const r = w.takeover("make-default", "code");
+    assert.equal(r.status, 1);
+    assert.equal(r.stdout, stdout);
+    assert.equal(r.stderr, stderr);
+  });
+}
+
+test("restore speaks English when it falls back to another app, and says one window in the singular", () => {
+  const w = world({ extensions: { markdown: ["md", "mdx"], image: [], code: [] }, defaults: { md: ROUTER_ID, mdx: ROUTER_ID }, record: "md\tcom.example.Gone\n", languages: ENGLISH });
+  w.gone("com.example.Gone");
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(
+    r.stdout,
+    "mdx: no original app recorded, switching to com.apple.TextEdit.\n" +
+      "macOS will show 2 confirmation windows. In each window, choose to change back to the original app.\n" +
+      "md: original app com.example.Gone not found, switching to com.apple.TextEdit.\n" +
+      "Changed: md mdx\n",
+  );
+  const one = world({ extensions: { markdown: ["md"], image: [], code: [] }, defaults: { md: ROUTER_ID }, record: "md\tcom.example.Notes\n", languages: ENGLISH });
+  assert.match(one.takeover("restore").stdout, /^macOS will show 1 confirmation window\. In each window, choose to change back to the original app\.$/m);
+});
+
+test("restore says in Korean, word for word as before, which app it uses when nothing was recorded", () => {
+  const w = world({ extensions: { markdown: ["mdx"], image: [], code: [] }, defaults: { mdx: ROUTER_ID } });
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(
+    r.stdout,
+    "mdx: 기록된 원래 앱이 없어 com.apple.TextEdit 으로 돌립니다.\nmacOS 확인 창이 1번 뜹니다. 창마다 원래 앱으로 바꾸는 쪽을 고르세요.\n바뀜: mdx\n",
+  );
+});
+
+test("restore says in English which extensions stay with the router", () => {
+  const w = world({ extensions: { markdown: [], image: [], code: ["rb", "rbw"] }, defaults: { rb: "com.example.IDE" }, sameType: { rbw: "rb" }, languages: ENGLISH });
+  w.only("rbw", ROUTER_ID);
+  const r = w.takeover("restore");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, "Nothing to change.\nStayed with the router: rbw (no app but the router handles these extensions)\n");
+  assert.doesNotMatch(r.stdout + r.stderr, HANGUL);
+});
+
+test("one run reads the language once, however many lines it prints", () => {
+  const w = world({ extensions: { markdown: ["md"], image: ["png"], code: ["py"] }, defaults: { md: "com.example.Notes", png: "com.apple.Preview", py: "com.example.Editor" }, languages: ENGLISH });
+  w.keep("png");
+  w.fail("py", 5);
+  const r = w.takeover("make-default", "code");
+  assert.equal(r.status, 1);
+  assert.equal(w.defaultsCalls().length, 1);
+  assert.deepEqual(w.defaultsCalls(), ["read -g AppleLanguages"]);
 });
 
 test("status prints the current default app and the recorded original app per extension", () => {

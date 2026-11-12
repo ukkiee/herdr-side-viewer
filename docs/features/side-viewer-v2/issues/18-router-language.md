@@ -4,7 +4,7 @@
 
 **Blocked by:** 12 (integrated)
 
-**Status:** ready-for-agent
+**Status:** integrated
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-23, "구현 결정"의 "언어(AC-23)", "테스트 결정")
 
@@ -21,8 +21,20 @@
 - 경계 2: 가짜 `defaults`(한국어 첫 태그, 영어 첫 태그, 빈 답, 실패)로 각 명령의 안내 줄과 종료 코드. 한국어 출력이 지금과 글자 그대로인지(기존 기대)
 - 기본 앱을 바꾸는 실제 명령은 돌리지 않는다(가짜 `duti`·`lsregister` 등 기존 시험 장치만)
 
-- [ ] 첫 선호 언어가 한국어면 지금과 같은 한국어 안내, 그 밖이면 영어 안내
-- [ ] 종료 코드와 줄 순서·묶음(바뀜·유지·남음)은 그대로
-- [ ] 언어를 읽지 못하면 영어
+- [x] 첫 선호 언어가 한국어면 지금과 같은 한국어 안내, 그 밖이면 영어 안내 (경계 2와 코드 대조. 실제 앱 확인은 19에서)
+- [x] 종료 코드와 줄 순서·묶음(바뀜·유지·남음)은 그대로 (경계 2와 코드 대조. 실제 앱 확인은 19에서)
+- [x] 언어를 읽지 못하면 영어 (경계 2와 코드 대조. 실제 앱 확인은 19에서)
 
 **완료 조건:** 위 항목 전부, 경계 2 통과.
+
+## Comments
+
+### 2026-11-12 통합 (주 진행자)
+
+- **결과:** 브랜치 `sv2/18-router-language`의 `7250e9d`·`a30340b`·`dae4dec`를 `feat/side-viewer-v2`에 fast-forward로 합쳤다.
+- **자리:** `takeover.sh`의 `system_lang()`(실행마다 한 번, `defaults`는 PATH에서 찾음, 실패·목록이 아닌 답·첫 태그가 `ko`로 시작하지 않으면 `en`), `say <키> 값…`(`case "$lang.$key"` 표, 값은 `%s` 인자로만, 확인 창 수가 1이면 영어 단수). `lib.sh`는 그대로.
+- **영어 안내:** `macOS will show N confirmation window(s). In each window, choose to change to Side Viewer Router.` / `… choose to change back to the original app.`, `Nothing to change.`, `Stayed with the router: X (no app but the router handles these extensions)`, `Changed: X`, `Chose to keep: X`, `E: original app A not found, switching to B.`, `E: no original app recorded, switching to B.`, `Failed: G (error: …)`, `Failed: G (app not found: A)`, `Failed: G (no file type)`, `Failed: G (timed out)`. 한국어는 글자 그대로.
+- **완료 조건:** 경계 2 통과.
+  - 작업자(`dae4dec`): `router.test.mjs` 52 통과(36→52)·0 실패·0 skip, `herdr-app check` 통과. 영어 기대 줄은 단언 단위로 실패한 뒤 고쳤다. 지금 동작을 고정하는 한국어 시험은 처음부터 초록. `takeover.sh`의 한글은 표 12줄뿐.
+  - 통합 담당(`dae4dec`): `node --test mods/side-viewer/` 345 통과·0 실패·0 skip·0 취소, `herdr-app check mods/side-viewer` 통과.
+- **문서(19)로:** README "Take over the extensions"가 한국어 안내만 인용한다(영어 줄도 적기). 실패 줄의 오류 글이 이제 `printf %s`로 글자 그대로 찍힌다(예전 `echo`는 백슬래시를 해석했을 수 있음).
