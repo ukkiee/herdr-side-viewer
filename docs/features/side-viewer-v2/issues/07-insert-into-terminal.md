@@ -26,3 +26,16 @@
 - [ ] 바쁜 셸에는 넣지 않고 이유를 알린다
 
 **완료 조건:** 위 항목 전부, 경계 1 통과.
+
+## Comments
+
+### 2026-11-12 첫 단계 실측(주 진행자, 구현 전)
+
+hc 0.1.20의 백그라운드 zsh 터미널(`hc run --bg`, 로그인 셸 `/bin/zsh -l`)에서 시험했다. Herdr 창은 건드리지 않았다.
+
+- **`hc keys`로 한 글자씩: 조건을 채우지 못한다.** 영문자·숫자·공백(`space`)·`'`·`` ` ``·`- / . = , ; [ \`는 들어가지만 `"` `|` `$` `>` `&` `~`와 한글은 `unknown key`로 거부된다. `shift+4`는 `$`가 아니라 `4`를 넣는다(shift는 영문자에만 걸린다).
+- **`hc send`로 `print -z`: 조건을 채운다.** `hc send <t> " print -z -- '<명령, '는 '\''로>'"`를 보내면 `print -z` 줄만 실행되고, 다음 프롬프트의 입력 칸에 명령이 그대로 들어간 채 실행되지 않는다. 시험 명령 `echo "a b" | wc -c > /dev/null; ls $HOME ~ 한글 & echo 'q' \`pwd\``가 글자 그대로 들어갔다. 시험 전후 `pbpaste`의 해시가 같아 클립보드는 바뀌지 않았다(`hc send`는 터미널 입력으로 붙여 넣는다).
+- **남는 흔적:** `print -z …` 줄이 화면 기록에 한 줄 남는다. 앞에 공백을 두면 이 Mac의 zsh(`histignorespace` 켜짐)에서는 셸 기록에 남지 않는다. zsh 전용이다(bash·fish는 같은 방법이 없다).
+- **바쁨 판단:** zsh는 hc 상태(`status`)를 보고하지 않아 `hc get`의 `status`는 늘 `null`이다. 대신 `hc get --json`의 `foreground`가 가른다: 쉬는 셸은 `foreground.name`이 `zsh`(`argv` `["/bin/zsh","-l"]`), `sleep 20` 실행 중에는 `foreground.name`이 `sleep`이다.
+- **주의(구현 때 확인):** `hc send`는 사람이 입력 칸에 쓰던 글(draft)이 있으면 마지막 키 뒤 최대 60초 기다린 뒤 그 글 뒤에 이어 붙여 실행한다. 입력 칸에 글이 남아 있으면 `print -z` 줄이 그 글과 합쳐질 수 있다. zsh의 `push-line`(기본 alt+q)으로 쓰던 글을 먼저 밀어 두는 방법 등을 구현 때 정한다.
+- mod에서는 `herdr`의 `hc(args)`로 hc를 부를 수 있다(`~/.config/herdr-app/herdr.d.ts`).
