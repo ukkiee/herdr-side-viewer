@@ -155,8 +155,10 @@ export function checkboxToggled(edits, file, disk, text) {
   return startSave(next, file);
 }
 
+// Herdr's own wording, without the "`herdr.writeTextFile`: " Herdr puts in front of every
+// API error: refusalOf anchors on the start of that wording, and the bar shows it.
 function messageOf(error) {
-  return String(error?.message ?? error ?? "");
+  return String(error?.message ?? error ?? "").replace(/^`herdr\.[\w.]+`: /, "");
 }
 
 // Written out because the mod's runtime is not known to have TextEncoder. A lone surrogate

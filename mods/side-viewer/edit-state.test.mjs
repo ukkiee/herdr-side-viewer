@@ -222,6 +222,21 @@ test("a refused save is read as changed on disk, no permission, too large, or so
   assert.equal(refusalOf(undefined), "other");
 });
 
+// What a mod actually receives: Herdr puts the API function's name in front of the wording.
+test("a refused save is read the same when Herdr names the function in front", () => {
+  assert.equal(refusalOf(new Error("`herdr.writeTextFile`: The file changed outside Herdr. Reload before saving; your draft is still here.")), "changed");
+  assert.equal(refusalOf(new Error("`herdr.writeTextFile`: The file changed while saving. Reload before saving.")), "changed");
+  assert.equal(refusalOf(new Error("`herdr.writeTextFile`: Text file exceeds 1 MiB")), "large");
+  assert.equal(refusalOf(new Error("`herdr.writeTextFile`: Permission denied (os error 13)")), "permission");
+  assert.equal(refusalOf(new Error("`herdr.writeTextFile`: No space left on device (os error 28)")), "other");
+});
+
+test("the bar for some other failure shows Herdr's wording without the function name", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  assert.equal(barOf(saveFailed(edits, A, new Error("`herdr.writeTextFile`: No space left on device (os error 28)")), A).message,
+    "저장하지 못했습니다: No space left on device (os error 28)");
+});
+
 test("a failed save keeps the edits and says why", () => {
   const edits = typed(noEdits(), A, "one\n", "mine\n");
   const permission = saveFailed(edits, A, new Error("Permission denied (os error 13)"));
