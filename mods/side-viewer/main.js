@@ -22,6 +22,7 @@ import { renderHeader } from "./header.js";
 import { renderBar } from "./conflict-bar.js";
 import { renderMarkdown } from "./markdown-view.js";
 import { CodeCards } from "./code-card.js";
+import { ShellPane } from "./shell-pane.js";
 import { renderCode } from "./code-view.js";
 import { renderImage } from "./image-view.js";
 import { renderNotice } from "./notice-view.js";
@@ -65,6 +66,8 @@ export default class SideViewer extends View {
     this.saving = false;
     // The markdown view's code block cards and their editor state (code-card.js).
     this.codeCards = new CodeCards();
+    // The shell pane a shell code block's `>_` puts its command into (shell-pane.js).
+    this.shellPane = new ShellPane();
     // The viewer's own keyboard target: cmd+S is heard on the root that tracks it, whether
     // it or the editor inside it holds the keyboard.
     this.focus = cx.focus_handle();
@@ -421,6 +424,12 @@ export default class SideViewer extends View {
     });
   }
 
+  // A shell code block's `>_`: into the shell pane below this viewer, which starts in the
+  // conversation's folder, or in the document's folder when the viewer is a tab of its own.
+  insertIntoTerminal(command, cx) {
+    this.shellPane.insert(command, { file: this.file, viewerTab: this.viewerTab === true }, cx);
+  }
+
   revealInFinder(_cx) {
     if (this.file) exec("open", ["-R", this.file]).catch(() => null);
   }
@@ -507,6 +516,7 @@ export default class SideViewer extends View {
         onLink: (url, cx) => this.followLink(url, cx),
         file: this.file,
         codeCards: this.codeCards,
+        onTerminal: (command, cx) => this.insertIntoTerminal(command, cx),
       });
     }
     if (content.state === "image") {

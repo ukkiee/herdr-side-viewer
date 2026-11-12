@@ -8,6 +8,7 @@
 //   file,         the shown file, for the folder and name at the top
 //   onLink: (url, cx) => void
 //   codeCards,    the viewer's CodeCards (code-card.js), prepared for this text
+//   onTerminal: (command, cx) => void   a shell code block's `>_`
 // }
 //
 // The rendering draws markdown-blocks.js's blocks one by one, each kind in its own function:
@@ -35,7 +36,7 @@ function documentOf(text) {
   return parsed.doc;
 }
 
-export function renderMarkdown(t, { text, raw, generation, file, onLink, codeCards }) {
+export function renderMarkdown(t, { text, raw, generation, file, onLink, codeCards, onTerminal }) {
   const scroll = div().id("side-viewer-scroll").flex_1().min_h(0).overflow_y_scrollbar();
   if (raw) {
     // The source is drawn by the same element, fenced as one code block.
@@ -49,6 +50,7 @@ export function renderMarkdown(t, { text, raw, generation, file, onLink, codeCar
   const ctx = {
     t, onLink, footnotes: doc.footnotes,
     takeCard: codeCards?.drawing() ?? null,
+    onTerminal: onTerminal ?? null,
     // A TextView sees one block, so reference-style links need the definitions next to them.
     references: doc.references.length ? `\n\n${doc.references.join("\n")}` : "",
     // A TextView keeps drawing its first text under the same id. Unsaved edits change the
@@ -188,7 +190,7 @@ function renderImageBlock(ctx, block, key) {
 // A code block is a card (code-card.js). Inside a list item or a quote it takes the column
 // that item's or quote's other blocks take.
 function renderCodeBlock(ctx, block, key) {
-  return renderCodeCard(ctx.t, ctx.takeCard, block, key);
+  return renderCodeCard(ctx.t, ctx.takeCard, block, key, ctx.onTerminal);
 }
 
 // The footnotes' text, numbered as their marks in the body, at the end of the document.
