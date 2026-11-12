@@ -7,11 +7,11 @@
 //   state,        this.content.state of the viewer
 //   raw,          whether the markdown view shows the source
 //   unsaved,      whether the shown file has edits not yet saved
-//   onBack, onToggleRaw, onSave, onOriginal, onFinder: (cx) => void
+//   onBack, onToggleRaw, onSave, onNewTab, onOriginal, onFinder: (cx) => void
 // }
 //
 // Left to right: back, file name, folder, "unsaved" and save, the markdown switch, then the
-// actions (original app, Finder). Each part is one line of renderHeader.
+// actions (new tab, original app, Finder). Each part is one line of renderHeader.
 import { div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { home } from "herdr";
@@ -59,9 +59,11 @@ function renderSwitch(t, { raw, onToggleRaw }) {
     : renderButton(t, "side-viewer-source", "source", "원문 보기", (_event, cx) => onToggleRaw(cx));
 }
 
-// "Open in the original app" and "Show in Finder", for the header and for a notice screen.
-function renderActions(t, { onOriginal, onFinder }) {
+// "Open in a new tab", "Open in the original app" and "Show in Finder", for the header and
+// for a notice screen.
+function renderActions(t, { onNewTab, onOriginal, onFinder }) {
   return h_flex().flex_none().gap(2)
+    .child(renderButton(t, "side-viewer-new-tab", "new-tab", "새 탭으로 열기", (_event, cx) => onNewTab(cx)))
     .child(renderButton(t, "side-viewer-original", "original", "원래 앱으로 열기", (_event, cx) => onOriginal(cx)))
     .child(renderButton(t, "side-viewer-finder", "finder", "Finder에서 보기", (_event, cx) => onFinder(cx)));
 }

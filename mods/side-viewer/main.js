@@ -4,15 +4,17 @@
 // open.sh and watching. Drawing is in header.js, conflict-bar.js and the views' modules (markdown-view.js,
 // code-view.js, image-view.js, notice-view.js), which get what to show and callbacks from here.
 // The decisions live in modules without Herdr imports, each with its own tests: document.js,
-// views.js, image-copies.js, history.js, request.js, links.js, original.js and edit-state.js.
+// views.js, image-copies.js, history.js, request.js, links.js, original.js, edit-state.js and
+// viewer-tab.js.
 import { View } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
-import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder } from "herdr";
+import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes } from "herdr";
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
 import { contentOf } from "./document.js";
 import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf } from "./views.js";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, startSave, refusalOf, saveFailed } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit } from "./edit-state.js";
+import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab } from "./viewer-tab.js";
 import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, COPY, LIST } from "./image-copies.js";
 import { start, open, back, canGoBack } from "./history.js";
 import { takeRequest } from "./request.js";
@@ -65,9 +67,117 @@ export default class SideViewer extends View {
     // The viewer's own keyboard target: cmd+S is heard on the root that tracks it, whether
     // it or the editor inside it holds the keyboard.
     this.focus = cx.focus_handle();
+    // Whether this copy is a viewer tab, a tab whose only pane is it (viewer-tab.js), rather
+    // than a viewer beside a conversation. Its props say so, and they never change.
+    const tab = viewerTabOf(props()) ?? viewerTabOf(given);
+    this.viewerTab = Boolean(tab);
+    // A viewer tab starts with an empty history, as every new copy does: back only returns
+    // to files opened in this tab.
     this.show(given?.file ?? props()?.file, cx);
+    if (tab?.handoff) this.receive(tab.handoff, cx);
     this.watch(cx);
     this.listen(cx);
+  }
+
+  // A new viewer tab taking the unsaved edits its opener handed over (viewer-tab.js). The
+  // file's read may already be on screen, so the editor is brought up to the edits, and the
+  // file is read again to compare the disk with the text the edits started from.
+  receive(id, cx) {
+    const path = `${appHome()}/data/side-viewer/${handoffFile(id)}`;
+    cx.spawn(async (cx) => {
+      const text = await readTextFile(path).catch(() => null);
+      exec("rm", ["-f", path]).catch(() => null);
+      const handoff = handoffFrom(text, { id, now: Date.now() });
+      if (!handoff?.edit) return;
+      this.edits = putEdit(this.edits, handoff.file, handoff.edit);
+      const content = this.content;
+      if (content.file === handoff.file && content.editor) {
+        const shown = shownText(this.edits, content.file, content.text);
+        if (content.editor.value() !== shown) content.editor.set_value(shown);
+      }
+      this.generation++;
+      this.probed = null;
+      this.load(cx);
+      cx.notify();
+    });
+  }
+
+  // "Open in a new tab": a tab whose only pane is a viewer of this file, right after the tab
+  // this viewer is in, and shown. The same file opens a new tab every time. Unsaved edits go
+  // with it through a handoff file, and this viewer goes back to the disk text; when the
+  // handoff cannot be written they stay here and the tab opens on the disk text.
+  openTab(cx) {
+    const file = this.file;
+    if (!file) return;
+    // Taken now, while the click is handled: focused() is this viewer's tab.
+    const before = spaces();
+    const place = placeAfter(before, focused());
+    const { edit } = takeEdit(this.edits, file);
+    cx.spawn(async (cx) => {
+      const folder = `${appHome()}/data/side-viewer`;
+      let handoff = null;
+      if (edit) {
+        const id = handoffId(Date.now(), Math.random());
+        try {
+          await exec("mkdir", ["-p", folder]);
+          await writeTextFile(`${folder}/${handoffFile(id)}`, handoffText({ id, file, edit, now: Date.now() }), null);
+          handoff = id;
+        } catch {}
+      }
+      try {
+        run("tab.new", {
+          name: tabName(file), ...(place ? { space: place.space } : {}),
+          mod: "side-viewer", props: tabProps({ file, handoff }),
+        });
+      } catch {
+        if (handoff) exec("rm", ["-f", `${folder}/${handoffFile(handoff)}`]).catch(() => null);
+        return;
+      }
+      if (handoff) this.handedOff(file, cx);
+      if (place) await this.placeTab(before, place);
+      cx.notify();
+    });
+  }
+
+  // tab.new returns nothing and puts the tab where Herdr puts new tabs, so the new tab is
+  // found by comparing the space's tabs, then moved after this viewer's tab and shown.
+  // spaces() may lag the command a little, so it is asked a few times.
+  async placeTab(before, place) {
+    for (let tries = 0; tries < 20; tries++) {
+      const id = newTabOf(before, spaces(), place.space);
+      if (id) {
+        try {
+          run("tab.move", { id, index: place.index });
+          run("tab.select", { id });
+        } catch {}
+        return;
+      }
+      await exec("sleep", ["0.05"]).catch(() => null);
+    }
+  }
+
+  // The edits of `file` went to a viewer tab: this viewer shows the disk text again.
+  handedOff(file, cx) {
+    this.edits = takeEdit(this.edits, file).edits;
+    const content = this.content;
+    if (content.file === file && content.editor && content.editor.value() !== content.text) {
+      content.editor.set_value(content.text);
+    }
+    if (content.state === "markdown") this.generation++;
+    this.probed = null;
+    this.load(cx);
+  }
+
+  // A viewer tab's name follows the shown file: after a link, back, and an open request.
+  // Not at the start, where tab.new already named it and the shown tab may still be the
+  // opener's.
+  nameTab() {
+    if (!this.viewerTab || !this.file) return;
+    const id = ownTab(focused(), panes());
+    if (!id) return;
+    try {
+      run("tab.rename", { id, name: tabName(this.file) });
+    } catch {}
   }
 
   // Taking files from open.sh while this copy is showing: `side-viewer.show` wakes it, and
@@ -91,6 +201,7 @@ export default class SideViewer extends View {
         if (!request) continue;
         this.answered = request.id;
         this.show(request.file, cx);
+        this.nameTab();
         this.watch(cx);
       }
     });
@@ -114,6 +225,7 @@ export default class SideViewer extends View {
     this.raw = false;
     this.file = this.visits.file;
     this.load(cx);
+    this.nameTab();
     this.watch(cx);
   }
 
@@ -414,6 +526,7 @@ export default class SideViewer extends View {
     const step = linkAction(url, this.file, home(), this.groups);
     if (step.action === "show") {
       this.show(step.file, cx);
+      this.nameTab();
       this.watch(cx);
     } else if (step.action === "system") {
       exec("open", [step.url]).catch(() => null);
@@ -473,6 +586,7 @@ export default class SideViewer extends View {
       onBack: (cx) => this.goBack(cx),
       onToggleRaw: (cx) => this.toggleRaw(cx),
       onSave: (cx) => this.save(cx),
+      onNewTab: (cx) => this.openTab(cx),
       onOriginal: (cx) => this.openOriginal(cx),
       onFinder: (cx) => this.revealInFinder(cx),
     };
