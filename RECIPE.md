@@ -1065,8 +1065,8 @@ echo 'docs/samples/code-sample.md:12 and `box.svg`'
     refused, or the 3-second check found it first), and `tail -1 main.js` is `// outside`.
     Click `덮어쓰기`: the status goes, and `grep -c '// outside' main.js` prints `0`.
 62. Permission. Pick `ro/locked.md`, edit, cmd+S: `쓰기 권한이 없어요` in red, `저장` and the
-    edit stay. Pick `readonly.md`, edit, cmd+S: it saves, and `ls -l readonly.md` still
-    shows `-r--r--r--` (README, Limits).
+    edit stay. Pick `readonly.md`, edit, cmd+S: the same `쓰기 권한이 없어요` in red, `저장`
+    and the edit stay, and `cat readonly.md` still prints `read only` (Watch out, `test -w`).
 63. New tab. Edit `markdown-sample.md` without saving, click `새 탭으로 열기`: a tab right
     after the current one, in the same remote space, with the edit and `편집됨`, no
     `원래 앱으로 열기` or `Finder에서 보기`, and the picture drawn. cmd+S there: `tail` in the
