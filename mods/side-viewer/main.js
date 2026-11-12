@@ -488,6 +488,7 @@ export default class SideViewer extends View {
       return renderMarkdown(t, {
         text: shownText(this.edits, content.file, content.text), raw: this.raw, generation: this.generation,
         onLink: (url, cx) => this.followLink(url, cx),
+        file: this.file,
       });
     }
     if (content.state === "image") {

@@ -16,6 +16,7 @@ const LANGUAGES = {
   java: "java", jav: "java", kt: "kotlin", swift: "swift",
   c: "c", h: "c", cpp: "cpp", cp: "cpp", "c++": "cpp", cc: "cpp", cxx: "cpp",
   sh: "bash", zsh: "bash", sql: "sql", xml: "xml",
+  html: "html", htm: "html", shtml: "html", shtm: "html",
 };
 
 // A file's extension in lower case, or "" without one.

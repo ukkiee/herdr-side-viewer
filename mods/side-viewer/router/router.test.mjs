@@ -182,6 +182,27 @@ test("make-default says how many confirmation windows to expect: one per file ty
   assert.deepEqual(w.requests(), [`png ${ROUTER_ID}`, `jpg ${ROUTER_ID}`, `txt ${ROUTER_ID}`, `py ${ROUTER_ID}`]);
 });
 
+test("make-default code takes html over with its siblings in one confirmation window, and restore gives them back in one", () => {
+  // The shipped list. macOS files html, htm, shtml and shtm under one type (public.html).
+  const extensions = JSON.parse(readFileSync(join(here, "..", "extensions.json"), "utf8"));
+  const family = ["html", "htm", "shtml", "shtm"];
+  const w = world({ extensions, defaults: { html: "com.example.Browser" }, sameType: { htm: "html", shtml: "html", shtm: "html" } });
+  const asked = () => w.requests().filter((line) => family.includes(line.split(" ")[0]));
+
+  const taken = w.takeover("make-default", "code");
+  assert.equal(taken.status, 0, taken.stderr);
+  assert.deepEqual(asked(), [`html ${ROUTER_ID}`]);
+  for (const ext of family) {
+    assert.equal(w.defaultOf(ext), ROUTER_ID, ext);
+    assert.match(w.record(), new RegExp(`^${ext}\tcom\\.example\\.Browser$`, "m"));
+  }
+
+  const given = w.takeover("restore");
+  assert.equal(given.status, 0, given.stderr);
+  assert.deepEqual(asked(), [`html ${ROUTER_ID}`, "html com.example.Browser"]);
+  for (const ext of family) assert.equal(w.defaultOf(ext), "com.example.Browser", ext);
+});
+
 test("make-default asks for nothing when the router already holds everything", () => {
   const w = world({ extensions: { markdown: ["md"], image: ["png"], code: [] } });
   w.takeover("make-default");
