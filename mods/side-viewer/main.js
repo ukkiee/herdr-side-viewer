@@ -75,6 +75,9 @@ export default class SideViewer extends View {
     this.edits = noEdits();
     // Whether a save is under way: a second cmd+S waits for it instead of writing twice.
     this.saving = false;
+    // Saves asked for during a save, as file -> whether it is the bar's overwrite, taken
+    // when it ends (takeSaves).
+    this.saves = new Map();
     // Checkbox clicks that came during a save, as { file, line }, taken when it ends.
     this.clicks = [];
     // The markdown view's code block cards and their editor state (code-card.js).
@@ -539,9 +542,14 @@ export default class SideViewer extends View {
   // writeTextFile refuses when the file no longer matches the text read before the edit, and
   // says the same when the file is gone, so the file is read again to tell the two apart.
   // A refused or failed save keeps the edits, and the bar says why (edit-state.js).
-  save(cx) {
-    if (!saveOf(this.edits, this.file) || this.saving) return false;
-    const start = startSave(this.edits, this.file);
+  // Asked during another save, it waits for that one to end (takeSaves).
+  save(cx, file = this.file) {
+    if (!saveOf(this.edits, file)) return false;
+    if (this.saving) {
+      if (!this.saves.has(file)) this.saves.set(file, false);
+      return true;
+    }
+    const start = startSave(this.edits, file);
     this.edits = start.edits;
     const request = start.write;
     if (!request) {
@@ -568,9 +576,21 @@ export default class SideViewer extends View {
         this.saving = false;
         cx.notify();
         this.takeClicks(cx);
+        this.takeSaves(cx);
       }
     });
     return true;
+  }
+
+  // The saves asked for during a save, in order. One that starts a save makes the rest wait
+  // for it again.
+  takeSaves(cx) {
+    const saves = this.saves;
+    this.saves = new Map();
+    for (const [file, overwrite] of saves) {
+      if (overwrite) this.overwrite(cx, file);
+      else this.save(cx, file);
+    }
   }
 
   // A click on a checkbox in the rendering, at source line `line` (checkbox.js). A file
@@ -622,15 +642,22 @@ export default class SideViewer extends View {
     cx.notify();
   }
 
-  // The bar's "overwrite with mine": a save that expects the disk text the bar found.
-  overwrite(cx) {
-    this.edits = overwritten(this.edits, this.file);
+  // The bar's "overwrite with mine": a save that expects the disk text the bar found. During
+  // another save it waits, bar and all, since the save under way may change what the bar says.
+  overwrite(cx, file = this.file) {
+    if (this.saving) {
+      this.saves.set(file, true);
+      return;
+    }
+    this.edits = overwritten(this.edits, file);
     // My text was already what the disk holds: nothing to write, only the screen to catch up.
-    if (!saveOf(this.edits, this.file)) {
-      this.probed = null;
-      this.load(cx);
+    if (!saveOf(this.edits, file)) {
+      if (file === this.file) {
+        this.probed = null;
+        this.load(cx);
+      }
     } else {
-      this.save(cx);
+      this.save(cx, file);
     }
     cx.notify();
   }
