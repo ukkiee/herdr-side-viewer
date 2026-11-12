@@ -9,7 +9,9 @@
 //     { type: "list", kind, items }                  kind of the first item
 //         item: { kind: "bullet" | "ordered" | "task", number?, checked?, blocks }
 //               number only on "ordered", checked only on "task"; blocks are the item's
-//               own content, nested lists and code blocks included
+//               own content, nested lists and code blocks included. A "task" item also
+//               has `line`, the 0-based source line of its box (checkbox.js), kept out of
+//               the item's enumerable fields
 //     { type: "quote", blocks }
 //     { type: "table", align, header, rows }         align: "left" | "center" | "right" per column
 //     { type: "rule" }
@@ -234,6 +236,7 @@ function parseList(lines, i, blocks, found) {
     // Lines indented under the item belong to it; two spaces are enough, so "1." items can
     // be written with the common two-space indent.
     const under = Math.min(item.content, 2);
+    const start = i;
     const own = [{ text: item.first, at: lines[i].at }];
     let fenced = FENCE.test(item.first);
     i++;
@@ -261,6 +264,8 @@ function parseList(lines, i, blocks, found) {
     if (item.kind === "ordered") entry.number = item.number;
     if (item.kind === "task") entry.checked = item.checked;
     entry.blocks = parseBlocks(own, found);
+    // Not enumerable, so an item still compares equal to one written without it.
+    if (item.kind === "task") Object.defineProperty(entry, "line", { value: lines[start].at });
     list.items.push(entry);
 
     let k = i;
