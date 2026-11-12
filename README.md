@@ -1,22 +1,34 @@
 # Side Viewer
 
-A mod for the [Herdr](https://herdr.dev) desktop app, macOS only. Cmd-click a file path in
-an agent's conversation and the file opens in a pane to the right of it, instead of in
-another app:
+**English** | [한국어](README.ko.md)
 
-- **Markdown** (`md`, `markdown`, `mdx`) is rendered block by block, in the manner of Warp's
-  markdown view. The header's `렌더링 | 원문` switch shows the source, which you can edit.
-- **Code and text** open in an editor with line numbers and syntax colors, and you can edit
-  them. `html` is code here: you see and edit its source, not the page.
-- **Images** are drawn no wider than the pane. An `svg` also has the `렌더링 | 원문` switch,
+A side viewer for the [Herdr](https://herdr.dev) desktop app, macOS only. Cmd-click a file
+path in an agent's conversation and the file opens in a pane to the right of it, instead of
+in another app. Read markdown drawn block by block, read and edit code with syntax colors,
+look at images, save with cmd+S, give a file a tab of its own, and put a document's shell
+command into a terminal's input line.
+
+![Side Viewer](preview.png)
+
+- **Markdown** (`md`, `markdown`, `mdx`): rendered block by block, in the manner of Warp's
+  markdown view, with code blocks as cards. The header's `렌더링 | 원문` switch shows the
+  source, which you can edit.
+- **Code and text**: an editor with line numbers and syntax colors, and you can edit them.
+  `html` is code here: you see and edit its source, not the page.
+- **Images**: drawn no wider than the pane. An `svg` also has the `렌더링 | 원문` switch,
   and its source can be edited.
+- **Saving** (cmd+S): edits are saved with cmd+S or the header's `저장` button, never on
+  their own. The one exception is a checkbox click (see [Edit and save](#edit-and-save)).
+- **One viewer per tab**: a viewer already showing in the tab takes the next file, so panes
+  don't pile up, and `←` goes back to the file before. The viewer reloads when the file
+  changes on disk.
+- **Viewer tab**: the header's `새 탭으로 열기` button gives the file a tab of its own.
+- **`>_` on shell blocks**: types a code block's command into a shell pane below the viewer,
+  without running it.
+- **Outside Herdr** (Finder, another terminal) the same files keep opening in the app they
+  opened in before.
 
-Edits are saved with cmd+S or the header's `저장` button, never on their own. A viewer
-already showing in the tab takes the next file, so panes don't pile up, and `←` goes back to
-the file before. The viewer reloads when the file changes on disk. Outside Herdr (Finder,
-another terminal) the same files keep opening in the app they opened in before.
-
-## How it works
+### How it works
 
 Herdr hands a cmd-clicked path to macOS, which opens it in the default app for that kind of
 file. So this repo ships a small background app, the **router**, that you make the default
@@ -26,7 +38,7 @@ the one that was the default before. The router takes over only when you run the
 command below (the one exception is under [Limits](#limits)), and one command gives
 everything back.
 
-## Edit and save
+### Edit and save
 
 - **Where.** The markdown source, the svg source and the code view take typing. The
   markdown rendering, images (an svg's picture too), the code block cards inside a
@@ -59,7 +71,7 @@ everything back.
   is written and the `밖에서 바뀌었습니다` bar comes up. With edits, the click joins them and
   stays `저장 안 됨`.
 
-## Open in a new tab
+### Open in a new tab
 
 The header's `새 탭으로 열기` button (the leftmost of the three icons on the right, there
 while a file is drawn, not on a notice such as "too large" or "gone") opens a
@@ -70,7 +82,7 @@ tab every time. Unsaved edits move with the file: the new tab shows them with `�
 and the viewer you left shows the disk text. While a viewer tab is on screen, a cmd-clicked
 file opens in it, not in a new pane.
 
-## The markdown view
+### The markdown view
 
 - **Full width.** The document uses the pane's whole width, body text at 13pt, with the
   folder (dimmed) and the file name at the top.
@@ -105,24 +117,49 @@ file opens in it, not in a new pane.
   never larger than itself, at most 420 high, centered. One that can't be read shows
   `그림을 못 읽음: <path>` in its place.
 
+## Before you add it
+
+- **Programs**: the router is built on your machine from
+  [`mods/side-viewer/router/main.swift`](mods/side-viewer/router/main.swift) and signed ad
+  hoc. The mod and the router run shell commands (`sh`, `open`, `stat`, `cp`, `rm` and the
+  like, and `herdr-app`), and read the files you open.
+- **Your files**: the mod writes a file when you save it or click a checkbox in it.
+- **Terminal**: the `>_` button opens a zsh pane and types into it through Herdr's `hc`
+  (`hc send`, `hc keys alt+q`, `hc get`).
+- **Network**: nothing reaches the network; a web or mail link you click in a document is
+  handed to macOS.
+- **Data folder** (`~/.config/herdr-app/data/side-viewer/`): the mod and the router write:
+  - `original-apps.tsv`, the record of original apps;
+  - `request.json` and `answer-<id>`, the request passed from the router to the viewer;
+  - `images/`, copies of the images you view and of the pictures inside markdown documents;
+  - `previews/`, copies of edited svg sources, drawn before they are saved;
+  - `handoff-<id>.json`, the unsaved edits handed to a new viewer tab, deleted once the tab
+    has read them (one can be left behind if Herdr quits in between).
+
+  A copy in `images/` or `previews/` is deleted when a newer copy of the same file replaces
+  it, or when not shown for 30 days.
+
+How it is built and what to watch for: [RECIPE.md](RECIPE.md).
+
 ## Install
 
 Needs the Herdr app (`herdr-app` on your `PATH`) and Xcode's command line tools
 (`xcode-select --install`), which build the router.
 
 ```sh
-./install.sh
+git clone https://github.com/ukkiee/herdr-side-viewer
+cd herdr-side-viewer && ./install.sh
 ```
 
-from a clone of this repository. It runs `herdr-app check` on the mod, builds
+`install.sh` runs `herdr-app check` on the mod, builds
 `~/Applications/Side Viewer Router.app`, and copies the mod into
 `~/.config/herdr-app/mods/side-viewer` (or `$HERDR_APP_HOME`). If the check or the build
 fails, the mod and the router that were installed stay as they were. It does not run the
 take-over command below; building alone can still make the router the default for an
 extension no other app claims (see "Building alone can change a default" under
-[Limits](#limits)). Run it again after `git pull` to update.
+[Limits](#limits)). **Run it again after `git pull` to update.**
 
-## Take over the extensions
+### Take over the extensions
 
 The router's commands are flags of its binary. A shell function saves typing:
 
@@ -171,7 +208,7 @@ and when to run it is your choice.
 To undo it, `router --restore` (below) gives everything back, the browser's `html`
 included.
 
-## Give them back
+### Give them back
 
 ```sh
 router --restore
@@ -184,10 +221,10 @@ whose default you changed yourself in the meantime is left alone. If a recorded 
 app has been uninstalled since, the command says so and asks for a sibling extension's app
 instead, or for TextEdit (Preview for images).
 
-Run it before you delete the router app: the record it restores from is of no use without
-the command.
+**Run it before you delete the router app**: the record it restores from is of no use
+without the command.
 
-## See where things stand
+### See where things stand
 
 ```sh
 router --status
@@ -276,28 +313,6 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
   `~/.config/herdr-app`. With Herdr elsewhere, or if Herdr doesn't answer within 5 seconds,
   the file opens in its original app.
 - **The viewer's buttons, notices and tooltips and the commands' output are in Korean.**
-
-## Before you add it
-
-The router is built on your machine from `mods/side-viewer/router/main.swift` and signed
-ad hoc. The mod and the router run shell commands (`sh`, `open`, `stat`, `cp`, `rm` and
-the like, and `herdr-app`), and read the files you open. The mod writes a file when you
-save it or click a checkbox in it, and the `>_` button opens a zsh pane and types into it
-through Herdr's `hc` (`hc send`, `hc keys alt+q`, `hc get`). They write to
-`~/.config/herdr-app/data/side-viewer/`:
-
-- `original-apps.tsv`, the record of original apps;
-- `request.json` and `answer-<id>`, the request passed from the router to the viewer;
-- `images/`, copies of the images you view and of the pictures inside markdown documents;
-- `previews/`, copies of edited svg sources, drawn before they are saved;
-- `handoff-<id>.json`, the unsaved edits handed to a new viewer tab, deleted once the tab has
-  read them (one can be left behind if Herdr quits in between).
-
-A copy in `images/` or `previews/` is deleted when a newer copy of the same file replaces it,
-or when not shown for 30 days. Nothing reaches the network; a web or mail link you click in a document is
-handed to macOS.
-
-How it is built and what to watch for: [RECIPE.md](RECIPE.md).
 
 ## License
 
