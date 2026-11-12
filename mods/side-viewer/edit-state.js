@@ -43,6 +43,30 @@ export function saved(edits, file, text) {
   return { ...edits, [file]: { disk: text, text: entry.text } };
 }
 
+// A read of `file` found `text` on disk: a string, null when the file is gone, or undefined
+// when it could not be read. Returns { edits, step }. "show": put the read on screen, as v1
+// did. "keep": the file has edits, which stay on screen as they are; a disk that no longer
+// holds the text the edit started from raises the bar instead of replacing them.
+export function diskRead(edits, file, text) {
+  const entry = file ? edits[file] : null;
+  if (!entry) return { edits, step: "show" };
+  if (text === undefined) return { edits, step: "keep" };
+  if (text === entry.disk) return { edits: { ...edits, [file]: { disk: entry.disk, text: entry.text } }, step: "keep" };
+  return { edits: { ...edits, [file]: { ...entry, bar: { kind: "conflict", disk: text } } }, step: "keep" };
+}
+
+const MESSAGES = {
+  conflict: "밖에서 바뀌었습니다",
+};
+
+// What the bar above the content says for `file`, as { kind, message }, or null for no bar.
+// Only "conflict" has the two buttons (discard and overwrite).
+export function barOf(edits, file) {
+  const bar = file ? edits[file]?.bar : null;
+  if (!bar) return null;
+  return { kind: bar.kind, message: MESSAGES[bar.kind] };
+}
+
 function without(edits, file) {
   if (!edits[file]) return edits;
   const rest = { ...edits };

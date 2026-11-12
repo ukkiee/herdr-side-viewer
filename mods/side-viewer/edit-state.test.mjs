@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noEdits, typed, unsaved, shownText, saveOf, saved } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf } from "./edit-state.js";
 
 const A = "/work/a.md";
 
@@ -82,4 +82,32 @@ test("typing the text back to what is on disk leaves nothing unsaved", () => {
   edits = typed(edits, A, "# A\n", "# A\n");
   assert.equal(unsaved(edits, A), false);
   assert.equal(shownText(edits, A, "# A\n"), "# A\n");
+});
+
+test("a file with no edits that changed on disk is read again, as before", () => {
+  const read = diskRead(noEdits(), A, "new\n");
+  assert.equal(read.step, "show");
+  assert.equal(unsaved(read.edits, A), false);
+  assert.equal(barOf(read.edits, A), null);
+  // A file without edits that is gone shows the v1 notice: nothing to keep.
+  assert.equal(diskRead(noEdits(), A, null).step, "show");
+});
+
+test("a file with edits that changed on disk keeps the edits on screen and raises the bar", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const read = diskRead(edits, A, "theirs\n");
+  assert.equal(read.step, "keep");
+  assert.equal(unsaved(read.edits, A), true);
+  assert.equal(shownText(read.edits, A, "theirs\n"), "mine\n");
+  assert.deepEqual(barOf(read.edits, A), { kind: "conflict", message: "밖에서 바뀌었습니다" });
+  // A save still expects the text the edit started from, so writeTextFile refuses it.
+  assert.deepEqual(saveOf(read.edits, A), { path: A, text: "mine\n", expected: "one\n" });
+});
+
+test("a file with edits that is read again unchanged raises no bar", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const read = diskRead(edits, A, "one\n");
+  assert.equal(read.step, "keep");
+  assert.equal(barOf(read.edits, A), null);
+  assert.equal(unsaved(read.edits, A), true);
 });
