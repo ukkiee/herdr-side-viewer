@@ -117,26 +117,85 @@ test("every key the code uses is in a table, and every table key is used", () =>
 
 // The parts that word a sentence speak English without a translator, so a call that forgets
 // to pass the viewer's `tr` would stay English on a Korean system without failing anything else.
+// A part is every function or method that takes `tr` (found, so a new step that carries it is
+// checked too), plus renderHeader, which reads it from main.js's header() object.
+const codeSources = fs.readdirSync(here).filter((name) => name.endsWith(".js") && !name.startsWith("messages-") && name !== "i18n.js");
+// Comment lines left out: they may show a call without making it.
+const codeOf = (name) => fs.readFileSync(path.join(here, name), "utf8").split("\n").filter((line) => !line.trim().startsWith("//")).join("\n");
+const KEYWORDS = new Set(["if", "for", "while", "switch", "catch", "function", "return"]);
+// tr as an object's key: `{ tr }`, `{ a, tr, b }`, `{ tr: this.words() }`.
+const trKey = /(?:^|[{,])\s*tr\s*(?:[:,}]|$)/;
+
+// Every definition, by name and then by file: two files may each keep a private function of the
+// same name (header.js and code-card.js both have renderActions), and a call means its own file's.
+function definitions() {
+  const defs = new Map();
+  for (const name of codeSources) {
+    for (const m of codeOf(name).matchAll(/\b(\w+)\s*\(([^()]*)\)\s*\{/g)) {
+      if (KEYWORDS.has(m[1])) continue;
+      if (!defs.has(m[1])) defs.set(m[1], new Map());
+      // Keyed: tr comes in an options object, so a call must give that object a tr key.
+      defs.get(m[1]).set(name, { takesTr: /\btr\b/.test(m[2]), keyed: /\{[^}]*\btr\b[^}]*\}/.test(m[2]) });
+    }
+  }
+  defs.set("renderHeader", new Map([["header.js", { takesTr: true, keyed: false }]]));
+  return defs;
+}
+
+// The part a call in `file` reaches: its own file's definition, else one elsewhere that takes tr.
+const partFor = (defs, fnName, file) => {
+  const byFile = defs.get(fnName);
+  if (byFile.has(file)) return byFile.get(file).takesTr ? byFile.get(file) : null;
+  return [...byFile.values()].find((def) => def.takesTr) ?? null;
+};
+
 test("every call of a part that words a sentence passes the viewer's translator", () => {
-  const parts = ["noticeFor", "statusOf", "barOf", "noticeOf", "unplacedNotice", "insertPlan", "pressOutcome", "renderNotice", "renderMarkdown", "renderHeader"];
-  const sources = fs.readdirSync(here).filter((name) => name.endsWith(".js") && !name.startsWith("messages-") && name !== "i18n.js");
+  const defs = definitions();
+  const parts = [...defs.keys()].filter((fnName) => [...defs.get(fnName).values()].some((def) => def.takesTr));
+  for (const step of ["noticeFor", "statusOf", "barOf", "noticeOf", "unplacedNotice", "insertPlan", "pressOutcome", "renderNotice", "renderMarkdown",
+    "renderBody", "header", "insert", "put", "send", "renderStatus", "renderSwitch", "renderActions"]) {
+    assert.ok(parts.includes(step), `the scan finds ${step} as a part that takes tr`);
+  }
   const bare = [];
   let calls = 0;
-  for (const name of sources) {
-    const text = fs.readFileSync(path.join(here, name), "utf8").split("\n").filter((line) => !line.trim().startsWith("//")).join("\n");
-    for (const m of text.matchAll(new RegExp(`(function\\s+)?\\b(${parts.join("|")})\\(`, "g"))) {
-      if (m[1]) continue;
+  for (const name of codeSources) {
+    const text = codeOf(name);
+    for (const m of text.matchAll(new RegExp(`\\b(${parts.join("|")})\\(`, "g"))) {
+      const part = partFor(defs, m[1], name);
+      if (!part) continue;
       // The call's arguments, up to its closing parenthesis.
       let depth = 1, at = m.index + m[0].length;
       while (depth > 0 && at < text.length) depth += text[at] === "(" ? 1 : text[at] === ")" ? -1 : 0, at++;
       const args = text.slice(m.index + m[0].length, at - 1);
+      // A definition, not a call: `function noticeFor(state, tr) {`, `async put(…, tr, cx) {`.
+      if (/^\s*\{/.test(text.slice(at))) continue;
       calls++;
-      // tr, or main.js's this.words() that makes it.
-      if (!/\b(?:tr|words)\b/.test(args)) bare.push(`${name}: ${m[2]}(${args.replace(/\s+/g, " ").slice(0, 80)})`);
+      // tr, or main.js's this.words() that makes it. A keyed part needs tr as a key; header.js
+      // hands its parts renderHeader's whole `header`, whose tr is checked in the next test.
+      const ok = part.keyed ?trKey.test(args) || /^t,\s*header\b/.test(args.trim()) : /\b(?:tr|words)\b/.test(args);
+      if (!ok) bare.push(`${name}: ${m[1]}(${args.replace(/\s+/g, " ").slice(0, 80)})`);
     }
   }
-  assert.ok(calls > 10, "the scan finds the calls");
+  assert.ok(calls > 20, "the scan finds the calls");
   assert.deepEqual(bare, []);
+});
+
+// renderHeader's parts read tr off the object main.js's header(tr) builds, so that object has to
+// carry it; a mention of tr elsewhere in header() (statusOf's) is not enough.
+test("the header object main.js builds carries the viewer's translator", () => {
+  const text = codeOf("main.js");
+  const start = text.search(/^\s*header\(tr\)\s*\{/m);
+  assert.ok(start >= 0, "main.js has header(tr)");
+  const body = text.slice(start).match(/\{([\s\S]*?)\n {2}\}/)[1];
+  const object = body.slice(body.indexOf("return {"));
+  // Only the object's own keys: what nested calls take is left out.
+  let flat = "", depth = 0;
+  for (const ch of object.slice("return {".length)) {
+    if (ch === "(") depth++;
+    if (depth === 0) flat += ch;
+    if (ch === ")") depth--;
+  }
+  assert.match(flat, trKey);
 });
 
 test("no Korean is left on screen outside the message tables", () => {
