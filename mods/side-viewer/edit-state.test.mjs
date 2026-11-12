@@ -94,7 +94,7 @@ test("a file with no edits that changed on disk is read again, as before", () =>
   assert.equal(read.step, "show");
   assert.equal(unsaved(read.edits, A), false);
   assert.equal(barOf(read.edits, A), null);
-  // A file without edits that is gone shows the v1 notice: nothing to keep.
+  // A file without edits that is gone shows the plain notice: nothing to keep.
   assert.equal(diskRead(noEdits(), A, null).step, "show");
 });
 
