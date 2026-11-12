@@ -4,7 +4,7 @@
 // result here.
 //
 // In the viewer `t` is the theme, so a translator is always called `tr`. The pure modules
-// take one as their last argument and speak English without it.
+// take one as their last argument and throw without it (wordsOf).
 
 import * as header from "./messages-header.js";
 import * as body from "./messages-body.js";
@@ -66,7 +66,10 @@ export function translator(lang, tables = TABLES) {
   return tr;
 }
 
-const ENGLISH = translator("en");
-
-// The translator a pure module speaks with: the one it was given, else English.
-export const wordsOf = (tr) => (typeof tr === "function" ? tr : ENGLISH);
+// The translator a pure module speaks with. A missing one throws rather than falling back to
+// English: a fallback would leave a forgotten `tr` silently English on a Korean system, while a
+// throw makes the unit test of that path fail.
+export function wordsOf(tr) {
+  if (typeof tr !== "function") throw new TypeError("no translator (tr) was passed");
+  return tr;
+}

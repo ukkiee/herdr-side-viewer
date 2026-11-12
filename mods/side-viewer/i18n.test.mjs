@@ -6,6 +6,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pickLang, readAppleLanguages, systemLang, askAgainAfter, translator, TABLES } from "./i18n.js";
+import { noticeFor } from "./document.js";
+import { noticeOf } from "./terminal-insert.js";
+import { unplacedNotice } from "./viewer-tab.js";
 
 test("the first preferred language decides: Korean when it is Korean, English otherwise", () => {
   assert.equal(pickLang(["ko-KR"]), "ko");
@@ -64,6 +67,13 @@ test("t(key, args) words a key in its language and fills {name} places", () => {
   assert.equal(ko.lang, "ko");
 });
 
+test("a part that words a sentence, called without a translator, throws instead of speaking English", () => {
+  assert.throws(() => noticeFor("empty"), /translator/);
+  assert.throws(() => noticeOf({ state: "failed" }), /translator/);
+  assert.throws(() => unplacedNotice("/a/plan.md"), /translator/);
+  assert.equal(noticeFor("empty", translator("ko")), "이 파일은 비어 있습니다.");
+});
+
 // Every message table in the folder, found rather than listed.
 const here = path.dirname(fileURLToPath(import.meta.url));
 const tableFiles = fs.readdirSync(here).filter((name) => /^messages-[a-z0-9-]+\.js$/.test(name)).sort();
@@ -115,8 +125,9 @@ test("every key the code uses is in a table, and every table key is used", () =>
   }
 });
 
-// The parts that word a sentence speak English without a translator, so a call that forgets
-// to pass the viewer's `tr` would stay English on a Korean system without failing anything else.
+// The parts that word a sentence throw without a translator (wordsOf), so a forgotten `tr` on a
+// path the unit tests run already fails there. This scan backs that up for the wiring no unit test
+// runs: main.js, shell-pane.js and the views that hand `tr` down while drawing.
 // A part is found, so a new step that carries `tr` is checked too. What the scan finds as a part:
 // - a function or method written `name(…) {` or `function name(…) {` whose parameters hold tr;
 // - an arrow function written `name = (…) =>` or `name: (…) =>` whose parameters hold tr;

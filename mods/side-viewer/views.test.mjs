@@ -204,7 +204,7 @@ test("an edited svg emptied outside keeps the edits on screen and raises the cha
   // The disk comes back to the text the edits started from: the bar goes, the edits stay.
   const back = diskRead(step.edits, file, "<svg/>");
   assert.equal(back.step, "keep");
-  assert.equal(barOf(back.edits, file), null);
+  assert.equal(barOf(back.edits, file, translator("ko")), null);
   assert.equal(shownText(back.edits, file, "<svg/>"), "<svg><g/></svg>");
 });
 

@@ -67,7 +67,7 @@ const ready = (pid) => ({ state: "ready", pid, argv: ["/bin/zsh", "-l"] });
 const KEY = ["keys", "t7", "ctrl+alt+f12"];
 
 test("a shell just opened is prepared, and the prepare line itself puts the command in; no key, no Enter", () => {
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false }), {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false, tr: ko }), {
     commands: [["send", "t7", prepareLine(FILE)]],
     notice: null,
     wait: PREPARE_WAIT_MS,
@@ -75,7 +75,7 @@ test("a shell just opened is prepared, and the prepare line itself puts the comm
 });
 
 test("a shell already prepared only gets the key", () => {
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: ready(40), prepared: shellOf(ready(40)), fresh: false, stale: false }), {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: ready(40), prepared: shellOf(ready(40)), fresh: false, stale: false, tr: ko }), {
     commands: [KEY],
     notice: null,
     wait: KEY_WAIT_MS,
@@ -83,7 +83,7 @@ test("a shell already prepared only gets the key", () => {
 });
 
 test("a shell that is now another zsh is prepared again, its draft pushed aside first", () => {
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: ready(41), prepared: shellOf(ready(40)), fresh: false, stale: false }), {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: ready(41), prepared: shellOf(ready(40)), fresh: false, stale: false, tr: ko }), {
     commands: [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE)]],
     notice: null,
     wait: PREPARE_WAIT_MS,
@@ -92,12 +92,12 @@ test("a shell that is now another zsh is prepared again, its draft pushed aside 
 
 test("after exec zsh, which keeps the pid, a zsh started with other arguments is prepared again", () => {
   const exec = { state: "ready", pid: 40, argv: ["zsh"] };
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: exec, prepared: shellOf(ready(40)), fresh: false, stale: false }).commands,
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: exec, prepared: shellOf(ready(40)), fresh: false, stale: false, tr: ko }).commands,
     [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE)]]);
 });
 
 test("a handoff file the last press left behind means the zsh lacks the widget, so it is prepared again", () => {
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: ready(40), prepared: shellOf(ready(40)), fresh: false, stale: true }).commands,
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: ready(40), prepared: shellOf(ready(40)), fresh: false, stale: true, tr: ko }).commands,
     [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE)]]);
 });
 
@@ -112,7 +112,7 @@ test("a shell on another machine gets nothing: the handoff file is on this one",
 });
 
 test("a press whose handoff file was taken keeps the zsh as prepared", () => {
-  assert.deepEqual(pressOutcome({ left: false, state: ready(40), keyed: true }), { prepared: shellOf(ready(40)), notice: null });
+  assert.deepEqual(pressOutcome({ left: false, state: ready(40), keyed: true, tr: ko }), { prepared: shellOf(ready(40)), notice: null });
 });
 
 test("a key press whose handoff file is still there forgets the zsh and says the command did not go in", () => {
@@ -198,10 +198,12 @@ test("the notices in English, the program's name kept as it is", () => {
   assert.deepEqual(noticeOf({ state: "unready" }, en), { title: failed, body: "The shell isn't ready for commands yet. Press again in a moment.", level: "error" });
   assert.deepEqual(noticeOf({ state: "remote" }, en), { title: failed, body: "Can't insert into a shell on another machine. Use the copy button and paste it.", level: "error" });
   assert.deepEqual(noticeOf({ state: "failed" }, en), { title: failed, body: "Couldn't open or find the shell pane.", level: "error" });
-  // The plan and the press word their notices in the language they are given, English without one.
-  assert.equal(insertPlan({ terminal: "mini/t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false }).notice.body,
+  // The plan and the press word their notices in the language they are given, and throw without one.
+  assert.equal(insertPlan({ terminal: "mini/t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false, tr: en }).notice.body,
     "Can't insert into a shell on another machine. Use the copy button and paste it.");
   assert.equal(pressOutcome({ left: true, state: ready(40), keyed: false, tr: en }).notice.title, failed);
+  assert.throws(() => insertPlan({ terminal: "mini/t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false }), /translator/);
+  assert.throws(() => pressOutcome({ left: true, state: ready(40), keyed: false }), /translator/);
 });
 
 test("beside a conversation the shell starts in the conversation terminal's folder", () => {

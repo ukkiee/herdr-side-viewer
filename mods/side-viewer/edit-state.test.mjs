@@ -441,6 +441,7 @@ test("the header's status in English: short states, and Herdr's wording kept as 
   assert.equal(statusIn(failed("Text file exceeds 1 MiB"), A, en).message, "Too large to save");
   assert.deepEqual(statusIn(failed("`herdr.writeTextFile`: No space left on device (os error 28)"), A, en),
     { kind: "failed", message: "Couldn't save", tip: "No space left on device (os error 28)", buttons: ["save"] });
-  // Without a translator the status speaks English.
-  assert.equal(statusIn(edits, A).message, "Edited");
+  // Without a translator the status throws rather than speaking English.
+  assert.throws(() => statusIn(edits, A), /translator/);
+  assert.throws(() => barIn(diskRead(edits, A, "theirs\n").edits, A), /translator/);
 });
