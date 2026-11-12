@@ -9,6 +9,7 @@
 import * as header from "./messages-header.js";
 import * as body from "./messages-body.js";
 import * as alerts from "./messages-alerts.js";
+import * as picker from "./messages-picker.js";
 
 export const LANGS = ["en", "ko"];
 
@@ -47,7 +48,7 @@ export const askAgainAfter = (attempt) => ASK_AGAIN[attempt] ?? ASK_LATER;
 // Every message table, one per screen area (messages-<area>.js, each exporting { en, ko },
 // keys starting with "<area>."). i18n.test.mjs fails for a table that isn't listed here,
 // for a key no code uses and for a key the code uses that no table has.
-export const TABLES = [header, body, alerts];
+export const TABLES = [header, body, alerts, picker];
 
 const merged = (tables, lang) => Object.assign({}, ...tables.map((table) => table?.[lang] ?? {}));
 

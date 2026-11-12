@@ -39,6 +39,10 @@ import { MarkdownImages } from "./markdown-image-loader.js";
 import { LANGS, translator, systemLang, askAgainAfter } from "./i18n.js";
 import { machineOf } from "./machine.js";
 import { accessOf } from "./file-access.js";
+import { closeOverlay } from "herdr";
+import { REQUEST_FILE, answerFile } from "./request.js";
+import { openTargetOf } from "./path-picker.js";
+import { PathPicker } from "./picker-view.js";
 
 // Where the system's language is remembered in Herdr's shared state ("ko" | "en").
 const LANG_KEY = "side-viewer.lang";
@@ -55,6 +59,13 @@ const PLACE_STEP_MS = 50;
 
 export default class SideViewer extends View {
   init(given, cx) {
+    // The copy cmd-o opens as a popup is the path picker (picker-view.js), not a viewer: it
+    // takes no requests, since it would answer them itself, and reads no file.
+    if (props()?.overlay ?? given?.overlay) {
+      this.picker = new PathPicker({ open: (pick, cx) => this.openPicked(pick, cx), tr: this.words() }, cx);
+      this.askLang(cx, 0);
+      return;
+    }
     this.file = null;
     this.visits = start();
     // The id of the last request this copy took from open.sh.
@@ -268,6 +279,48 @@ export default class SideViewer extends View {
         this.nameTab();
         this.watch(cx);
       }
+    });
+  }
+
+  // The path picker's pick, opened the way open.sh opens a cmd-clicked file: a side viewer
+  // showing in the conversation's tab takes it as a request (request.js) within about 0.4 s,
+  // else a new viewer splits off right of the conversation pane. Both carry the space value,
+  // so only a viewer of the conversation's space takes the file. The popup closes only once
+  // that is settled: a closed copy's tasks are cancelled, and the wait would end with them.
+  //   conversation: the conversation's pane id; space: its space value (machine.js)
+  openPicked({ file, conversation, space }, cx) {
+    const split = () => {
+      closeOverlay(props().overlay);
+      run("pane.split", { pane: conversation, direction: "right", mod: "side-viewer", props: { file, space } });
+    };
+    if (openTargetOf({ conversation, panes: panes() }).split) return split();
+    cx.spawn(async (cx) => {
+      const folder = `${appHome()}/data/side-viewer`;
+      const at = Math.floor(Date.now() / 1000);
+      const id = `${at}-picker-${Math.random().toString(36).slice(2, 10)}`;
+      const answer = `${folder}/${answerFile(id)}`;
+      try {
+        const request = `${folder}/${REQUEST_FILE}`;
+        const before = await readTextFile(request).catch(() => null);
+        await writeTextFile(request, `${JSON.stringify({ id, file, at, space })}\n`, before);
+        run("side-viewer.show");
+        for (let tries = 8; tries > 0; tries--) {
+          await cx.sleep(50);
+          if ((await readTextFile(answer).catch(() => null)) !== null) {
+            closeOverlay(props().overlay);
+            return;
+          }
+        }
+        // Taking the answer's name ends the request, so a viewer that wakes now cannot take
+        // the file as well as the new pane. A viewer that took it first leaves the name taken.
+        await writeTextFile(answer, `${id}\n`, null);
+      } catch {
+        if ((await readTextFile(answer).catch(() => null)) !== null) {
+          closeOverlay(props().overlay);
+          return;
+        }
+      }
+      split();
     });
   }
 
@@ -941,6 +994,7 @@ export default class SideViewer extends View {
   render(_cx) {
     const t = theme();
     const tr = this.words();
+    if (this.picker) return this.picker.renderPicker(t, tr);
     return v_flex().id("side-viewer").size_full().min_h(0).bg(t.background).text_color(t.foreground)
       .track_focus(this.focus).on_key_down((event, cx) => this.keyDown(event, cx))
       .child(renderHeader(t, this.header(tr)))
