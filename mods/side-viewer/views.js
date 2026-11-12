@@ -89,14 +89,20 @@ export function blockerOf(found, probe) {
 
 // The notices a file with unsaved edits can run into after it was drawn and edited.
 const EDITED_OVER = new Set(["missing", "empty", "large", "unreadable"]);
+// An edited svg can also come back without its source: as a picture alone once it is past
+// the text limit (imageState), or as a notice once its bytes are no longer svg.
+const EDITED_SVG_OVER = new Set(["image", "unsupported"]);
 
 // What a read of `file` puts on screen while the file has unsaved edits that started from
 // `disk`, and their editor is not up (the viewer came back from another file, or a viewer
-// tab took the edits). A notice would hide the edits, so the file's view of `disk` comes up
-// instead, and its editor shows the edits; the bar says what happened to the file
-// (edit-state.js). `found` is what viewOf gave. Anything else is the read's own `content`.
+// tab took the edits). A notice, or an svg's picture without its source, would hide the
+// edits, so the file's view of `disk` comes up instead, and its editor shows the edits; the
+// bar says what happened to the file (edit-state.js). `found` is what viewOf gave. Anything
+// else is the read's own `content`.
 export function editedContentOf(file, content, found, disk) {
-  if (!found || typeof disk !== "string" || !EDITED_OVER.has(content?.state)) return content;
+  if (!found || typeof disk !== "string") return content;
+  const state = content?.state;
+  if (!EDITED_OVER.has(state) && !(extensionOf(file) === "svg" && EDITED_SVG_OVER.has(state))) return content;
   if (found.view === "markdown") return { state: "markdown", text: disk };
   if (found.view === "code") return { state: "code", text: disk, language: found.language };
   // Only an svg's source can be edited. With no disk copy, it draws from the edits' preview.
