@@ -8,6 +8,7 @@
 // { kind: "conflict", disk } when the disk now holds `disk` instead, or
 // { kind: "failed", reason, detail? } when a save failed or the file was deleted. The name
 // `bar` stays because entries travel to new viewer tabs in the handoff file (takeEdit).
+import { wordsOf } from "./i18n.js";
 
 export function noEdits() {
   return {};
@@ -130,34 +131,40 @@ export function putEdit(edits, file, edit) {
   return { ...edits, [file]: bar && typeof bar === "object" ? { disk, text, bar } : { disk, text } };
 }
 
+// Message keys (messages-header.js) by what went wrong.
 const MESSAGES = {
-  conflict: "외부에서 바뀌었어요",
-  deleted: "파일이 지워졌어요",
-  permission: "쓰기 권한이 없어요",
-  large: "너무 커서 저장할 수 없어요",
-  other: "저장하지 못했어요",
+  conflict: "header.conflict",
+  deleted: "header.deleted",
+  permission: "header.permission",
+  large: "header.large",
+  other: "header.failed",
 };
 
 // What is wrong with `file`'s edits, as { kind, message, detail? }, or null when nothing is.
 // "conflict": the disk changed; "failed": a save failed or the file is gone, with Herdr's
-// own wording as `detail` when the reason is none of the known ones.
-export function barOf(edits, file) {
+// own wording as `detail` when the reason is none of the known ones. The message is in tr's
+// language (i18n.js); `detail` stays as Herdr wrote it.
+export function barOf(edits, file, tr) {
   const bar = file ? edits[file]?.bar : null;
   if (!bar) return null;
-  if (bar.kind === "conflict") return { kind: bar.kind, message: MESSAGES.conflict };
-  if (MESSAGES[bar.reason] && bar.reason !== "other") return { kind: bar.kind, message: MESSAGES[bar.reason] };
-  return { kind: bar.kind, message: MESSAGES.other, detail: bar.detail };
+  const words = wordsOf(tr);
+  if (bar.kind === "conflict") return { kind: bar.kind, message: words(MESSAGES.conflict) };
+  if (typeof MESSAGES[bar.reason] === "string" && bar.reason !== "other") return { kind: bar.kind, message: words(MESSAGES[bar.reason]) };
+  return { kind: bar.kind, message: words(MESSAGES.other), detail: bar.detail };
 }
 
 // What the header shows for `file` beside its name, as { kind, message, tip, buttons }, or
 // null when the file has no edits. `tip` is what hovering the message shows: the whole
 // message, which a narrow header may cut, or Herdr's wording for an unknown failure.
 // `buttons`: ["save"], or ["discard", "overwrite"] for a conflict, where saving would only
-// be refused again.
-export function statusOf(edits, file) {
+// be refused again. Words in tr's language (i18n.js).
+export function statusOf(edits, file, tr) {
   if (!unsaved(edits, file)) return null;
-  const problem = barOf(edits, file);
-  if (!problem) return { kind: "edited", message: "편집됨", tip: "편집됨", buttons: ["save"] };
+  const problem = barOf(edits, file, tr);
+  if (!problem) {
+    const edited = wordsOf(tr)("header.edited");
+    return { kind: "edited", message: edited, tip: edited, buttons: ["save"] };
+  }
   const buttons = problem.kind === "conflict" ? ["discard", "overwrite"] : ["save"];
   return { kind: problem.kind, message: problem.message, tip: problem.detail || problem.message, buttons };
 }

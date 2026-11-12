@@ -10,6 +10,7 @@ import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForR
 
 import { contentOf } from "./document.js";
 import { noEdits, typed, diskRead, shownText, barOf } from "./edit-state.js";
+import { translator } from "./i18n.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const probe = (bytes) => ({ found: true, readable: true, bytes, modified: 1, head: [] });
@@ -199,7 +200,7 @@ test("an edited svg emptied outside keeps the edits on screen and raises the cha
   assert.equal(content.state, "svg");
   assert.equal(shownText(step.edits, file, content.text), "<svg><g/></svg>");
   assert.equal(rendersEmpty(shownText(step.edits, file, content.text)), false);
-  assert.deepEqual(barOf(step.edits, file), { kind: "conflict", message: "외부에서 바뀌었어요" });
+  assert.deepEqual(barOf(step.edits, file, translator("ko")), { kind: "conflict", message: "외부에서 바뀌었어요" });
   // The disk comes back to the text the edits started from: the bar goes, the edits stay.
   const back = diskRead(step.edits, file, "<svg/>");
   assert.equal(back.step, "keep");
@@ -359,7 +360,7 @@ test("an edited markdown or code file emptied outside keeps the edits on screen 
     const content = editedContentOf(file, read, found, step.edits[file].disk);
     assert.equal(content.state, found.view, file);
     assert.equal(shownText(step.edits, file, content.text), before + "more\n", file);
-    assert.deepEqual(barOf(step.edits, file), { kind: "conflict", message: "외부에서 바뀌었어요" }, file);
+    assert.deepEqual(barOf(step.edits, file, translator("ko")), { kind: "conflict", message: "외부에서 바뀌었어요" }, file);
   }
 });
 

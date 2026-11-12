@@ -1,8 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, statusOf, discarded, overwritten, refusalOf, saveFailed, startSave, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf as barIn, statusOf as statusIn, discarded, overwritten, refusalOf, saveFailed, startSave, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
+import { translator } from "./i18n.js";
 
 const A = "/work/a.md";
+// The header as a Korean system shows it; the English words have their own test at the end.
+const ko = translator("ko");
+const barOf = (edits, file) => barIn(edits, file, ko);
+const statusOf = (edits, file) => statusIn(edits, file, ko);
 
 test("a file with no edits is not unsaved and shows what is on disk", () => {
   const edits = noEdits();
@@ -422,4 +427,20 @@ test("a file changed outside reads 외부에서 바뀌었어요 with read again 
   // Overwrite turns the conflict back into plain edits, saved against the disk text found.
   assert.equal(statusOf(overwritten(edits, A), A).kind, "edited");
   assert.equal(statusOf(discarded(edits, A), A), null);
+});
+
+test("the header's status in English: short states, and Herdr's wording kept as it is", () => {
+  const en = translator("en");
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const failed = (error) => saveFailed(edits, A, new Error(error));
+  assert.deepEqual(statusIn(edits, A, en), { kind: "edited", message: "Edited", tip: "Edited", buttons: ["save"] });
+  assert.deepEqual(statusIn(diskRead(edits, A, "theirs\n").edits, A, en),
+    { kind: "conflict", message: "Changed on disk", tip: "Changed on disk", buttons: ["discard", "overwrite"] });
+  assert.equal(statusIn(diskRead(edits, A, null).edits, A, en).message, "File deleted");
+  assert.equal(statusIn(failed("Permission denied (os error 13)"), A, en).message, "No write permission");
+  assert.equal(statusIn(failed("Text file exceeds 1 MiB"), A, en).message, "Too large to save");
+  assert.deepEqual(statusIn(failed("`herdr.writeTextFile`: No space left on device (os error 28)"), A, en),
+    { kind: "failed", message: "Couldn't save", tip: "No space left on device (os error 28)", buttons: ["save"] });
+  // Without a translator the status speaks English.
+  assert.equal(statusIn(edits, A).message, "Edited");
 });
