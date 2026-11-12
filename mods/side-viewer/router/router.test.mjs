@@ -399,6 +399,36 @@ test("make-default speaks English when the first preferred language is not Korea
   assert.equal(r.stderr, "");
 });
 
+for (const [what, languages, line] of [
+  ["Korean first", appleLanguages("ko-KR", "en-US"), "바꿀 것이 없습니다.\n"],
+  ["bare ko", appleLanguages("ko"), "바꿀 것이 없습니다.\n"],
+  ["a locale-style ko tag", appleLanguages("ko_KR.UTF-8"), "바꿀 것이 없습니다.\n"],
+  ["an unquoted upper-case tag", "(\n    KO\n)\n", "바꿀 것이 없습니다.\n"],
+  ["English first, Korean second", ENGLISH, "Nothing to change.\n"],
+  ["a tag that only starts with the letters ko", appleLanguages("kok-IN"), "Nothing to change.\n"],
+  ["an empty list", "(\n)\n", "Nothing to change.\n"],
+  ["an empty answer", "", "Nothing to change.\n"],
+  ["an answer that is not a list", "ko-KR\n", "Nothing to change.\n"],
+  ["a read that fails", null, "Nothing to change.\n"],
+]) {
+  test(`the router's language with ${what}`, () => {
+    const w = world({ defaults: { md: "com.example.Notes" }, languages });
+    const r = w.takeover("restore");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, line);
+  });
+}
+
+test("one run reads the language once, however many lines it prints", () => {
+  const w = world({ extensions: { markdown: ["md"], image: ["png"], code: ["py"] }, defaults: { md: "com.example.Notes", png: "com.apple.Preview", py: "com.example.Editor" }, languages: ENGLISH });
+  w.keep("png");
+  w.fail("py", 5);
+  const r = w.takeover("make-default", "code");
+  assert.equal(r.status, 1);
+  assert.equal(w.defaultsCalls().length, 1);
+  assert.deepEqual(w.defaultsCalls(), ["read -g AppleLanguages"]);
+});
+
 test("status prints the current default app and the recorded original app per extension", () => {
   const w = world({ extensions: { markdown: ["md", "mdx"], image: ["png"], code: [] }, defaults: { md: "com.example.Notes", png: "com.apple.Preview" } });
   assert.equal(w.takeover("status").stdout, "md\tcom.example.Notes\t-\nmdx\t-\t-\npng\tcom.apple.Preview\t-\n");

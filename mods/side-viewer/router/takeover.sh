@@ -54,6 +54,10 @@ say() {
     en.windows_to_router) say_fmt="macOS will show %s confirmation window$say_s. In each window, choose to change to Side Viewer Router." ;;
     ko.windows_to_original) say_fmt='macOS 확인 창이 %s번 뜹니다. 창마다 원래 앱으로 바꾸는 쪽을 고르세요.' ;;
     en.windows_to_original) say_fmt="macOS will show %s confirmation window$say_s. In each window, choose to change back to the original app." ;;
+    ko.nothing) say_fmt='바꿀 것이 없습니다.' ;;
+    en.nothing) say_fmt='Nothing to change.' ;;
+    ko.left) say_fmt='라우터에 남음:%s (이 확장자를 맡은 앱이 라우터뿐입니다)' ;;
+    en.left) say_fmt='Stayed with the router:%s (no app but the router handles these extensions)' ;;
     ko.changed) say_fmt='바뀜:%s' ;;
     en.changed) say_fmt='Changed:%s' ;;
     ko.kept) say_fmt='유지를 선택함:%s' ;;
@@ -101,8 +105,8 @@ left=""
 run_plan() {
   count=$(cut -f 1 "$plan" | awk 'NF && !seen[$0]++' | wc -l | tr -d ' ')
   if [ "$count" -eq 0 ]; then
-    echo "바꿀 것이 없습니다."
-    [ -n "$left" ] && echo "라우터에 남음:$left (이 확장자를 맡은 앱이 라우터뿐입니다)"
+    say nothing
+    [ -n "$left" ] && say left "$left"
     rm -f "$plan"
     [ -n "$siblings" ] && rm -f "$siblings"
     return 0
@@ -166,7 +170,7 @@ run_plan() {
 
   [ -n "$changed" ] && say changed "$changed"
   [ -n "$kept" ] && say kept "$kept"
-  [ -n "$left" ] && echo "라우터에 남음:$left (이 확장자를 맡은 앱이 라우터뿐입니다)"
+  [ -n "$left" ] && say left "$left"
   [ "$failed" -eq 1 ] && return 1
   [ -n "$kept" ] && return 3
   return 0
