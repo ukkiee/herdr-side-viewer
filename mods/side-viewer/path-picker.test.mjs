@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { pathCandidates } from "./path-picker.js";
+import { pathCandidates, existingPaths, filterPaths } from "./path-picker.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const HOME = "/Users/me";
@@ -74,4 +74,45 @@ test("without a folder for the terminal only absolute and ~ paths are offered", 
 test("a text with no paths offers none", () => {
   assert.deepEqual(candidates("모두 끝났어요. 테스트 통과."), []);
   assert.deepEqual(candidates(""), []);
+});
+
+// The existence check's output: the paths that exist on the machine, one per line.
+const output = (paths) => `${paths.join("\n")}\n`;
+
+test("the existence check leaves out files the machine does not have, keeping the order", () => {
+  const offered = candidates(CONVERSATION);
+  const shown = existingPaths(offered, output([
+    "/Users/me/work/app/README.md",
+    "/Users/me/work/app/docs/plan.md",
+    "/Users/me/notes/todo.md",
+  ]));
+  assert.deepEqual(shown, [
+    "/Users/me/work/app/docs/plan.md",
+    "/Users/me/notes/todo.md",
+    "/Users/me/work/app/README.md",
+  ]);
+});
+
+test("more than 30 files that exist show the 30 latest", () => {
+  const listed = Array.from({ length: 40 }, (_, i) => `  - docs/note-${i + 1}.md`).join("\n");
+  const offered = candidates(listed);
+  assert.equal(offered.length, 40);
+  const shown = existingPaths(offered, output(offered));
+  assert.equal(shown.length, 30);
+  assert.equal(shown[0], `${CWD}/docs/note-40.md`);
+  assert.equal(shown[29], `${CWD}/docs/note-11.md`);
+});
+
+test("no file that exists, or an empty check, shows none", () => {
+  assert.deepEqual(existingPaths(candidates(CONVERSATION), ""), []);
+  assert.deepEqual(existingPaths([], output(["/Users/me/work/app/README.md"])), []);
+});
+
+test("typing keeps the paths that contain what was typed, in any case", () => {
+  const shown = ["/Users/me/work/app/docs/plan.md", "/Users/me/notes/Todo.md", "/Users/me/work/app/README.md"];
+  assert.deepEqual(filterPaths(shown, "readme"), ["/Users/me/work/app/README.md"]);
+  assert.deepEqual(filterPaths(shown, "TODO"), ["/Users/me/notes/Todo.md"]);
+  assert.deepEqual(filterPaths(shown, "work/app"), ["/Users/me/work/app/docs/plan.md", "/Users/me/work/app/README.md"]);
+  assert.deepEqual(filterPaths(shown, ""), shown);
+  assert.deepEqual(filterPaths(shown, "없는"), []);
 });

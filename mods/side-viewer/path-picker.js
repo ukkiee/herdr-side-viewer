@@ -33,6 +33,22 @@ export function pathCandidates({ text, cwd, home, groups }) {
   return unique;
 }
 
+// How many paths the picker shows at most.
+export const PICK_LIMIT = 30;
+
+// The candidates (pathCandidates) that the existence check found on the machine, in their
+// order, at most PICK_LIMIT. `output` is that check's output: one existing path per line.
+export function existingPaths(candidates, output) {
+  const exists = new Set(String(output ?? "").split(/\r?\n/));
+  return candidates.filter((path) => exists.has(path)).slice(0, PICK_LIMIT);
+}
+
+// The paths that contain `typed`, ignoring case. Nothing typed keeps them all.
+export function filterPaths(paths, typed) {
+  const wanted = String(typed ?? "").toLowerCase();
+  return paths.filter((path) => path.toLowerCase().includes(wanted));
+}
+
 // The paths written in one line, in order. A code span with spaces is also tried whole, for
 // "`My Docs/a.md`"; its words are tried too, for "`node --test a.test.mjs`".
 function pathsIn(line) {
