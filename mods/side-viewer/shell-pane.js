@@ -4,7 +4,7 @@
 // A viewer keeps one ShellPane: it remembers the pane it opened and puts later blocks there
 // while that pane still shows the same terminal, and which zsh there it has prepared.
 import { hc, run, exec, panes, focused, props, home, appHome, notify, readTextFile, writeTextFile } from "herdr";
-import { insertFileOf, insertFolderOf, insertText, insertPlan, pressOutcome, isRemote, shellState, noticeOf, viewerPaneOf, liveShell, openedShell, splitOf, shellFolder } from "./terminal-insert.js";
+import { insertFileOf, insertFolderOf, insertText, insertPlan, pressOutcome, KEY_WAIT_MS, isRemote, shellState, noticeOf, viewerPaneOf, liveShell, openedShell, splitOf, shellFolder } from "./terminal-insert.js";
 
 // How long a new pane may take to show up in panes(), and a new shell to reach its prompt.
 const WAIT_MS = 5000;
@@ -15,7 +15,7 @@ const TAKE_STEP_MS = 50;
 export class ShellPane {
   constructor() {
     // { pane, terminal, prepared } of the shell pane this viewer opened, or null. `prepared`:
-    // the pid of the zsh there that has the insert widget, or null.
+    // the zsh there that has the insert widget, as shellOf() gives it ({ pid, argv }), or null.
     this.shell = null;
     // A press while one is under way is dropped, so two presses cannot open two panes.
     this.working = false;
@@ -107,7 +107,7 @@ export class ShellPane {
     }
     const left = await this.untaken(file, plan.wait, cx);
     if (left) await exec("rm", ["-f", "--", file]).catch(() => null);
-    const outcome = pressOutcome({ left, state });
+    const outcome = pressOutcome({ left, state, keyed: plan.wait === KEY_WAIT_MS });
     shell.prepared = outcome.prepared;
     if (outcome.notice) return outcome.notice;
     run("pane.focus", { pane: shell.pane });

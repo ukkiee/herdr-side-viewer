@@ -108,11 +108,20 @@ test("a shell on another machine gets nothing: the handoff file is on this one",
 });
 
 test("a press whose handoff file was taken keeps the zsh as prepared", () => {
-  assert.deepEqual(pressOutcome({ left: false, state: ready(40) }), { prepared: shellOf(ready(40)), notice: null });
+  assert.deepEqual(pressOutcome({ left: false, state: ready(40), keyed: true }), { prepared: shellOf(ready(40)), notice: null });
 });
 
-test("a press whose handoff file is still there forgets the zsh and says the command did not go in", () => {
-  assert.deepEqual(pressOutcome({ left: true, state: ready(40) }), { prepared: null, notice: noticeOf({ state: "unprepared" }) });
+test("a key press whose handoff file is still there forgets the zsh and says the command did not go in", () => {
+  assert.deepEqual(pressOutcome({ left: true, state: ready(40), keyed: true }), { prepared: null, notice: noticeOf({ state: "unprepared" }) });
+});
+
+test("a prepare line that has not taken the handoff file in time sends no key, so its notice says only that the shell was not ready", () => {
+  assert.deepEqual(pressOutcome({ left: true, state: ready(40), keyed: false }), { prepared: null, notice: noticeOf({ state: "unready" }) });
+  assert.deepEqual(noticeOf({ state: "unready" }), {
+    title: "터미널에 넣지 못했습니다",
+    body: "셸이 아직 명령을 받을 준비가 되지 않았습니다. 잠시 뒤 다시 누르세요.",
+    level: "error",
+  });
 });
 
 test("the notices for a shell that did not take the command and for another machine's shell", () => {

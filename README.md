@@ -149,7 +149,8 @@ file opens in it, not in a new pane.
   - `handoff-<id>.json`, the unsaved edits handed to a new viewer tab, deleted once the tab
     has read them (one can be left behind if Herdr quits in between);
   - `shell/<terminal>.txt`, the command `>_` hands to a shell pane, deleted by the shell as it
-    puts it in the input line.
+    puts it in the input line, or by the viewer when the shell has not taken it (one can be
+    left behind if an `hc` call fails; the next `>_` replaces it).
 
   A copy in `images/` or `previews/` is deleted when a newer copy of the same file replaces
   it, or when not shown for 30 days.

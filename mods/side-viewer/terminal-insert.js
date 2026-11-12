@@ -2,10 +2,11 @@
 // clipboard (the `>_` button on a code card). The decisions only: shell-pane.js asks Herdr.
 //
 // `hc keys` cannot type symbols or Korean, and `hc send` presses Enter after its paste and
-// adds it after whatever the person had typed there. So a shell is prepared once with a line
-// that defines a zsh widget on a key nobody uses (prepareLine), and each command is written
-// to that shell's handoff file and put in by pressing that key: no line runs, nothing stays
-// on screen, and a draft is pushed aside in any keymap.
+// adds it after whatever the person had typed there. So each command is written to the
+// shell's handoff file. A zsh not yet prepared gets a line (prepareLine) that defines a zsh
+// widget on a key nobody uses and puts this first command in itself; later presses only
+// press that key. No line is left to run, nothing stays on screen, and a draft is pushed
+// aside in any keymap.
 
 // The folder that holds the handoff files, under the app's folder `app` (appHome()).
 export const insertFolderOf = (app) => `${app}/data/side-viewer/shell`;
@@ -79,12 +80,15 @@ export function insertPlan({ terminal, file, state, prepared, fresh, stale }) {
 }
 
 // After a press, whether the zsh took it: `left` says the handoff file was still there once
-// the plan's wait was over. Then that zsh lacks the widget (exec zsh with the same arguments,
-// a shell that never ran the prepare line), so it is forgotten and the next press prepares it.
-// The unbound key has put ";7~" in its input line, which the notice mentions.
+// the plan's wait was over. Then that zsh is forgotten and the next press prepares it.
+// After the key (`keyed`) the zsh lacks the widget (exec zsh with the same arguments), and the
+// unbound key has put ";7~" in its input line, which the notice mentions. After a prepare line
+// no key went out: the shell had not run the line yet (slow rc files), so the notice says only
+// that. The late line finds no file and puts nothing in.
 //   state: the ready shellState the press went to.
-export function pressOutcome({ left, state }) {
-  return left ? { prepared: null, notice: noticeOf({ state: "unprepared" }) } : { prepared: shellOf(state), notice: null };
+export function pressOutcome({ left, state, keyed }) {
+  if (!left) return { prepared: shellOf(state), notice: null };
+  return { prepared: null, notice: noticeOf({ state: keyed ? "unprepared" : "unready" }) };
 }
 
 // Inside single quotes zsh takes everything as it is except the quote itself.
@@ -167,7 +171,8 @@ export function shellFolder({ viewerTab, file, viewer, panes, shell, home }) {
 }
 
 // The notification (herdr notify) for a line that was not put in.
-//   reason: { state: "busy", program } | { state: "unprepared" } | { state: "remote" } | { state: "failed" }
+//   reason: { state: "busy", program } | { state: "unprepared" } | { state: "unready" }
+//     | { state: "remote" } | { state: "failed" }
 export function noticeOf(reason) {
   if (reason.state === "busy") {
     return {
@@ -183,6 +188,9 @@ export function noticeOf(reason) {
       body: "셸이 명령을 받지 않았습니다(exec zsh 등으로 다시 시작됨). 입력 칸에 ;7~가 남았다면 지우고 다시 누르세요.",
       level: "error",
     };
+  }
+  if (reason.state === "unready") {
+    return { title, body: "셸이 아직 명령을 받을 준비가 되지 않았습니다. 잠시 뒤 다시 누르세요.", level: "error" };
   }
   if (reason.state === "remote") {
     return { title, body: "다른 기계의 셸에는 넣을 수 없습니다. 복사 버튼으로 붙여 넣으세요.", level: "error" };

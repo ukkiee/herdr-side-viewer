@@ -181,8 +181,10 @@ The mod shows files, not agents, so it has no agent statuses.
   another pid or argv in the same pane, or one that left an earlier file, is prepared again
   after `hc keys <terminal> alt+q`. Then the viewer waits for the file to go (500 ms after
   the key, 3 s after the prepare line, looking every 50 ms). A file still there is removed,
-  the zsh is forgotten, and a notification says `터미널에 넣지 못했습니다` / `셸이 명령을 받지
-  않았습니다(exec zsh 등으로 다시 시작됨). 입력 칸에 ;7~가 남았다면 지우고 다시 누르세요.`
+  the zsh is forgotten, and a notification says `터미널에 넣지 못했습니다` with, after the key,
+  `셸이 명령을 받지 않았습니다(exec zsh 등으로 다시 시작됨). 입력 칸에 ;7~가 남았다면 지우고
+  다시 누르세요.`, or after the prepare line (no key was sent) `셸이 아직 명령을 받을 준비가
+  되지 않았습니다. 잠시 뒤 다시 누르세요.`
   A terminal (or a viewer) whose hc address has a machine prefix (`mini/t7`) gets nothing:
   `다른 기계의 셸에는 넣을 수 없습니다. 복사 버튼으로 붙여 넣으세요.` Otherwise the viewer
   gives that pane the keyboard.
