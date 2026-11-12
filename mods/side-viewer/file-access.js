@@ -23,10 +23,12 @@
 //                             file does, from `cksum <path>` (remote-results.js changeMark).
 //                             Rejects when the command cannot start or the machine is
 //                             unreachable (remote-results.js failureOf tells which).
-//   access.copy(path, copy)   Promise<{ code, stdout, stderr }>: puts the bytes of the file `path`
+//   access.copy(path, copy, bytes)
+//                             Promise<{ code, stdout, stderr }>: puts the bytes of the file `path`
 //                             there at `copy`, a path on this Mac, by image-copies.js's COPY
-//                             rule (a copy already there is only touched). Nonzero code: no
-//                             copy. Rejects as exec does.
+//                             rule (a copy already there is only touched); another machine's
+//                             by REMOTE_COPY, which gives no copy unless it got `bytes`, the
+//                             size the probe found. Nonzero code: no copy. Rejects as exec does.
 //   access.key(path)          a name for the file `path` there that no file of the same path on
 //                             another machine shares, for naming its copies.
 //   access.write(path, text, expected)
@@ -44,7 +46,7 @@
 // Other tickets' functions join the access; these keep their names, arguments and results.
 import { exec, readTextFile, writeTextFile, home, appHome } from "herdr";
 import { EXISTS, existingOf, HOME_FOLDER, homeOf, hcCommand, FIND_HC } from "./machine.js";
-import { COPY } from "./image-copies.js";
+import { COPY, REMOTE_COPY, REMOTE_COPY_TIMEOUT_MS } from "./image-copies.js";
 import { changeMark, saveFailureOf } from "./remote-results.js";
 
 // A remote save hands its text to `hc file write --on`, which takes it on stdin, from a copy in
@@ -61,17 +63,6 @@ const SAVES_FOLDER = 'umask 077; mkdir -p "$1" && chmod 700 "$1" && find "$1" -t
 // Run on this Mac as `sh -c REMOTE_WRITE sh <machine> <path> <copy>`.
 const REMOTE_WRITE = `${FIND_HC}
 exec "$hc" file write --on "$1" "$2" < "$3"
-`;
-
-// Run on this Mac as `sh -c REMOTE_COPY sh <machine> <file> <copy>`: COPY's rule with the bytes
-// of `hc exec --on <machine> cat <file>`, which passes them through unchanged (a 315,093-byte
-// png from nuc-pro had the same sha256 there and here). They land beside the copy first, so a
-// read that fails or breaks off never leaves a copy that later reads would only touch.
-const REMOTE_COPY = `${FIND_HC}
-umask 077
-mkdir -p "$(dirname "$3")" || exit 1
-if [ -f "$3" ]; then touch "$3"; exit 0; fi
-"$hc" exec --on "$1" cat "$2" > "$3.part" && mv "$3.part" "$3" || { rm -f "$3.part"; exit 1; }
 `;
 
 const accesses = new Map();
@@ -120,7 +111,7 @@ function remoteAccess(machine) {
       return folder;
     },
     mark: (path, options) => markWith(run, path, options),
-    copy: (path, copy) => exec("sh", ["-c", REMOTE_COPY, "sh", machine, path, copy]),
+    copy: (path, copy, bytes) => exec("sh", ["-c", REMOTE_COPY, "sh", machine, path, copy, String(bytes)], { timeout: REMOTE_COPY_TIMEOUT_MS }),
     key: (path) => `${machine}:${path}`,
     write: (path, text, expected) => writeThere(machine, path, text, expected),
   };

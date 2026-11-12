@@ -76,7 +76,7 @@ export class MarkdownImages {
     const kind = kindOf(image, probe.head);
     if (!kind) return FAILED;
     const path = `${FOLDER}/${copyName(access.key(image), probe, kind)}`;
-    const copied = await access.copy(image, `${appHome()}/${path}`);
+    const copied = await access.copy(image, `${appHome()}/${path}`, probe.bytes);
     if (copied.code !== 0) return FAILED;
     // The same copy as before: its size is known, so the file is not read again.
     const known = this.found.get(image);

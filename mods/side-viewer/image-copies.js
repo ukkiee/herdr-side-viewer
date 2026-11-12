@@ -2,6 +2,7 @@
 // draw images only from real folders under the app home. This decides which files count as
 // images, how a copy is named and sized, and which copies are old enough to delete.
 // No Herdr imports, so it runs under `node --test`.
+import { FIND_HC } from "./machine.js";
 
 // Under the app home; image() takes a path relative to it.
 export const FOLDER = "data/side-viewer/images";
@@ -106,6 +107,40 @@ mkdir -p "$(dirname "$2")" || exit 1
 if [ -f "$2" ]; then touch "$2"; else cp "$1" "$2" || { rm -f "$2"; exit 1; }; fi
 `;
 
+// A remote image comes over in pieces of this many bytes: `hc exec` keeps the first 8 MB of
+// what a command prints, says so on stderr only, and exits 0, so one `cat` of a larger image
+// would make a cut copy.
+export const PIECE = 4 * 1024 * 1024;
+// Seconds `hc` gives one piece, and the milliseconds the exec running REMOTE_COPY gives the
+// whole copy: more than the pieces of the largest image the viewer draws (views.js
+// IMAGE_LIMIT, 20 MiB, five pieces) may take, so hc ends a slow piece before the exec ends hc.
+export const PIECE_SECONDS = 20;
+export const REMOTE_COPY_TIMEOUT_MS = 120000;
+
+// Run on this Mac as `sh -c REMOTE_COPY sh <machine> <file> <copy> <bytes>`: COPY's rule with
+// the bytes of the file on that machine, read in pieces through `hc exec --on`, which passes
+// them through unchanged. `bytes` is the size the probe found; a file that grew, shrank or
+// went away since gives no copy (nonzero exit). The pieces land in a part of the copy's own
+// name and this shell's pid, so a read that fails or breaks off never leaves a copy that later
+// reads would only touch, and two copies of one image at once do not write into one part.
+export const REMOTE_COPY = `${FIND_HC}
+umask 077
+mkdir -p "$(dirname "$3")" || exit 1
+if [ -f "$3" ]; then touch "$3"; exit 0; fi
+part="$3.$$.part"
+: > "$part" || exit 1
+got=0
+while [ "$got" -lt "$4" ]; do
+  "$hc" exec --on "$1" --timeout ${PIECE_SECONDS} sh -c 'tail -c +"$2" "$1" | head -c "$3"' sh "$2" "$((got + 1))" ${PIECE} >> "$part" || break
+  now=$(wc -c < "$part" | tr -d ' ')
+  [ "$now" -gt "$got" ] || break
+  got=$now
+done
+if [ "$got" -eq "$4" ] 2>/dev/null && mv "$part" "$3"; then exit 0; fi
+rm -f "$part"
+exit 1
+`;
+
 // Run as `sh -c LIST sh <folder>`. Prints "<seconds last touched> <name>" for each file.
 export const LIST = `
 cd "$1" 2>/dev/null || exit 0
@@ -129,13 +164,14 @@ export function olderCopies(listing, name) {
 }
 
 // The names in LIST's output that were last shown more than 30 days before `now` (seconds).
-// Only names shaped like copyName's are returned, so the cleanup can never be pointed at
+// Only names shaped like copyName's, or like REMOTE_COPY's part of one, which a copy cut off
+// by a quit or a timeout leaves, are returned, so the cleanup can never be pointed at
 // anything else.
 export function staleCopies(listing, now) {
   const limit = now - STALE_DAYS * 24 * 60 * 60;
   const stale = [];
   for (const line of String(listing ?? "").split("\n")) {
-    const found = /^(\d+) ([0-9a-f]+-\d+-\d+\.[a-z]+)$/.exec(line);
+    const found = /^(\d+) ([0-9a-f]+-\d+-\d+\.[a-z]+(?:\.\d+\.part)?)$/.exec(line);
     if (found && Number(found[1]) < limit) stale.push(found[2]);
   }
   return stale;

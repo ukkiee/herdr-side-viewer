@@ -512,7 +512,7 @@ export default class SideViewer extends View {
     const kind = kindOf(file, probe.head);
     if (!kind) return { state: "unsupported" };
     const path = `${FOLDER}/${copyName(access.key(file), probe, kind)}`;
-    const copied = await access.copy(file, `${appHome()}/${path}`);
+    const copied = await access.copy(file, `${appHome()}/${path}`, probe.bytes);
     if (copied.code !== 0) return { state: "unreadable" };
     // The same copy as the one on screen: its size, and an svg's text, are known, so the
     // file is not read again. The name holds the size and time, so the bytes are the same.

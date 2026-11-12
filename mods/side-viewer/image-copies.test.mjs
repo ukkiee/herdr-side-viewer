@@ -2,10 +2,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, utimesSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, utimesSync, statSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { kindOf, copyName, sizeOf, fitted, staleCopies, olderCopies, COPY, LIST } from "./image-copies.js";
+import { kindOf, copyName, sizeOf, fitted, staleCopies, olderCopies, COPY, REMOTE_COPY, LIST } from "./image-copies.js";
 
 const bytes = (text) => [...Buffer.from(text, "latin1")];
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -164,4 +164,102 @@ test("the listing of a real folder names the copies that went stale", () => {
   }
   assert.deepEqual(staleCopies(sh(LIST, dir).stdout, now), ["aaaa-8-1.png"]);
   assert.deepEqual(staleCopies(sh(LIST, join(dir, "none")).stdout, now), []);
+});
+
+// A fake hc for REMOTE_COPY: `hc exec --on <machine> [--timeout <s>] <argv>...` runs argv here
+// and keeps the first 8,388,608 bytes of what it prints, exiting 0, as hc exec does with a
+// longer output (it says "[hc] output cut: kept the first 8 MB" on stderr).
+function fakeRemote(dir) {
+  const bin = join(dir, "bin");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, "hc"), [
+    "#!/bin/sh",
+    '[ "$1" = exec ] && [ "$2" = --on ] || exit 2',
+    "shift 3",
+    '[ "$1" = --timeout ] && shift 2',
+    '"$@" | head -c 8388608',
+    "",
+  ].join("\n"), { mode: 0o755 });
+  return { ...process.env, PATH: `${bin}:/usr/bin:/bin` };
+}
+
+const remoteCopy = (env, file, copy, bytes) =>
+  spawnSync("sh", ["-c", REMOTE_COPY, "sh", "linux-box", file, copy, String(bytes)], { encoding: "utf8", env });
+
+// Bytes that differ along the whole file, so a piece put in the wrong place shows.
+function picture(size) {
+  const data = Buffer.alloc(size + 4);
+  for (let i = 0; i < size; i += 4) data.writeUInt32BE(i >>> 0, i);
+  return data.subarray(0, size);
+}
+
+test("a remote image over hc's 8 MB output limit is copied whole", () => {
+  const dir = mkdtempSync(join(tmpdir(), "side-viewer-copies-"));
+  try {
+    const env = fakeRemote(dir);
+    const source = join(dir, "big shot.png"), copy = join(dir, "images", "aaaa-9-1.png");
+    const data = picture(9 * 1024 * 1024 + 3);
+    writeFileSync(source, data);
+    const result = remoteCopy(env, source, copy, data.length);
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(readFileSync(copy).equals(data));
+    assert.equal(statSync(copy).mode & 0o077, 0);
+    assert.deepEqual(readdirSync(join(dir, "images")), ["aaaa-9-1.png"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a remote image whose size is not the probe's leaves no copy", () => {
+  const dir = mkdtempSync(join(tmpdir(), "side-viewer-copies-"));
+  try {
+    const env = fakeRemote(dir);
+    const source = join(dir, "shot.png"), copy = join(dir, "images", "aaaa-9-1.png");
+    writeFileSync(source, picture(1000));
+    // Grown, shrunk, or gone since the probe.
+    for (const [file, bytes] of [[source, 900], [source, 1100], [join(dir, "none.png"), 1000]]) {
+      assert.notEqual(remoteCopy(env, file, copy, bytes).status, 0, `${file} ${bytes}`);
+      assert.deepEqual(readdirSync(join(dir, "images")), []);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a remote image already copied is only touched", () => {
+  const dir = mkdtempSync(join(tmpdir(), "side-viewer-copies-"));
+  try {
+    const env = fakeRemote(dir);
+    const source = join(dir, "shot.png"), copy = join(dir, "images", "aaaa-8-1.png");
+    writeFileSync(source, Buffer.from(PNG));
+    assert.equal(remoteCopy(env, source, copy, PNG.length).status, 0);
+    const old = Date.now() / 1000 - 40 * DAY;
+    utimesSync(copy, old, old);
+    writeFileSync(source, "changed");
+    assert.equal(remoteCopy(env, source, copy, PNG.length).status, 0);
+    assert.deepEqual([...readFileSync(copy)], PNG);
+    assert.ok(statSync(copy).mtimeMs / 1000 > Date.now() / 1000 - DAY);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("hc is found in ~/.local/bin when PATH lacks it, as an app opened from Finder has", () => {
+  const dir = mkdtempSync(join(tmpdir(), "side-viewer-copies-"));
+  try {
+    const { PATH: _path, ...rest } = fakeRemote(join(dir, "home", ".local"));
+    const env = { ...rest, PATH: "/usr/bin:/bin", HOME: join(dir, "home") };
+    const source = join(dir, "shot.png"), copy = join(dir, "images", "aaaa-8-1.png");
+    writeFileSync(source, Buffer.from(PNG));
+    assert.equal(remoteCopy(env, source, copy, PNG.length).status, 0);
+    assert.deepEqual([...readFileSync(copy)], PNG);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a part a broken remote copy left behind goes stale like a copy", () => {
+  const old = 1_800_000_000 - 40 * DAY;
+  const listing = [`${old} aaaa-8-1.png.4242.part`, `${old} aaaa-8-1.png.part`, `${old} x.part`].join("\n");
+  assert.deepEqual(staleCopies(listing, 1_800_000_000), ["aaaa-8-1.png.4242.part"]);
 });
