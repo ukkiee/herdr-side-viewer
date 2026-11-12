@@ -36,3 +36,11 @@
 - **검사:** 작업자(`56ae028`)와 통합 담당 모두 `node --test mods/side-viewer/` 295 통과·0 실패·0 skip·0 취소, `herdr-app check mods/side-viewer` 통과. 문서 속 한국어 UI 문구 36개, 경로 11개, 모듈 24개, 아이콘 8개가 코드·저장소에 있는지 작업자가 대조했다.
 - **남은 것(이 티켓을 `integrated`로 두지 않은 이유):** 전체 리뷰, 설치(`./install.sh`)와 설치된 mod의 check, RECIPE "Done when" v2·v1 손 확인(경계 4), 바쁜 셸 재현을 사용자에게 보여 주기, 코드 묶음 넘겨받기 안내(실행은 사용자가 고름).
 - **작업자가 짚은 것:** RECIPE v2 20번(셸에 쓰던 글이 돌아옴)은 zsh 동작에서 추론한 단계라 실측이 없다. 9·26번은 15초 재확인 틈을 쓰므로 타이밍이 어긋나면 다시 한다. 안내 화면에도 `새 탭으로 열기`가 보인다(명세와 충돌하지 않음).
+
+### 2026-11-12 전체 리뷰와 수정 (주 진행자)
+
+- **리뷰(phase=review, `ead36fd...ff32290`):** Matt `code-review` 원본(해시 일치)의 Standards·Spec 두 축과 정확성·통합 관점을 새 컨텍스트 리뷰어 셋이 봤다. 리뷰어도 작성자와 같은 claude 계열이다(Codex 프로필은 한도 기록으로 쓸 수 없었다). 판정은 수정 필요(Important F1·CR-1). 수용한 발견: F1, CR-1, Q1(안내 화면의 새 탭 버튼, v1 AC-9 위반), F3, F4, CR-2, CR-3, CR-4(문서), STD-1, STD-3, 쓰이지 않는 아이콘·`rawMarkdown`, RECIPE 확인 단계. 기각·보류: F5(체크박스 저장 중 깜빡임, 의도한 설계), F6(html→xml 대체, 경계 4에서 색 확인). 선택 개선으로만 남김: S1~S9, O1. 보고서: 실행 scratchpad의 `review/summary.md`, `standards.md`, `spec.md`, `correctness.md`.
+- **수정:** `c31df2a`~`47a8060`(sv2-fix1, 10개 커밋), `8036be1`(sv2-fix2, RV2-1). 통합 담당 검사: `node --test mods/side-viewer/` 301 통과·0 실패·0 skip, `herdr-app check mods/side-viewer` 통과(`8036be1`).
+- **재검토 1회차(`ff32290..47a8060`):** 통과, 남은 RV2-1(Minor, 고친 svg가 1 MiB를 넘게 커지면 돌아왔을 때 고친 글이 안 보임) → `8036be1`로 고침.
+- **README 개선(사용자 요청, herdr-git 구성):** `49d6c28`(README.md 재구성, README.ko.md 추가), `3affeb3`(병합).
+- **재검토 2회차(`47a8060..3affeb3`):** 통과. RV2-1 해결, README 사실 누락 0개, README.ko.md 숫자·화면 문구 일치. 남은 문서 표현: RV3-1(Minor: 기능 요약의 `>_` "without running it"이 vi 키맵 한계를 빼고 단정), RV3-2·RV3-3(Optional). v2 `preview.png` 교체 때 함께 고친다.
