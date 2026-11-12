@@ -117,8 +117,15 @@ test("every key the code uses is in a table, and every table key is used", () =>
 
 // The parts that word a sentence speak English without a translator, so a call that forgets
 // to pass the viewer's `tr` would stay English on a Korean system without failing anything else.
-// A part is every function or method that takes `tr` (found, so a new step that carries it is
-// checked too), plus renderHeader, which reads it from main.js's header() object.
+// A part is found, so a new step that carries `tr` is checked too. What the scan finds as a part:
+// - a function or method written `name(…) {` or `function name(…) {` whose parameters hold tr;
+// - an arrow function written `name = (…) =>` or `name: (…) =>` whose parameters hold tr;
+// - a table: an object `NAME = { … }` holding such arrow functions, called as `NAME[key](…)`;
+// - renderHeader, which reads tr from main.js's header() object.
+// Not found: an arrow with one bare parameter (`tr => …`), parameters with parentheses in them
+// (`tr = wordsOf()`), and a part reached through a variable (`const f = TABLE[key]; f(…)`).
+// Calls are matched by name alone, so another object's method of a part's name fails the test
+// too; that is the safe way to be wrong, and the message names the call.
 const codeSources = fs.readdirSync(here).filter((name) => name.endsWith(".js") && !name.startsWith("messages-") && name !== "i18n.js");
 // Comment lines left out: they may show a call without making it.
 const codeOf = (name) => fs.readFileSync(path.join(here, name), "utf8").split("\n").filter((line) => !line.trim().startsWith("//")).join("\n");
@@ -126,20 +133,44 @@ const KEYWORDS = new Set(["if", "for", "while", "switch", "catch", "function", "
 // tr as an object's key: `{ tr }`, `{ a, tr, b }`, `{ tr: this.words() }`.
 const trKey = /(?:^|[{,])\s*tr\s*(?:[:,}]|$)/;
 
+// What a definition's parameters say. Keyed: tr comes in an options object, so a call must give
+// that object a tr key.
+const paramsOf = (params) => ({ takesTr: /\btr\b/.test(params), keyed: /\{[^}]*\btr\b[^}]*\}/.test(params) });
+const ARROW = /\b(\w+)\s*[:=]\s*(?:async\s*)?\(([^()]*)\)\s*=>/g;
+const add = (map, fnName, file, def) => {
+  if (!map.has(fnName)) map.set(fnName, new Map());
+  map.get(fnName).set(file, def);
+};
+
 // Every definition, by name and then by file: two files may each keep a private function of the
 // same name (header.js and code-card.js both have renderActions), and a call means its own file's.
 function definitions() {
   const defs = new Map();
   for (const name of codeSources) {
-    for (const m of codeOf(name).matchAll(/\b(\w+)\s*\(([^()]*)\)\s*\{/g)) {
-      if (KEYWORDS.has(m[1])) continue;
-      if (!defs.has(m[1])) defs.set(m[1], new Map());
-      // Keyed: tr comes in an options object, so a call must give that object a tr key.
-      defs.get(m[1]).set(name, { takesTr: /\btr\b/.test(m[2]), keyed: /\{[^}]*\btr\b[^}]*\}/.test(m[2]) });
+    const text = codeOf(name);
+    for (const m of text.matchAll(/\b(\w+)\s*\(([^()]*)\)\s*\{/g)) {
+      if (!KEYWORDS.has(m[1])) add(defs, m[1], name, paramsOf(m[2]));
     }
+    for (const m of text.matchAll(ARROW)) add(defs, m[1], name, paramsOf(m[2]));
   }
   defs.set("renderHeader", new Map([["header.js", { takesTr: true, keyed: false }]]));
   return defs;
+}
+
+// Every object that holds arrow functions taking tr, by name and then by file. A call
+// `NAME[key](…)` may reach any of them, so its arguments must suit every one.
+function partTables() {
+  const found = new Map();
+  for (const name of codeSources) {
+    const text = codeOf(name);
+    for (const m of text.matchAll(/\b(\w+)\s*=\s*\{/g)) {
+      let depth = 1, at = m.index + m[0].length;
+      while (depth > 0 && at < text.length) depth += text[at] === "{" ? 1 : text[at] === "}" ? -1 : 0, at++;
+      const entries = [...text.slice(m.index + m[0].length, at - 1).matchAll(ARROW)].map((e) => paramsOf(e[2])).filter((def) => def.takesTr);
+      if (entries.length) add(found, m[1], name, { takesTr: true, entries });
+    }
+  }
+  return found;
 }
 
 // The part a call in `file` reaches: its own file's definition, else one elsewhere that takes tr.
@@ -149,6 +180,11 @@ const partFor = (defs, fnName, file) => {
   return [...byFile.values()].find((def) => def.takesTr) ?? null;
 };
 
+// tr, or main.js's this.words() that makes it. A keyed part needs tr as a key; header.js hands
+// its parts renderHeader's whole `header`, whose tr is checked in the next test.
+const passes = (part, args) => part.entries ? part.entries.every((entry) => passes(entry, args))
+  : part.keyed ? trKey.test(args) || /^t,\s*header\b/.test(args.trim()) : /\b(?:tr|words)\b/.test(args);
+
 test("every call of a part that words a sentence passes the viewer's translator", () => {
   const defs = definitions();
   const parts = [...defs.keys()].filter((fnName) => [...defs.get(fnName).values()].some((def) => def.takesTr));
@@ -156,12 +192,16 @@ test("every call of a part that words a sentence passes the viewer's translator"
     "renderBody", "header", "insert", "put", "send", "renderStatus", "renderSwitch", "renderActions"]) {
     assert.ok(parts.includes(step), `the scan finds ${step} as a part that takes tr`);
   }
+  const tabled = partTables();
+  assert.ok(tabled.has("STATUS_BUTTONS"), "the scan finds header.js's STATUS_BUTTONS as a table of parts that take tr");
+  // `name(` for a part, `NAME[…](` for a table.
+  const call = new RegExp(`\\b(?:(${parts.join("|")})|(${[...tabled.keys()].join("|")})\\[[^\\[\\]\\n]*\\])\\(`, "g");
   const bare = [];
-  let calls = 0;
+  let calls = 0, tableCalls = 0;
   for (const name of codeSources) {
     const text = codeOf(name);
-    for (const m of text.matchAll(new RegExp(`\\b(${parts.join("|")})\\(`, "g"))) {
-      const part = partFor(defs, m[1], name);
+    for (const m of text.matchAll(call)) {
+      const part = m[1] ? partFor(defs, m[1], name) : partFor(tabled, m[2], name);
       if (!part) continue;
       // The call's arguments, up to its closing parenthesis.
       let depth = 1, at = m.index + m[0].length;
@@ -170,13 +210,12 @@ test("every call of a part that words a sentence passes the viewer's translator"
       // A definition, not a call: `function noticeFor(state, tr) {`, `async put(…, tr, cx) {`.
       if (/^\s*\{/.test(text.slice(at))) continue;
       calls++;
-      // tr, or main.js's this.words() that makes it. A keyed part needs tr as a key; header.js
-      // hands its parts renderHeader's whole `header`, whose tr is checked in the next test.
-      const ok = part.keyed ?trKey.test(args) || /^t,\s*header\b/.test(args.trim()) : /\b(?:tr|words)\b/.test(args);
-      if (!ok) bare.push(`${name}: ${m[1]}(${args.replace(/\s+/g, " ").slice(0, 80)})`);
+      if (m[2]) tableCalls++;
+      if (!passes(part, args)) bare.push(`${name}: ${m[0]}${args.replace(/\s+/g, " ").slice(0, 80)})`);
     }
   }
   assert.ok(calls > 20, "the scan finds the calls");
+  assert.ok(tableCalls > 0, "the scan finds the calls through a table");
   assert.deepEqual(bare, []);
 });
 
