@@ -32,7 +32,10 @@ export function mergeKeys(current, wanted) {
   let changed = false;
   for (const [section, binds] of Object.entries(wanted)) {
     for (const [key, action] of Object.entries(binds)) {
-      if (same(keys[section]?.[key], action)) continue;
+      if (same(keys[section]?.[key], action)) {
+        lines.push(`${key} → ${JSON.stringify(action)} (${section}): already there.`);
+        continue;
+      }
       // Any section may hold the key: global, terminal, layout:<name>, mod:<name>. A key
       // the person bound to something else stays theirs; Herdr asks before replacing one.
       const taken = Object.keys(keys).find((s) => keys[s]?.[key] !== undefined && !same(keys[s][key], action));

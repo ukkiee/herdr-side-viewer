@@ -47,6 +47,7 @@ test("a keys.json that already has the line is left as it is", () => {
   const text = '{\n  "global": { "cmd-o": "mod.open:side-viewer", "alt-1": "space.select:1" }\n}\n';
   const result = mergeKeys(text, wanted);
   assert.equal(result.text, null);
+  assert.ok(result.lines.some((line) => line.includes("cmd-o")), "says the key is already there");
 });
 
 test("merging twice leaves one line and the second time writes nothing", () => {
