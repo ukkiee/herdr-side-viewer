@@ -124,7 +124,7 @@ const EDITED_SVG_OVER = new Set(["image", "unsupported"]);
 // `disk`, and their editor is not up (the viewer came back from another file, or a viewer
 // tab took the edits). A notice, or an svg's picture without its source, would hide the
 // edits, so the file's view of `disk` comes up instead, and its editor shows the edits; the
-// bar says what happened to the file (edit-state.js). `found` is what viewOf gave. Anything
+// header's status says what happened to the file (edit-state.js). `found` is what viewOf gave. Anything
 // else is the read's own `content`.
 export function editedContentOf(file, content, found, disk) {
   if (!found || typeof disk !== "string") return content;

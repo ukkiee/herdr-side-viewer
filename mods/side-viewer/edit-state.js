@@ -51,15 +51,15 @@ export function saved(edits, file, text) {
 // A read of `file` found `text` on disk: a string, null when the file is gone, or undefined
 // when it could not be read. Returns { edits, step }. "show": put the read on screen.
 // "keep": the file has edits, which stay on screen as they are; a disk that no longer
-// holds the text the edit started from raises the bar instead of replacing them.
+// holds the text the edit started from sets the header's status instead of replacing them.
 export function diskRead(edits, file, text) {
   const entry = file ? edits[file] : null;
   if (!entry) return { edits, step: "show" };
   if (text === undefined) return { edits, step: "keep" };
   // The disk caught up with the edit, as when the viewer's own save is read back.
   if (text === entry.text) return { edits: without(edits, file), step: "show" };
-  // The disk is back to the text the edit started from: a bar about the disk (changed or
-  // deleted) goes, a failed save's bar stays, since nothing has been saved since.
+  // The disk is back to the text the edit started from: a `bar` about the disk (changed or
+  // deleted) goes, a failed save's `bar` stays, since nothing has been saved since.
   if (text === entry.disk) return { edits: holds(entry) ? withBar(edits, file, null) : edits, step: "keep" };
   const bar = text === null ? { kind: "failed", reason: "deleted" } : { kind: "conflict", disk: text };
   return { edits: withBar(edits, file, bar), step: "keep" };
@@ -84,7 +84,8 @@ export function overwritten(edits, file) {
 export const SAVE_LIMIT = 1024 * 1024;
 
 // Saving `file`, as { edits, write }: `write` is what to pass to writeTextFile (saveOf), or
-// null when nothing is written. Text over SAVE_LIMIT is stopped here and the bar says so.
+// null when nothing is written. Text over SAVE_LIMIT is stopped here and the header's status
+// says so.
 export function startSave(edits, file) {
   const write = saveOf(edits, file);
   if (!write) return { edits, write: null };
@@ -104,7 +105,7 @@ export function refusalOf(error) {
 }
 
 // A save of `file` was refused for a reason other than a change on disk: the edits stay,
-// and the bar says why.
+// and the header's status says why.
 export function saveFailed(edits, file, error) {
   if (!file || !edits[file]) return edits;
   const reason = refusalOf(error);
@@ -165,7 +166,7 @@ export function statusOf(edits, file) {
 // turned over (checkbox.js), `disk` the file's text as last read. Returns { edits, write } as
 // startSave does. A file with edits takes the click as one more edit and stays unsaved
 // (write is null). A file without edits is saved at once against `disk`; it gets an entry
-// first, so a refused save raises the bar over the click like over any edit.
+// first, so a refused save shows in the header's status over the click like over any edit.
 export function checkboxToggled(edits, file, disk, text) {
   if (!file) return { edits, write: null };
   const next = typed(edits, file, disk, text);
@@ -190,7 +191,7 @@ function utf8Bytes(text) {
   return bytes;
 }
 
-// A bar that stays while typing, even typing back to the text read before: the disk no longer
+// A `bar` that stays while typing, even typing back to the text read before: the disk no longer
 // holds that text, so the edit is still not on disk.
 function holds(entry) {
   return entry?.bar?.kind === "conflict" || entry?.bar?.reason === "deleted";
