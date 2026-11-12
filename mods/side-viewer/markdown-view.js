@@ -7,6 +7,7 @@
 //   generation,   main.js's count of content replacements
 //   file,         the shown file, for the folder and name at the top
 //   onLink: (url, cx) => void
+//   codeCards,    the viewer's CodeCards (code-card.js), prepared for this text
 // }
 //
 // The rendering draws markdown-blocks.js's blocks one by one, each kind in its own function:
@@ -20,6 +21,7 @@ import { home } from "herdr";
 import { rawMarkdown } from "./links.js";
 import { labelOf } from "./document.js";
 import { parseMarkdown, withFootnoteMarks } from "./markdown-blocks.js";
+import { renderCodeCard } from "./code-card.js";
 
 const BODY = 13;
 const HEADING_SIZE = { 1: 24, 2: 19, 3: 16 };
@@ -33,7 +35,7 @@ function documentOf(text) {
   return parsed.doc;
 }
 
-export function renderMarkdown(t, { text, raw, generation, file, onLink }) {
+export function renderMarkdown(t, { text, raw, generation, file, onLink, codeCards }) {
   const scroll = div().id("side-viewer-scroll").flex_1().min_h(0).overflow_y_scrollbar();
   if (raw) {
     // The source is drawn by the same element, fenced as one code block.
@@ -46,6 +48,7 @@ export function renderMarkdown(t, { text, raw, generation, file, onLink }) {
   const doc = documentOf(text);
   const ctx = {
     t, onLink, footnotes: doc.footnotes,
+    takeCard: codeCards?.drawing() ?? null,
     // A TextView sees one block, so reference-style links need the definitions next to them.
     references: doc.references.length ? `\n\n${doc.references.join("\n")}` : "",
     // A TextView keeps drawing its first text under the same id. Unsaved edits change the
@@ -182,13 +185,10 @@ function renderImageBlock(ctx, block, key) {
   return div().w_full().min_w(0).child(renderInline(ctx, key, `![${block.alt}](<${block.src}>)`));
 }
 
-// A code block, drawn by TextView as a fenced block for now.
+// A code block is a card (code-card.js). Inside a list item or a quote it takes the column
+// that item's or quote's other blocks take.
 function renderCodeBlock(ctx, block, key) {
-  let longest = 2;
-  for (const run of block.text.match(/`+/g) ?? []) longest = Math.max(longest, run.length);
-  const fence = "`".repeat(longest + 1);
-  const source = `${fence}${block.lang}\n${block.text}\n${fence}`;
-  return div().w_full().min_w(0).child(TextView.markdown(ctx.id(key, source), source).selectable(true));
+  return renderCodeCard(ctx.t, ctx.takeCard, block, key);
 }
 
 // The footnotes' text, numbered as their marks in the body, at the end of the document.
