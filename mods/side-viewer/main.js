@@ -896,7 +896,8 @@ export default class SideViewer extends View {
       if (!picture.path) return renderNotice(t, "unreadable", tr);
       return renderImage(t, { content: picture, room: this.room, onRoom: (width, cx) => this.setRoom(width, cx) });
     }
-    return renderNotice(t, content.state, tr);
+    // The whole content, so the "can't reach" notice can name its machine (document.js).
+    return renderNotice(t, content, tr);
   }
 
   // The system's language, read once when the copy starts and remembered in Herdr's shared
