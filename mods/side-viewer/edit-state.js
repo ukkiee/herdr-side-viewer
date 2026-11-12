@@ -21,9 +21,10 @@ export function shownText(edits, file, disk) {
 // The editor of `file` now holds `text`; `disk` is the file's text as last read.
 export function typed(edits, file, disk, text) {
   if (!file) return edits;
-  const base = edits[file]?.disk ?? disk;
-  if (text === base) return without(edits, file);
-  return { ...edits, [file]: { disk: base, text } };
+  const entry = edits[file];
+  const base = entry?.disk ?? disk;
+  if (text === base && !holds(entry)) return without(edits, file);
+  return { ...edits, [file]: { ...entry, disk: base, text } };
 }
 
 // What saving `file` writes, as the arguments of writeTextFile: { path, text, expected }.
@@ -51,20 +52,35 @@ export function diskRead(edits, file, text) {
   const entry = file ? edits[file] : null;
   if (!entry) return { edits, step: "show" };
   if (text === undefined) return { edits, step: "keep" };
-  if (text === entry.disk) return { edits: { ...edits, [file]: { disk: entry.disk, text: entry.text } }, step: "keep" };
-  return { edits: { ...edits, [file]: { ...entry, bar: { kind: "conflict", disk: text } } }, step: "keep" };
+  // The disk caught up with the edit, as when the viewer's own save is read back.
+  if (text === entry.text) return { edits: without(edits, file), step: "show" };
+  if (text === entry.disk) return { edits: withBar(edits, file, null), step: "keep" };
+  const bar = text === null ? { kind: "failed", reason: "deleted" } : { kind: "conflict", disk: text };
+  return { edits: withBar(edits, file, bar), step: "keep" };
 }
 
 const MESSAGES = {
   conflict: "밖에서 바뀌었습니다",
+  deleted: "파일이 지워졌습니다.",
 };
 
 // What the bar above the content says for `file`, as { kind, message }, or null for no bar.
-// Only "conflict" has the two buttons (discard and overwrite).
+// "conflict" carries the two buttons (discard and overwrite); "failed" only says why.
 export function barOf(edits, file) {
   const bar = file ? edits[file]?.bar : null;
   if (!bar) return null;
-  return { kind: bar.kind, message: MESSAGES[bar.kind] };
+  return { kind: bar.kind, message: MESSAGES[bar.kind === "conflict" ? "conflict" : bar.reason] };
+}
+
+// A bar that stays while typing, even typing back to the text read before: the disk no longer
+// holds that text, so the edit is still not on disk.
+function holds(entry) {
+  return entry?.bar?.kind === "conflict" || entry?.bar?.reason === "deleted";
+}
+
+function withBar(edits, file, bar) {
+  const { disk, text } = edits[file];
+  return { ...edits, [file]: bar ? { disk, text, bar } : { disk, text } };
 }
 
 function without(edits, file) {

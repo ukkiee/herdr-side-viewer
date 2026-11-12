@@ -111,3 +111,56 @@ test("a file with edits that is read again unchanged raises no bar", () => {
   assert.equal(barOf(read.edits, A), null);
   assert.equal(unsaved(read.edits, A), true);
 });
+
+test("a file with edits that is deleted keeps the edits and says it is gone", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const read = diskRead(edits, A, null);
+  assert.equal(read.step, "keep");
+  assert.equal(shownText(read.edits, A, "one\n"), "mine\n");
+  assert.deepEqual(barOf(read.edits, A), { kind: "failed", message: "파일이 지워졌습니다." });
+});
+
+test("a file whose disk text comes back to what the edit started from drops the bar", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, "theirs\n").edits;
+  edits = diskRead(edits, A, "one\n").edits;
+  assert.equal(barOf(edits, A), null);
+  assert.equal(unsaved(edits, A), true);
+});
+
+test("a disk that now holds the edited text leaves nothing unsaved", () => {
+  // As when the viewer's own save is read back before the save has finished.
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const read = diskRead(edits, A, "mine\n");
+  assert.equal(read.step, "show");
+  assert.equal(unsaved(read.edits, A), false);
+  assert.equal(barOf(read.edits, A), null);
+});
+
+test("a disk that cannot be read leaves the edits and the bar as they are", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, "theirs\n").edits;
+  const read = diskRead(edits, A, undefined);
+  assert.equal(read.step, "keep");
+  assert.equal(barOf(read.edits, A).kind, "conflict");
+});
+
+test("typing goes on under the bar, and the bar stays until one of its buttons is pressed", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, "theirs\n").edits;
+  edits = typed(edits, A, "one\n", "mine, more\n");
+  assert.equal(barOf(edits, A).kind, "conflict");
+  assert.equal(shownText(edits, A, "one\n"), "mine, more\n");
+  // Typing back to the text the edit started from is still not what is on disk now.
+  edits = typed(edits, A, "one\n", "one\n");
+  assert.equal(barOf(edits, A).kind, "conflict");
+  assert.equal(unsaved(edits, A), true);
+});
+
+test("a deleted file's edits stay even when typed back to the text read before", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, null).edits;
+  edits = typed(edits, A, "one\n", "one\n");
+  assert.equal(unsaved(edits, A), true);
+  assert.equal(barOf(edits, A).message, "파일이 지워졌습니다.");
+});
