@@ -10,13 +10,14 @@
 // The decisions live in modules without Herdr imports, each with its own tests: document.js,
 // views.js, image-copies.js, svg-preview.js, history.js, request.js, links.js, original.js,
 // edit-state.js, viewer-tab.js, checkbox.js, markdown-blocks.js, code-blocks.js,
-// markdown-images.js, terminal-insert.js and machine.js.
+// markdown-images.js, terminal-insert.js, machine.js and remote-results.js.
 import { View } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
-import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes, notify, shared, setShared } from "herdr";
+import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes, notify, shared, setShared, machines } from "herdr";
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
-import { contentOf } from "./document.js";
+import { contentOf, failedContentOf } from "./document.js";
+import { failureOf, unavailable } from "./remote-results.js";
 import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, editedContentOf, blankSvg, sourceOnlySvg, rendersEmpty } from "./views.js";
 import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, statusOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
 import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab, unplacedNotice } from "./viewer-tab.js";
@@ -44,6 +45,10 @@ const LANG_KEY = "side-viewer.lang";
 
 // The folder watch can miss a change, so the shown file is also read again this often.
 const RECHECK_MS = 15000;
+// Another machine's file has no folder watch: its checksum is asked for this often, and a
+// check that takes longer than the timeout counts as an answer that changed.
+const REMOTE_CHECK_MS = 3000;
+const REMOTE_CHECK_TIMEOUT_MS = 10000;
 // How long a new viewer tab is looked for in spaces(), and how often.
 const PLACE_WAIT_MS = 3000;
 const PLACE_STEP_MS = 50;
@@ -79,6 +84,11 @@ export default class SideViewer extends View {
     // The folder being watched, and a count that stops the loop of an earlier folder.
     this.watched = null;
     this.watchTurn = 0;
+    // The remote check (checkRemote): whether its timer runs, whether a check is under way,
+    // and the last mark it took, as { file, access, mark }.
+    this.checking = false;
+    this.marking = false;
+    this.marked = null;
     // The body's width, from its size report. Null until the first one.
     this.room = null;
     // Unsaved edits by file (edit-state.js). They live as long as this copy does.
@@ -309,8 +319,12 @@ export default class SideViewer extends View {
       let result;
       try {
         result = await this.read(file, opened ? null : this.probed);
-      } catch {
-        result = { content: { state: "unreadable" }, probe: null };
+      } catch (error) {
+        // Another machine may refuse because it is out of reach or is a Windows machine,
+        // which says so instead of "can't read" (remote-results.js).
+        const access = this.access();
+        const content = access.remote ? failedContentOf(failureOf(error), access.machine) : { state: "unreadable" };
+        result = { content, probe: null };
       }
       // Another file was opened meanwhile, and its own read is under way.
       if (turn !== this.reads) return;
@@ -391,6 +405,9 @@ export default class SideViewer extends View {
     const found = viewOf(file, await this.listed());
     if (!found) return { content: { state: "unsupported" }, probe: null };
     const access = this.access();
+    if (access.remote && unavailable(machines(), access.machine)) {
+      return { content: failedContentOf("unreachable", access.machine), probe: null };
+    }
     // An image is drawn from a copy that readImage makes of a file on this Mac, so an image
     // on another machine is a kind this viewer cannot show.
     if (found.view === "image" && access.remote) return { content: { state: "unsupported" }, probe: null };
@@ -752,9 +769,12 @@ export default class SideViewer extends View {
     }
   }
 
-  // Keeps the folder watch on the shown file's folder, and starts the slow recheck once.
-  // Call it again whenever this.file may have changed: it does nothing if the folder is the same.
-  // A file in the home folder or the root is not watched, only rechecked (links.js).
+  // Keeps the folder watch on the shown file's folder, and starts the slow recheck and the
+  // remote check once. Call it again whenever this.file may have changed: it does nothing if
+  // the folder is the same. A file in the home folder or the root is not watched, only
+  // rechecked (links.js). Another machine's file has no folder here to watch: the remote
+  // check follows it instead, and the recheck stops a watch that started before Herdr listed
+  // the viewer's space.
   watch(cx) {
     if (!this.rechecking) {
       this.rechecking = true;
@@ -763,7 +783,11 @@ export default class SideViewer extends View {
         if (this.file) this.load(cx);
       });
     }
-    const folder = watchedFolder(this.file, home());
+    if (!this.checking) {
+      this.checking = true;
+      cx.timer.every(REMOTE_CHECK_MS, (cx) => this.checkRemote(cx));
+    }
+    const folder = this.access().remote ? null : watchedFolder(this.file, home());
     if (folder === this.watched) return;
     this.watched = folder;
     // A loop for an earlier folder sees a newer turn and stops.
@@ -782,6 +806,36 @@ export default class SideViewer extends View {
         if (turn !== this.watchTurn) return;
         if (touches(paths, this.file)) this.load(cx);
       }
+    });
+  }
+
+  // The remote check: another machine's shown file is read again only when its mark changes
+  // (file-access.js mark, remote-results.js). Being out of reach is a mark too, so losing the
+  // machine reads the file into the "can't reach" notice, and getting it back reads it again;
+  // a file with unsaved edits is never read over them (load). The first mark of a file is only
+  // taken, since showing it has just read it. A check still under way skips its turn.
+  checkRemote(cx) {
+    const file = this.file;
+    const access = this.access();
+    if (!file || !access.remote || this.marking) return;
+    this.marking = true;
+    cx.spawn(async (cx) => {
+      let mark;
+      if (unavailable(machines(), access.machine)) mark = "unreachable";
+      else {
+        try {
+          mark = await access.mark(file, { timeout: REMOTE_CHECK_TIMEOUT_MS });
+        } catch (error) {
+          mark = failureOf(error);
+        }
+      }
+      this.marking = false;
+      if (file !== this.file) return;
+      const last = this.marked;
+      this.marked = { file, access, mark };
+      if (last?.file !== file || last.access !== access || last.mark === mark) return;
+      this.probed = null;
+      this.load(cx);
     });
   }
 

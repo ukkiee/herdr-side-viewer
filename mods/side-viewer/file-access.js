@@ -18,6 +18,11 @@
 //   access.home()             Promise<string>: the machine's home folder. This Mac's is Herdr's
 //                             home(); another machine's is asked once and remembered (a failed
 //                             ask is not, and rejects).
+//   access.mark(path, { timeout })
+//                             Promise<string>: a mark of the file there that changes when the
+//                             file does, from `cksum <path>` (remote-results.js changeMark).
+//                             Rejects when the command cannot start or the machine is
+//                             unreachable (remote-results.js failureOf tells which).
 // runHc(args, { timeout })    Promise<{ code, stdout, stderr }>: `hc <args>` on this Mac, the one
 //                             on PATH or else ~/.local/bin/hc (machine.js FIND_HC). Rejects as
 //                             exec does; an hc found nowhere exits nonzero.
@@ -25,6 +30,7 @@
 // Other tickets' functions join the access; these keep their names, arguments and results.
 import { exec, readTextFile, home } from "herdr";
 import { EXISTS, existingOf, HOME_FOLDER, homeOf, hcCommand } from "./machine.js";
+import { changeMark } from "./remote-results.js";
 
 const accesses = new Map();
 
@@ -48,6 +54,7 @@ function localAccess() {
     run,
     exists: (paths) => existsWith(run, paths),
     home: async () => home(),
+    mark: (path, options) => markWith(run, path, options),
   };
 }
 
@@ -68,7 +75,12 @@ function remoteAccess(machine) {
       known = folder;
       return folder;
     },
+    mark: (path, options) => markWith(run, path, options),
   };
+}
+
+async function markWith(run, path, options) {
+  return changeMark(await run("cksum", [path], options));
 }
 
 async function existsWith(run, paths) {
