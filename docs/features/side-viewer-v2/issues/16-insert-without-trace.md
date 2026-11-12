@@ -57,9 +57,15 @@
 ### 2026-11-12 리뷰 수정 통합 (주 진행자)
 
 - **결과:** 브랜치 `sv2/review-fixes-4`의 `30cfc9e`(RV6-1·2·5·6), `27bb767`(RV6-3 주석), `30eb01c`(README·README.ko·RECIPE: RV6-1 동작, RV3-1·RV3-2·RV3-3, R14-Q2)와 통합 tip을 합친 `3555f4f`를 `feat/side-viewer-v2`에 fast-forward로 합쳤다.
-- **자리:** `terminal-insert.js`의 `shellOf`(`{pid, argv}`), `isRemote`(주소에 `/`), `insertPlan`(원격·바쁨이면 알림만; 같은 zsh이고 남은 파일이 없으면 키와 `wait` 500ms; 아니면 새 셸 `[send]`, 그 밖 `[alt+q, send]`와 `wait` 3000ms; 준비 줄 끝에서 `print -rz`로 바로 넣음), `pressOutcome`(파일이 남으면 `prepared`를 비우고 `unprepared` 알림), `noticeOf`의 `remote`·`unprepared` 문구. `shell-pane.js`의 `send`(쓰기 전 남은 파일 확인, 누른 뒤 50ms마다 `untaken`, 남으면 파일 지움), 뷰어 pane이 원격이면 split 전에 거절.
+- **자리:** `terminal-insert.js`의 `shellOf`(`{pid, argv}`), `isRemote`(주소에 `/`), `insertPlan`(원격·바쁨이면 알림만; 같은 zsh이고 남은 파일이 없으면 키와 `wait` 500ms; 아니면 새 셸 `[send]`, 그 밖 `[alt+q, send]`와 `wait` 3000ms; 준비 줄 끝에서 `print -rz`로 바로 넣음), `pressOutcome`(파일이 남으면 `prepared`를 비우고, 키 뒤면 `unprepared`, 준비 줄 뒤면 `unready` 알림; `unready`는 `4a38bc6`), `noticeOf`의 `remote`·`unprepared`·`unready` 문구. `shell-pane.js`의 `send`(쓰기 전 남은 파일 확인, 누른 뒤 50ms마다 `untaken`, 남으면 파일 지움), 뷰어 pane이 원격이면 split 전에 거절.
 - **완료 조건:**
   - 작업자(`30eb01c`): 관련 테스트 115 통과, 전체 327 통과·0 실패·0 skip, 커밋 3개 모두 `herdr-app check` 통과. 새·바뀐 테스트 13개가 빈 스텁에서 단언 단위로 실패. 숨은 백그라운드 zsh 실측: 새 셸 첫 누름(준비 줄 하나로 들어가고 화면에 준비 줄·키 글자 없음), 같은 zsh 두 번째 누름, `exec /bin/zsh -l`(pid·argv 같음) 뒤 키는 파일이 남고 `;7~`(사후 확인이 잡는 경우) 뒤 다시 준비해 들어감, `exec zsh`(argv 바뀜)는 다시 준비해 들어감, emacs 쓰던 글은 명령 뒤에 돌아옴, `bindkey -v`의 viins·vicmd에서 쓰던 글이 실행되지 않음, 클립보드 해시 같음. 시험 터미널 2개 정리.
   - 통합 담당(`3555f4f`): `node --test mods/side-viewer/` 327 통과·0 실패·0 skip·0 취소, `herdr-app check mods/side-viewer` 통과.
 - **남은 위험(실제 앱):** 무거운 프롬프트(precmd)로 zle이 0.5초 넘게 늦거나 rc가 3초를 넘기면 명령이 안 들어갔는데도 실패 알림이 뜬다(늦게 온 키는 파일이 없어 그냥 지나감). 사후 확인 동안(최대 3초) 다른 누름은 버려진다. 같은 argv로 `exec`한 뒤 `;7~`를 지우지 않고 다시 누르면 그것이 쓰던 글로 돌아온다(알림이 안내). 원격 공간은 실측하지 않았다.
 - **주 진행자 결정(RV6-6):** 다른 기계의 셸은 알림으로 거절한다. 명세 "터미널에 넣기"에 적었다.
+
+### 2026-11-12 재검토·실제 앱 (주 진행자)
+
+- **재검토(`d2c89e7..917a781`, sv2-rv7):** 통과. RV6-1~6, RV3-1~3, R14-Q2 해결, RV6-7 결정대로. 신규 RV7-1(Minor: 준비 줄이 늦을 때 알림이 `;7~`·exec zsh를 말함)·RV7-2(Optional: 옛 설명) → sv2-fix5 `4a38bc6`로 고침(`unready` 알림 "셸이 아직 명령을 받을 준비가 되지 않았습니다. 잠시 뒤 다시 누르세요."). RV7-3(대기 끝 순간의 좁은 경합)은 고치지 않음. 통합 담당(`4a38bc6`): 328 통과·0 실패·0 skip·0 취소, check 통과.
+- **재검토(`917a781..4a38bc6`, sv2-rv8):** 통과, 결함 없음. RV8-1(이 티켓의 `unready` 누락)은 이 기록으로 고침. RV8-2(Optional: `terminal-insert.js` 주석과 RECIPE의 "no key was sent"를 "the insert key was not sent"로 좁히기)는 남김. 보고서: 실행 scratchpad의 `review/rereview-rv7.md`, `rereview-rv8.md`.
+- **실제 앱(`917a781` 설치본, RECIPE v2 18~20·24번과 20번의 exec zsh):** 통과. 화면에 준비 줄이 남지 않음, 클립보드 그대로, `exec zsh` 뒤 argv가 `["zsh"]`로 바뀌어 다시 준비해 들어감, 같은 인자로 다시 `exec zsh`하면 알림과 `;7~`(설계대로) 뒤 다음 누름에 들어감, 같은 zsh에서 누를 때마다 다시 준비하지 않음. 기록: 실행 scratchpad의 `live-check.md`.
