@@ -1,6 +1,7 @@
 // What a click on a link inside a markdown document does, and the small decisions of the
 // file watch. No Herdr imports, so it runs under `node --test`.
 import { viewOf } from "./views.js";
+import { wordsOf } from "./i18n.js";
 
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
@@ -76,6 +77,12 @@ export function linkAction(url, file, home, groups, remote = false) {
   path = normalize(path);
   if (isMarkdown(path, groups) || (remote && viewOf(path, groups))) return { action: "show", file: path };
   return remote ? { action: "unshown", file: path } : { action: "reveal", file: path };
+}
+
+// The notify() for a link to `file` that linkAction left unshown: a file on another machine
+// the viewer does not know how to show. Worded by tr (i18n.js).
+export function unshownNotice(file, tr) {
+  return { title: wordsOf(tr)("alerts.unshown"), body: file, level: "warning" };
 }
 
 // Whether a batch of changed paths from the folder watch concerns the shown file. The watch

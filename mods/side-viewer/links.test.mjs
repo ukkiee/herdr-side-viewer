@@ -2,7 +2,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { isMarkdown, linkAction, touches, watchedFolder } from "./links.js";
+import { isMarkdown, linkAction, touches, watchedFolder, unshownNotice } from "./links.js";
+import { translator } from "./i18n.js";
 
 const DOC = "/Users/me/notes/guide/intro.md";
 const HOME = "/Users/me";
@@ -124,6 +125,20 @@ test("on another machine web and mail addresses still go to this Mac's system, o
   assert.deepEqual(remote("mailto:someone@example.com"), { action: "system", url: "mailto:someone@example.com" });
   assert.deepEqual(remote("#install"), { action: "none" });
   assert.deepEqual(remote("vscode://file/a.md"), { action: "none" });
+});
+
+test("a file the viewer cannot show is announced by its path, in both languages", () => {
+  assert.deepEqual(unshownNotice("/home/me/notes/report.pdf", translator("ko")), {
+    title: "이 파일은 보여 줄 수 없어요",
+    body: "/home/me/notes/report.pdf",
+    level: "warning",
+  });
+  assert.deepEqual(unshownNotice("/home/me/notes/report.pdf", translator("en")), {
+    title: "Can't show this file",
+    body: "/home/me/notes/report.pdf",
+    level: "warning",
+  });
+  assert.throws(() => unshownNotice("/home/me/notes/report.pdf"), /translator/);
 });
 
 test("on this Mac a code or image link is still only shown in Finder", () => {
