@@ -444,9 +444,13 @@ Platform:
   and a notification says so. The rename follows `focused().tab`; several windows were not tried.
 - Props are saved with a tab, so unsaved edits never go in them, only a handoff id. After an
   app restart a viewer tab shows its first file under its last name.
-- In the viewer `t` is the theme, so the translator is always `tr`. A pure module called
-  without `tr` quietly speaks English, which is why `i18n.test.mjs` reads the sources for
-  calls that leave it out.
+- In the viewer `t` is the theme, so the translator is always `tr`. A pure module that needs
+  a sentence throws when it gets no `tr`, so its unit tests fail on a call that leaves it out;
+  tests pass `translator("en")` or `translator("ko")` themselves. `i18n.test.mjs` also reads
+  the sources for the wiring that unit tests do not run (`main.js`, `shell-pane.js`, the views).
+- CI (`.github/workflows/test.yml`) runs `node --test mods/side-viewer/` on macOS for every
+  push and pull request. `herdr-app check mods/side-viewer` needs the app, so it stays a
+  local step.
 - `setShared` redraws every mod, which is how one viewer's language read reaches all of
   them; there is no per-copy language. Whether `side-viewer.lang` survives an app restart
   was not seen: if it doesn't, a viewer can show English for a moment until its own read.
