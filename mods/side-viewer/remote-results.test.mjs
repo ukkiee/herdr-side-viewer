@@ -34,6 +34,19 @@ test("a refusal because the machine cannot be reached is told apart", () => {
 
 // Not measured: there is no Windows machine. The words are those the shipped Files mod
 // (git-tools/files-data.js) takes for a Windows host.
+// hc's words for a command on another machine that ran past its time, from
+// `hc exec --on <machine> --timeout 1 sleep 5` (exit 124, on stderr). Herdr's exec rejects on
+// a timeout (its guide); the words of that rejection are not known, so its usual
+// "`herdr.exec`: " in front of hc's stands in for them.
+const TIMED_OUT = "[hc] timed out after 1005 ms: ended";
+
+test("a refusal for want of an answer in time is a machine out of reach", () => {
+  assert.equal(failureOf(new Error(`\`herdr.exec\`: ${TIMED_OUT}`)), "unreachable");
+  assert.equal(failureOf(TIMED_OUT), "unreachable");
+  assert.deepEqual(saveFailureOf({ code: 124, stdout: "", stderr: `${TIMED_OUT}\n` }), { reason: "unreachable" });
+  assert.deepEqual(saveFailureOf(new Error(`\`herdr.readTextFile\`: ${TIMED_OUT}`)), { reason: "unreachable" });
+});
+
 test("a machine where sh cannot start is a Windows machine", () => {
   assert.equal(failureOf(new Error("cannot start sh: program not found")), "windows");
 });

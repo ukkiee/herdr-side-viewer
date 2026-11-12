@@ -9,7 +9,7 @@
 //   failureOf(error) -> "unreachable" | "windows" | "missing" | "other"
 //     A rejection of exec or readTextFile (an Error or its message), or an `hc` JSON error
 //     ({ error: { kind, message } } or its `error`):
-//     "unreachable": the machine cannot be reached;
+//     "unreachable": the machine cannot be reached, or did not answer in time;
 //     "windows":     the machine has no `sh`, which is how a Windows machine answers;
 //     "missing":     hc's `not_found`;
 //     "other":       anything else.
@@ -32,9 +32,11 @@ export function changeMark(answer) {
   return "unreadable";
 }
 
-// Herdr's words for a machine it cannot reach (herdr.d.ts, exec), and the ones Herdr's Files
-// mod takes for a Windows host, where `sh` cannot start.
-const UNREACHABLE = /\bunreachable\b/;
+// Herdr's words for a machine it cannot reach (herdr.d.ts, exec), or for one whose answer did
+// not come in time (hc's "timed out after <n> ms", which a lost connection gives before Herdr
+// marks the machine unavailable), and the ones Herdr's Files mod takes for a Windows host,
+// where `sh` cannot start.
+const UNREACHABLE = /\bunreachable\b|\btimed out\b/;
 const NO_SH = "cannot start sh: program not found";
 
 export function failureOf(error) {
