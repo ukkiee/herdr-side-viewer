@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab, unplacedNotice } from "./viewer-tab.js";
+import { translator } from "./i18n.js";
 
 const NOW = 1_800_000_000_000;
 const FILE = "/work/notes/plan.md";
@@ -89,10 +90,23 @@ test("no new tab yet, or one only in another space, is not taken for it", () => 
 });
 
 test("a new tab that never shows up in spaces() is announced by its name, not left silent", () => {
-  const notice = unplacedNotice(FILE);
+  const notice = unplacedNotice(FILE, translator("ko"));
   assert.equal(notice.level, "warning");
   assert.match(notice.title, /새 탭/);
   assert.match(notice.body, /plan\.md/);
+});
+
+test("the unplaced-tab notice in both languages names the tab by its file name", () => {
+  assert.deepEqual(unplacedNotice(FILE, translator("ko")), {
+    title: "새 탭으로 넘어가지 못했습니다",
+    body: "'plan.md' 탭을 열었지만 찾지 못해 옮기거나 보이지 못했습니다. 탭 막대에서 고르세요.",
+    level: "warning",
+  });
+  assert.deepEqual(unplacedNotice(FILE, translator("en")), {
+    title: "Couldn't switch to the new tab",
+    body: "The 'plan.md' tab was opened but couldn't be found to move or show. Pick it from the tab bar.",
+    level: "warning",
+  });
 });
 
 test("a viewer tab renames the shown tab only when a side viewer is in it", () => {

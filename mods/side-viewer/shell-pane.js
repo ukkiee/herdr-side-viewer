@@ -23,16 +23,17 @@ export class ShellPane {
 
   // Puts `command` into the shell's input line without Enter. `file` is the shown document;
   // `viewerTab` whether the viewer is a tab of its own (then the shell starts in the
-  // document's folder). A shell running a program does not take it, and a notification says why.
-  insert(command, { file, viewerTab }, cx) {
+  // document's folder). A shell running a program does not take it, and a notification says why,
+  // worded by `tr` (i18n.js), the viewer's translator at the press.
+  insert(command, { file, viewerTab, tr }, cx) {
     if (this.working) return;
     this.working = true;
     cx.spawn(async (cx) => {
       try {
-        const notice = await this.put(command, file, viewerTab, cx);
+        const notice = await this.put(command, file, viewerTab, tr, cx);
         if (notice) notify(notice);
       } catch {
-        notify(noticeOf({ state: "failed" }));
+        notify(noticeOf({ state: "failed" }, tr));
       } finally {
         this.working = false;
       }
@@ -40,27 +41,27 @@ export class ShellPane {
   }
 
   // Returns the notice to show, or null when the command went in.
-  async put(command, file, viewerTab, cx) {
+  async put(command, file, viewerTab, tr, cx) {
     const all = panes();
     const kept = liveShell(this.shell, all);
     if (kept) {
       const state = await this.settled(kept.terminal, cx);
-      if (state.state === "busy") return noticeOf(state);
-      if (state.state === "ready") return this.send(kept, command, state, false, cx);
+      if (state.state === "busy") return noticeOf(state, tr);
+      if (state.state === "ready") return this.send(kept, command, state, false, tr, cx);
     }
     const viewer = viewerPaneOf({ props: props(), focused: focused(), panes: all });
-    if (!viewer) return noticeOf({ state: "failed" });
+    if (!viewer) return noticeOf({ state: "failed" }, tr);
     // A split of another machine's viewer opens a shell there, which never sees the handoff file.
-    if (isRemote(viewer)) return noticeOf({ state: "remote" });
+    if (isRemote(viewer)) return noticeOf({ state: "remote" }, tr);
     const folder = shellFolder({ viewerTab, file, viewer, panes: all, shell: this.shell, home: home() });
     run("pane.split", splitOf(viewer, folder));
     const opened = await this.appeared(all, viewer, cx);
-    if (!opened) return noticeOf({ state: "failed" });
+    if (!opened) return noticeOf({ state: "failed" }, tr);
     this.shell = { ...opened, prepared: null };
     const state = await this.settled(opened.terminal, cx);
-    if (state.state === "busy") return noticeOf(state);
-    if (state.state !== "ready") return noticeOf({ state: "failed" });
-    return this.send(this.shell, command, state, true, cx);
+    if (state.state === "busy") return noticeOf(state, tr);
+    if (state.state !== "ready") return noticeOf({ state: "failed" }, tr);
+    return this.send(this.shell, command, state, true, tr, cx);
   }
 
   // The pane a split below `viewer` opened, once panes() shows it.
@@ -94,20 +95,20 @@ export class ShellPane {
   // keyboard so Enter runs it. A file still there means that zsh did not take it: it is
   // removed, so it cannot turn up at a later prompt, and the next press prepares the shell.
   //   state: the shell's ready state (shellState), remembered once the shell took a command.
-  async send(shell, command, state, fresh, cx) {
+  async send(shell, command, state, fresh, tr, cx) {
     const app = appHome();
     const file = insertFileOf(app, shell.terminal);
     const stale = (await readTextFile(file).catch(() => null)) != null;
-    const plan = insertPlan({ terminal: shell.terminal, file, state, prepared: shell.prepared, fresh, stale });
+    const plan = insertPlan({ terminal: shell.terminal, file, state, prepared: shell.prepared, fresh, stale, tr });
     if (plan.notice) return plan.notice;
-    if (!(await this.write(insertFolderOf(app), file, insertText(command)))) return noticeOf({ state: "failed" });
+    if (!(await this.write(insertFolderOf(app), file, insertText(command)))) return noticeOf({ state: "failed" }, tr);
     for (const args of plan.commands) {
       const result = await hc(args);
-      if (result.code !== 0) return noticeOf({ state: "failed" });
+      if (result.code !== 0) return noticeOf({ state: "failed" }, tr);
     }
     const left = await this.untaken(file, plan.wait, cx);
     if (left) await exec("rm", ["-f", "--", file]).catch(() => null);
-    const outcome = pressOutcome({ left, state, keyed: plan.wait === KEY_WAIT_MS });
+    const outcome = pressOutcome({ left, state, keyed: plan.wait === KEY_WAIT_MS, tr });
     shell.prepared = outcome.prepared;
     if (outcome.notice) return outcome.notice;
     run("pane.focus", { pane: shell.pane });

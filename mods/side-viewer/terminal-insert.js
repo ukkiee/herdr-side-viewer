@@ -7,6 +7,7 @@
 // widget on a key nobody uses and puts this first command in itself; later presses only
 // press that key. No line is left to run, nothing stays on screen, and a draft is pushed
 // aside in any keymap.
+import { wordsOf } from "./i18n.js";
 
 // The folder that holds the handoff files, under the app's folder `app` (appHome()).
 export const insertFolderOf = (app) => `${app}/data/side-viewer/shell`;
@@ -69,9 +70,10 @@ export const isRemote = (address) => address.includes("/");
 // together with the prepare line; in a vi keymap alt+q is not push-line, so that one case can
 // still run a draft. A fresh shell gets no alt+q: sent before zsh reads its keys it would only
 // show up on screen as "^[q". Another machine's shell would never find the handoff file.
-export function insertPlan({ terminal, file, state, prepared, fresh, stale }) {
-  if (isRemote(terminal)) return { commands: [], notice: noticeOf({ state: "remote" }), wait: 0 };
-  if (state.state === "busy") return { commands: [], notice: noticeOf(state), wait: 0 };
+// tr: the translator the notice is worded with (i18n.js).
+export function insertPlan({ terminal, file, state, prepared, fresh, stale, tr }) {
+  if (isRemote(terminal)) return { commands: [], notice: noticeOf({ state: "remote" }, tr), wait: 0 };
+  if (state.state === "busy") return { commands: [], notice: noticeOf(state, tr), wait: 0 };
   if (!stale && sameShell(prepared, state)) {
     return { commands: [["keys", terminal, INSERT_KEY]], notice: null, wait: KEY_WAIT_MS };
   }
@@ -85,10 +87,10 @@ export function insertPlan({ terminal, file, state, prepared, fresh, stale }) {
 // unbound key has put ";7~" in its input line, which the notice mentions. After a prepare line
 // no key went out: the shell had not run the line yet (slow rc files), so the notice says only
 // that. The late line finds no file and puts nothing in.
-//   state: the ready shellState the press went to.
-export function pressOutcome({ left, state, keyed }) {
+//   state: the ready shellState the press went to; tr: the notice's translator (i18n.js).
+export function pressOutcome({ left, state, keyed, tr }) {
   if (!left) return { prepared: shellOf(state), notice: null };
-  return { prepared: null, notice: noticeOf({ state: keyed ? "unprepared" : "unready" }) };
+  return { prepared: null, notice: noticeOf({ state: keyed ? "unprepared" : "unready" }, tr) };
 }
 
 // Inside single quotes zsh takes everything as it is except the quote itself.
@@ -170,30 +172,17 @@ export function shellFolder({ viewerTab, file, viewer, panes, shell, home }) {
   return conversation?.cwd ?? home;
 }
 
-// The notification (herdr notify) for a line that was not put in.
+// The notification (herdr notify) for a line that was not put in, in tr's language (i18n.js).
 //   reason: { state: "busy", program } | { state: "unprepared" } | { state: "unready" }
 //     | { state: "remote" } | { state: "failed" }
-export function noticeOf(reason) {
+export function noticeOf(reason, tr) {
+  const words = wordsOf(tr);
   if (reason.state === "busy") {
-    return {
-      title: "터미널에 넣지 않았습니다",
-      body: `셸에서 다른 프로그램(${reason.program})이 실행 중입니다. 끝난 뒤 다시 누르세요.`,
-      level: "warning",
-    };
+    return { title: words("alerts.notInserted"), body: words("alerts.busy", { program: reason.program }), level: "warning" };
   }
-  const title = "터미널에 넣지 못했습니다";
-  if (reason.state === "unprepared") {
-    return {
-      title,
-      body: "셸이 명령을 받지 않았습니다(exec zsh 등으로 다시 시작됨). 입력 칸에 ;7~가 남았다면 지우고 다시 누르세요.",
-      level: "error",
-    };
-  }
-  if (reason.state === "unready") {
-    return { title, body: "셸이 아직 명령을 받을 준비가 되지 않았습니다. 잠시 뒤 다시 누르세요.", level: "error" };
-  }
-  if (reason.state === "remote") {
-    return { title, body: "다른 기계의 셸에는 넣을 수 없습니다. 복사 버튼으로 붙여 넣으세요.", level: "error" };
-  }
-  return { title, body: "셸 pane을 열거나 찾지 못했습니다.", level: "error" };
+  const title = words("alerts.insertFailed");
+  if (reason.state === "unprepared") return { title, body: words("alerts.unprepared"), level: "error" };
+  if (reason.state === "unready") return { title, body: words("alerts.unready"), level: "error" };
+  if (reason.state === "remote") return { title, body: words("alerts.remote"), level: "error" };
+  return { title, body: words("alerts.failed"), level: "error" };
 }

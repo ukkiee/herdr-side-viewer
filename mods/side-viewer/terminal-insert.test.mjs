@@ -4,6 +4,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { insertFileOf, insertFolderOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
+import { translator } from "./i18n.js";
+
+// The notices as a Korean system shows them.
+const ko = translator("ko");
 
 // Herdr's panes(): a terminal pane, or a mod pane (terminal null).
 const pane = (id, tab, more = {}) => ({
@@ -98,9 +102,9 @@ test("a handoff file the last press left behind means the zsh lacks the widget, 
 });
 
 test("a shell on another machine gets nothing: the handoff file is on this one", () => {
-  assert.deepEqual(insertPlan({ terminal: "mini/t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false }), {
+  assert.deepEqual(insertPlan({ terminal: "mini/t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false, tr: ko }), {
     commands: [],
-    notice: noticeOf({ state: "remote" }),
+    notice: noticeOf({ state: "remote" }, ko),
     wait: 0,
   });
   assert.equal(isRemote("mini/t7"), true);
@@ -112,12 +116,12 @@ test("a press whose handoff file was taken keeps the zsh as prepared", () => {
 });
 
 test("a key press whose handoff file is still there forgets the zsh and says the command did not go in", () => {
-  assert.deepEqual(pressOutcome({ left: true, state: ready(40), keyed: true }), { prepared: null, notice: noticeOf({ state: "unprepared" }) });
+  assert.deepEqual(pressOutcome({ left: true, state: ready(40), keyed: true, tr: ko }), { prepared: null, notice: noticeOf({ state: "unprepared" }, ko) });
 });
 
 test("a prepare line that has not taken the handoff file in time sends no key, so its notice says only that the shell was not ready", () => {
-  assert.deepEqual(pressOutcome({ left: true, state: ready(40), keyed: false }), { prepared: null, notice: noticeOf({ state: "unready" }) });
-  assert.deepEqual(noticeOf({ state: "unready" }), {
+  assert.deepEqual(pressOutcome({ left: true, state: ready(40), keyed: false, tr: ko }), { prepared: null, notice: noticeOf({ state: "unready" }, ko) });
+  assert.deepEqual(noticeOf({ state: "unready" }, ko), {
     title: "터미널에 넣지 못했습니다",
     body: "셸이 아직 명령을 받을 준비가 되지 않았습니다. 잠시 뒤 다시 누르세요.",
     level: "error",
@@ -125,12 +129,12 @@ test("a prepare line that has not taken the handoff file in time sends no key, s
 });
 
 test("the notices for a shell that did not take the command and for another machine's shell", () => {
-  assert.deepEqual(noticeOf({ state: "unprepared" }), {
+  assert.deepEqual(noticeOf({ state: "unprepared" }, ko), {
     title: "터미널에 넣지 못했습니다",
     body: "셸이 명령을 받지 않았습니다(exec zsh 등으로 다시 시작됨). 입력 칸에 ;7~가 남았다면 지우고 다시 누르세요.",
     level: "error",
   });
-  assert.deepEqual(noticeOf({ state: "remote" }), {
+  assert.deepEqual(noticeOf({ state: "remote" }, ko), {
     title: "터미널에 넣지 못했습니다",
     body: "다른 기계의 셸에는 넣을 수 없습니다. 복사 버튼으로 붙여 넣으세요.",
     level: "error",
@@ -139,9 +143,9 @@ test("the notices for a shell that did not take the command and for another mach
 
 test("a busy shell gets nothing, only a notice", () => {
   const busy = { state: "busy", program: "sleep" };
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: busy, prepared: shellOf(ready(40)), fresh: false, stale: false }), {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: busy, prepared: shellOf(ready(40)), fresh: false, stale: false, tr: ko }), {
     commands: [],
-    notice: noticeOf(busy),
+    notice: noticeOf(busy, ko),
     wait: 0,
   });
 });
@@ -167,11 +171,37 @@ test("a terminal that has ended, or could not be asked about, is gone", () => {
 });
 
 test("a busy shell's notice says what runs there and what to do", () => {
-  assert.deepEqual(noticeOf({ state: "busy", program: "sleep" }), {
+  assert.deepEqual(noticeOf({ state: "busy", program: "sleep" }, ko), {
     title: "터미널에 넣지 않았습니다",
     body: "셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.",
     level: "warning",
   });
+});
+
+test("a shell pane that could not be opened or found says so", () => {
+  assert.deepEqual(noticeOf({ state: "failed" }, ko), { title: "터미널에 넣지 못했습니다", body: "셸 pane을 열거나 찾지 못했습니다.", level: "error" });
+});
+
+test("the notices in English, the program's name kept as it is", () => {
+  const en = translator("en");
+  assert.deepEqual(noticeOf({ state: "busy", program: "sleep" }, en), {
+    title: "Not inserted into the terminal",
+    body: "Another program (sleep) is running in the shell. Press again when it ends.",
+    level: "warning",
+  });
+  const failed = "Couldn't insert into the terminal";
+  assert.deepEqual(noticeOf({ state: "unprepared" }, en), {
+    title: failed,
+    body: "The shell didn't take the command (it was restarted, e.g. by exec zsh). If ;7~ is left in the input line, delete it and press again.",
+    level: "error",
+  });
+  assert.deepEqual(noticeOf({ state: "unready" }, en), { title: failed, body: "The shell isn't ready for commands yet. Press again in a moment.", level: "error" });
+  assert.deepEqual(noticeOf({ state: "remote" }, en), { title: failed, body: "Can't insert into a shell on another machine. Use the copy button and paste it.", level: "error" });
+  assert.deepEqual(noticeOf({ state: "failed" }, en), { title: failed, body: "Couldn't open or find the shell pane.", level: "error" });
+  // The plan and the press word their notices in the language they are given, English without one.
+  assert.equal(insertPlan({ terminal: "mini/t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false }).notice.body,
+    "Can't insert into a shell on another machine. Use the copy button and paste it.");
+  assert.equal(pressOutcome({ left: true, state: ready(40), keyed: false, tr: en }).notice.title, failed);
 });
 
 test("beside a conversation the shell starts in the conversation terminal's folder", () => {

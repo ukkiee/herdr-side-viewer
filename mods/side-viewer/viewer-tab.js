@@ -9,6 +9,7 @@
 // the entry of edit-state.js's takeEdit.
 
 import { labelOf } from "./document.js";
+import { wordsOf } from "./i18n.js";
 
 // The id becomes part of a file name, so it may not carry a path.
 const ID = /^[A-Za-z0-9_-]+$/;
@@ -88,11 +89,12 @@ export function ownTab(focus, panes) {
 }
 
 // The notify() that says the new tab of `file` was made but could not be moved after this
-// viewer's tab and shown, because spaces() never listed it.
-export function unplacedNotice(file) {
+// viewer's tab and shown, because spaces() never listed it. Worded by tr (i18n.js).
+export function unplacedNotice(file, tr) {
+  const words = wordsOf(tr);
   return {
-    title: "새 탭으로 넘어가지 못했습니다",
-    body: `'${tabName(file)}' 탭을 열었지만 찾지 못해 옮기거나 보이지 못했습니다. 탭 막대에서 고르세요.`,
+    title: words("alerts.unplacedTitle"),
+    body: words("alerts.unplacedBody", { name: tabName(file) }),
     level: "warning",
   };
 }
