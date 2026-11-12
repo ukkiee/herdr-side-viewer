@@ -18,7 +18,7 @@
 // renderTable, renderRule, renderImageBlock, renderCodeBlock, renderFootnotes. Text inside a
 // block is a TextView: a mod has no way to style single characters, and TextView keeps links,
 // bold, italic, inline code and strikethrough working.
-import { div, image } from "gpui-kit";
+import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
 import { home } from "herdr";
 import { labelOf, noticeFor } from "./document.js";
@@ -148,7 +148,8 @@ function renderCheckbox(ctx, item, key) {
   const box = h_flex().id(`side-viewer-checkbox-${key}`).size(14).rounded(3).border(1).items_center().justify_center()
     .when(Boolean(ctx.onCheckbox), (el) => el.cursor_pointer().on_click((_event, cx) => ctx.onCheckbox(item.line, cx)));
   return item.checked
-    ? box.border_color(t.accent).bg(t.accent).text_color(t.accent_foreground).text_size(10).child("✓")
+    ? box.border_color(t.accent).bg(t.accent).text_color(t.accent_foreground)
+      .child(svg("mods/side-viewer/checkbox-check.svg").size(10))
     : box.border_color(t.muted);
 }
 

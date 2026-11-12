@@ -271,7 +271,8 @@ The mod shows files, not agents, so it has no agent statuses.
   when every step worked. The binary also answers `--type-info <extension>` (file type, its
   other extensions, its parent types), the check behind the sibling extensions in the list.
 - Icons: `new-tab.svg`, `original.svg`, `finder.svg` (header, 14px), `copy.svg`,
-  `check.svg`, `terminal.svg` (cards, 16px), 16×16, stroked in `currentColor`, drawn with
+  `check.svg`, `terminal.svg` (cards, 16px), 16×16, and `checkbox-check.svg` (a checked
+  box's mark, 10×10 with a 1.8 stroke), stroked in `currentColor`, drawn with
   `svg("mods/side-viewer/<name>.svg")`. The "rendering | source" switch is two text cells,
   with no icon.
 - `herdr` functions: `props`, `readTextFile`, `writeTextFile`, `nextCommand`, `home`,
