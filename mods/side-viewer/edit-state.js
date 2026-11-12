@@ -56,7 +56,9 @@ export function diskRead(edits, file, text) {
   if (text === undefined) return { edits, step: "keep" };
   // The disk caught up with the edit, as when the viewer's own save is read back.
   if (text === entry.text) return { edits: without(edits, file), step: "show" };
-  if (text === entry.disk) return { edits: withBar(edits, file, null), step: "keep" };
+  // The disk is back to the text the edit started from: a bar about the disk (changed or
+  // deleted) goes, a failed save's bar stays, since nothing has been saved since.
+  if (text === entry.disk) return { edits: holds(entry) ? withBar(edits, file, null) : edits, step: "keep" };
   const bar = text === null ? { kind: "failed", reason: "deleted" } : { kind: "conflict", disk: text };
   return { edits: withBar(edits, file, bar), step: "keep" };
 }

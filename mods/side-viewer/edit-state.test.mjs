@@ -128,6 +128,30 @@ test("a file whose disk text comes back to what the edit started from drops the 
   assert.equal(unsaved(edits, A), true);
 });
 
+test("a failed save's bar outlives a read that finds the disk as it was", () => {
+  for (const [error, message] of [
+    [new Error("Permission denied (os error 13)"), "이 파일에 쓸 권한이 없습니다."],
+    [new Error("disk full"), "저장하지 못했습니다: disk full"],
+  ]) {
+    let edits = typed(noEdits(), A, "one\n", "mine\n");
+    edits = saveFailed(edits, A, error);
+    const read = diskRead(edits, A, "one\n");
+    assert.equal(read.step, "keep");
+    assert.deepEqual(barOf(read.edits, A), { kind: "failed", message });
+  }
+  let large = typed(noEdits(), A, "one\n", "x".repeat(1024 * 1024 + 1));
+  large = startSave(large, A).edits;
+  assert.deepEqual(barOf(diskRead(large, A, "one\n").edits, A), { kind: "failed", message: "저장하기에는 너무 큽니다." });
+});
+
+test("a deleted file's bar goes when the file comes back as it was", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, null).edits;
+  edits = diskRead(edits, A, "one\n").edits;
+  assert.equal(barOf(edits, A), null);
+  assert.equal(unsaved(edits, A), true);
+});
+
 test("a disk that now holds the edited text leaves nothing unsaved", () => {
   // As when the viewer's own save is read back before the save has finished.
   const edits = typed(noEdits(), A, "one\n", "mine\n");
