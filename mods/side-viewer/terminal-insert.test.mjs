@@ -3,7 +3,7 @@
 // shell is too busy to take it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { insertCommands, shellState, noticeOf, shellFolder } from "./terminal-insert.js";
+import { insertCommands, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
 
 // Herdr's panes(): a terminal pane, or a mod pane (terminal null).
 const pane = (id, tab, more = {}) => ({
@@ -96,6 +96,40 @@ test("with no conversation terminal or no document the shell starts at home", ()
   assert.equal(shellFolder({ viewerTab: false, file: "/notes/a.md", viewer: "p2", panes, shell: null, home: HOME }), HOME);
   assert.equal(shellFolder({ viewerTab: true, file: null, viewer: "p2", panes, shell: null, home: HOME }), HOME);
   assert.equal(shellFolder({ viewerTab: false, file: "/notes/a.md", viewer: null, panes, shell: null, home: HOME }), HOME);
+});
+
+test("the viewer's pane: its props first, then the focused viewer, then the tab's only viewer", () => {
+  const panes = [agentPane("p1", "tab1", "t1", "/w"), viewerPane("p2", "tab1"), viewerPane("p3", "tab2"), viewerPane("p4", "tab2")];
+  const focusOn = (pane, tab) => ({ space: "s1", tab, pane, terminal: null });
+  assert.equal(viewerPaneOf({ props: { pane: "p3" }, focused: focusOn("p2", "tab1"), panes }), "p3");
+  assert.equal(viewerPaneOf({ props: { file: "/a.md" }, focused: focusOn("p4", "tab2"), panes }), "p4");
+  assert.equal(viewerPaneOf({ props: {}, focused: focusOn("p1", "tab1"), panes }), "p2");
+  // Two viewers in the focused tab and neither holds the keyboard: no way to tell.
+  assert.equal(viewerPaneOf({ props: {}, focused: focusOn(null, "tab2"), panes }), null);
+  assert.equal(viewerPaneOf({ props: null, focused: null, panes }), null);
+});
+
+test("the shell pane a viewer opened is used again while it shows the same terminal", () => {
+  const shell = { pane: "p4", terminal: "t4" };
+  assert.deepEqual(liveShell(shell, [viewerPane("p3", "tab1"), shellPane("p4", "tab1", "t4", "/w")]), shell);
+  assert.equal(liveShell(shell, [viewerPane("p3", "tab1")]), null);
+  assert.equal(liveShell(shell, [shellPane("p4", "tab1", "t9", "/w")]), null);
+  assert.equal(liveShell(null, [shellPane("p4", "tab1", "t4", "/w")]), null);
+});
+
+test("the shell pane a split opened is the new terminal pane in the viewer's tab", () => {
+  const before = [agentPane("p1", "tab1", "t1", "/w"), viewerPane("p2", "tab1"), shellPane("p5", "tab2", "t5", "/x")];
+  assert.equal(openedShell(before, before, "p2"), null);
+  const after = [...before, shellPane("p6", "tab2", "t6", "/x"), shellPane("p7", "tab1", "t7", "/w")];
+  assert.deepEqual(openedShell(before, after, "p2"), { pane: "p7", terminal: "t7" });
+});
+
+test("a new shell is zsh, split below the viewer and started in the folder", () => {
+  assert.deepEqual(splitOf("p2", "/work/it's here"), {
+    direction: "down",
+    pane: "p2",
+    argv: ["/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec /bin/zsh -l", "zsh", "/work/it's here"],
+  });
 });
 
 test("a block of several lines stays several lines, without its last newline", () => {

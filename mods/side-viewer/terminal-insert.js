@@ -33,6 +33,48 @@ export function shellState(info) {
   return /^-?zsh$/.test(program) ? { state: "ready" } : { state: "busy", program };
 }
 
+const MOD = "side-viewer";
+const ZSH = "/bin/zsh";
+
+// This viewer's own pane id, or null. A mod pane is not told its id the way a pane header is
+// (props().pane), so: its props if they carry one, else the focused pane when that is a side
+// viewer (a click on `>_` leaves the keyboard with it), else the focused tab's only side viewer.
+//   props: herdr props(); focused: herdr focused(); panes: herdr panes()
+export function viewerPaneOf({ props, focused, panes }) {
+  const viewers = panes.filter((p) => p.mod === MOD);
+  const given = props?.pane;
+  if (typeof given === "string" && viewers.some((p) => p.pane === given)) return given;
+  if (focused?.pane && viewers.some((p) => p.pane === focused.pane)) return focused.pane;
+  const inTab = viewers.filter((p) => p.tab === focused?.tab);
+  return inTab.length === 1 ? inTab[0].pane : null;
+}
+
+// The shell pane this viewer opened, { pane, terminal }, if it still shows that terminal.
+export function liveShell(shell, panes) {
+  if (!shell) return null;
+  return panes.some((p) => p.pane === shell.pane && p.terminal === shell.terminal) ? shell : null;
+}
+
+// After a split below `viewer`: the terminal pane in its tab that `before` did not have, as
+// { pane, terminal }, or null while panes() has not caught up.
+export function openedShell(before, panes, viewer) {
+  const tab = panes.find((p) => p.pane === viewer)?.tab;
+  const known = new Set(before.map((p) => p.pane));
+  const found = panes.find((p) => p.tab === tab && p.terminal && !known.has(p.pane));
+  return found ? { pane: found.pane, terminal: found.terminal } : null;
+}
+
+// The pane.split arguments for a shell below the viewer. pane.split takes no folder, so a
+// short zsh moves there first and becomes the login shell; a folder that is gone leaves the
+// shell where Herdr started it. Always zsh: the line goes in with zsh's print -z.
+export function splitOf(viewer, folder) {
+  return {
+    direction: "down",
+    pane: viewer,
+    argv: [ZSH, "-c", `cd -- "$1" 2>/dev/null; exec ${ZSH} -l`, "zsh", folder],
+  };
+}
+
 // The folder a new shell pane starts in. In a viewer tab, the shown document's folder. Beside
 // a conversation, that conversation terminal's live folder: the viewer was split off it, so it
 // is a terminal pane in the viewer's own tab, an agent's before a plain shell's, and never the
