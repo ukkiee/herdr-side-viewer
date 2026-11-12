@@ -21,3 +21,27 @@ export function insertCommands(terminal, command) {
 
 // Inside single quotes zsh takes everything as it is except the quote itself.
 const quoted = (text) => `'${text.replaceAll("'", "'\\''")}'`;
+
+// Whether the terminal `info` (`hc get <t> --json`, null when that failed) can take a line now.
+// zsh reports no hc status, so the foreground process tells: the shell itself while it waits
+// at its prompt, anything else while a program runs. Another shell counts as busy too, since
+// only zsh has print -z.
+//   { state: "ready" } | { state: "busy", program } | { state: "gone" }
+export function shellState(info) {
+  if (info?.state !== "live" || !info.foreground) return { state: "gone" };
+  const program = String(info.foreground.name ?? "").split("/").pop();
+  return /^-?zsh$/.test(program) ? { state: "ready" } : { state: "busy", program };
+}
+
+// The notification (herdr notify) for a line that was not put in.
+//   reason: { state: "busy", program } | { state: "failed" }
+export function noticeOf(reason) {
+  if (reason.state === "busy") {
+    return {
+      title: "터미널에 넣지 않았습니다",
+      body: `셸에서 다른 프로그램(${reason.program})이 실행 중입니다. 끝난 뒤 다시 누르세요.`,
+      level: "warning",
+    };
+  }
+  return { title: "터미널에 넣지 못했습니다", body: "셸 pane을 열거나 찾지 못했습니다.", level: "error" };
+}
