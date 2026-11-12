@@ -61,6 +61,32 @@ export function viewerTabOf(props) {
   return { file: typeof props.file === "string" ? props.file : null, handoff };
 }
 
+// Where the new tab goes: right after the tab the viewer is in, as { space, index } for
+// tab.new {space} and tab.move {index} (1 = first). `spaces` is Herdr's spaces(), `focus`
+// its focused(), taken while the click on this viewer is handled. Null when either is unknown.
+export function placeAfter(spaces, focus) {
+  const space = (spaces ?? []).find((s) => s.id === focus?.space);
+  const tab = space?.tabs.find((t) => t.id === focus.tab);
+  if (!tab) return null;
+  return { space: space.id, index: tab.index + 1 };
+}
+
+// tab.new returns nothing, so the new tab is the one `space` has in `after` and did not
+// have in `before` (both spaces()). Null until it shows up.
+export function newTabOf(before, after, space) {
+  const known = new Set((before ?? []).find((s) => s.id === space)?.tabs.map((t) => t.id) ?? []);
+  return (after ?? []).find((s) => s.id === space)?.tabs.find((t) => !known.has(t.id))?.id ?? null;
+}
+
+// The tab a viewer tab renames when its file changes: the shown tab (focused()), as long as a
+// side viewer is in it (panes()). A viewer tab only changes its file while it is shown: a
+// click in it, or an open request, which only a showing copy takes.
+export function ownTab(focus, panes) {
+  const tab = focus?.tab;
+  if (!tab) return null;
+  return (panes ?? []).some((p) => p.tab === tab && p.mod === "side-viewer") ? tab : null;
+}
+
 // The tab's name: the file name, as the header shows it.
 export function tabName(file) {
   return labelOf(file, "").name;

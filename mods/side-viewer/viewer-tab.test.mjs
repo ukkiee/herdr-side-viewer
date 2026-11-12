@@ -1,7 +1,7 @@
 // node --test: what a viewer tab is given when it opens, and where it goes, without Herdr.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName } from "./viewer-tab.js";
+import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab } from "./viewer-tab.js";
 
 const NOW = 1_800_000_000_000;
 const FILE = "/work/notes/plan.md";
@@ -56,6 +56,46 @@ test("a handoff id that could reach outside the data folder is dropped", () => {
 
 test("the tab is named by the file, as the header names it", () => {
   assert.equal(tabName("/work/notes/계획 v2.md"), "계획 v2.md");
+});
+
+const tab = (id, index) => ({ id, index, name: String(index) });
+const space = (id, tabs) => ({ id, index: 1, name: id, tabs });
+const BEFORE = [
+  space("s1", [tab("t1", 1), tab("t2", 2), tab("t3", 3)]),
+  space("s2", [tab("u1", 1)]),
+];
+
+test("the new tab goes right after the tab the viewer is in, in the same space", () => {
+  assert.deepEqual(placeAfter(BEFORE, { space: "s1", tab: "t2" }), { space: "s1", index: 3 });
+  assert.deepEqual(placeAfter(BEFORE, { space: "s1", tab: "t3" }), { space: "s1", index: 4 });
+  assert.deepEqual(placeAfter(BEFORE, { space: "s2", tab: "u1" }), { space: "s2", index: 2 });
+});
+
+test("without a known tab there is no place to put the new one", () => {
+  assert.equal(placeAfter(BEFORE, null), null);
+  assert.equal(placeAfter(BEFORE, { space: "s1", tab: "gone" }), null);
+  assert.equal(placeAfter(BEFORE, { space: "gone", tab: "t2" }), null);
+});
+
+test("the tab that tab.new made is the one the space did not have before", () => {
+  const after = [space("s1", [tab("t1", 1), tab("t2", 2), tab("t3", 3), tab("t9", 4)]), BEFORE[1]];
+  assert.equal(newTabOf(BEFORE, after, "s1"), "t9");
+});
+
+test("no new tab yet, or one only in another space, is not taken for it", () => {
+  assert.equal(newTabOf(BEFORE, BEFORE, "s1"), null);
+  const elsewhere = [BEFORE[0], space("s2", [tab("u1", 1), tab("u2", 2)])];
+  assert.equal(newTabOf(BEFORE, elsewhere, "s1"), null);
+});
+
+test("a viewer tab renames the shown tab only when a side viewer is in it", () => {
+  const panes = [
+    { pane: "p1", terminal: "x1", tab: "t1", title: "zsh" },
+    { pane: "p9", terminal: null, mod: "side-viewer", tab: "t9", title: "Side Viewer" },
+  ];
+  assert.equal(ownTab({ space: "s1", tab: "t9" }, panes), "t9");
+  assert.equal(ownTab({ space: "s1", tab: "t1" }, panes), null);
+  assert.equal(ownTab(null, panes), null);
 });
 
 test("a missing or broken handoff is ignored", () => {
