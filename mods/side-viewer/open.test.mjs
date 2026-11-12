@@ -161,7 +161,7 @@ test("with Herdr in front, the file opens in a side viewer pane split to the rig
   const w = world();
   const r = w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(w.splitArgs(), ["do", "pane.split", "--direction", "right", "--mod", "side-viewer", "--props", '{"file":"/work/notes/plan.md"}']);
+  assert.deepEqual(w.splitArgs(), ["do", "pane.split", "--direction", "right", "--mod", "side-viewer", "--props", `{"file":"/work/notes/plan.md","space":"${SPACE}"}`]);
   assert.deepEqual(w.openArgs(), []);
 });
 
@@ -332,7 +332,7 @@ test("a path with spaces, quotes, a backslash and Korean reaches the viewer and 
   w.open(file, HERDR_FRONT);
   const args = w.splitArgs();
   assert.equal(args.length, 8);
-  assert.deepEqual(JSON.parse(args[7]), { file });
+  assert.deepEqual(JSON.parse(args[7]), { file, space: SPACE });
 
   const showing = world();
   showing.viewersShowing();
@@ -360,4 +360,49 @@ test("with a remote space in focus, the file goes to its original app and no vie
   assert.deepEqual(w.openArgs(), ["-b", "com.example.Notes", "/work/notes/plan.md"]);
   assert.deepEqual(w.herdrCalls(), []);
   assert.deepEqual(w.shownInViewer(), []);
+});
+
+test("when Herdr's status cannot be read, the file goes to its original app", () => {
+  for (const [out, code] of [
+    ["herdr-app: no Herdr window at /x/herdr-app.sock: No such file or directory (os error 2)\n", 2],
+    [status(SPACE), 1],
+    ['{ "zoom": 1.0, "errors": [] }\n', 0],
+    ["", 0],
+  ]) {
+    const w = world();
+    w.statusSays(out, code);
+    const r = w.open("/work/notes/plan.md", HERDR_FRONT);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(w.openArgs(), ["-b", "com.apple.TextEdit", "/work/notes/plan.md"], out);
+    assert.deepEqual(w.herdrCalls(), [], out);
+  }
+});
+
+test("when Herdr's status does not come in time, the file goes to its original app", () => {
+  const w = world();
+  w.statusHangs(5);
+  const started = Date.now();
+  const r = w.open("/work/notes/plan.md", HERDR_FRONT, { SIDE_VIEWER_TIMEOUT: "1" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(Date.now() - started < 4000, "gave up before herdr-app finished");
+  assert.deepEqual(w.openArgs(), ["-b", "com.apple.TextEdit", "/work/notes/plan.md"]);
+  assert.deepEqual(w.herdrCalls(), []);
+});
+
+test("errors from files and mods in Herdr's status do not stop the viewer from opening", () => {
+  const w = world();
+  w.statusSays(status(SPACE).replace('"errors": []', '"errors": ["mods/other/main.js: error: boom"]'));
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.ok(w.splitArgs());
+  assert.deepEqual(w.openArgs(), []);
+});
+
+test("a new pane and a waiting request both carry the focused space", () => {
+  const w = world();
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.equal(w.statusAsked(), 1);
+  assert.deepEqual(JSON.parse(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE });
+  const request = JSON.parse(readFileSync(join(w.env.SIDE_VIEWER_DATA, "request.json"), "utf8"));
+  assert.equal(request.space, SPACE);
+  assert.equal(request.file, "/work/notes/plan.md");
 });

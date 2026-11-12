@@ -2,8 +2,9 @@
 # macOS only. The router calls this for every file it is handed.
 #   open.sh <file> <front app>
 # <front app> is the path (or name) of the app that was in front when the file was opened.
-# Herdr in front (a cmd-click on a path in a terminal): the file opens in a side viewer pane.
-# Anything else, or any failure on the way: the file goes to its original app.
+# Herdr in front (a cmd-click on a path in a terminal) with a space of this Mac in focus: the
+# file opens in a side viewer pane of that space. A remote space in focus, anything else, or
+# any failure on the way: the file goes to its original app.
 # Environment, all optional: SIDE_VIEWER_HERDR_APP (the herdr-app program), SIDE_VIEWER_DATA
 # (the data folder), HERDR_APP_HOME (Herdr's folder, where the mod is installed),
 # SIDE_VIEWER_TIMEOUT (whole seconds to wait for herdr-app, 5 by default).
@@ -86,7 +87,7 @@ mkdir -p "$data" 2>/dev/null
 # Answers are left behind so a second viewer cannot take a request twice. Old ones go here.
 find "$data" -name 'answer-*' -mmin +1 -exec rm -f {} + 2>/dev/null
 # Written beside and moved in, so a viewer never reads half a request.
-if printf '{"id":"%s","file":"%s","at":%s}\n' "$id" "$json_file" "$asked" > "$data/request.json.$$" 2>/dev/null &&
+if printf '{"id":"%s","file":"%s","at":%s,"space":"%s"}\n' "$id" "$json_file" "$asked" "$space" > "$data/request.json.$$" 2>/dev/null &&
   mv -f "$data/request.json.$$" "$data/request.json" 2>/dev/null; then
   if herdr_do side-viewer.show; then
     tries=8
@@ -104,5 +105,5 @@ if printf '{"id":"%s","file":"%s","at":%s}\n' "$id" "$json_file" "$asked" > "$da
   claim || exit 0
 fi
 
-herdr_do pane.split --direction right --mod side-viewer --props "{\"file\":\"$json_file\"}" || original
+herdr_do pane.split --direction right --mod side-viewer --props "{\"file\":\"$json_file\",\"space\":\"$space\"}" || original
 exit 0
