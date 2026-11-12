@@ -23,6 +23,46 @@ here=$(cd "$(dirname "$0")" && pwd)
 router="${SIDE_VIEWER_ROUTER:?set SIDE_VIEWER_ROUTER to the router binary}"
 router_id="${SIDE_VIEWER_ROUTER_ID:-}"
 
+# ko when the first preferred language of macOS is Korean ("ko-KR", "ko", "ko_KR.UTF-8"),
+# en for anything else, an empty list, or a read that fails. Same rule as the viewer's i18n.
+system_lang() {
+  out=$(defaults read -g AppleLanguages 2>/dev/null) || { echo en; return; }
+  # The list is printed as `(\n    "ko-KR",\n    en\n)`; anything else is not a list.
+  case "$out" in
+    "("*")") ;;
+    *) echo en; return ;;
+  esac
+  first=$(printf '%s\n' "$out" | tr -d '()" \t' | tr ',' '\n' | awk 'NF { print; exit }' | tr 'A-Z' 'a-z')
+  case "$first" in
+    ko | ko[-_.@]*) echo ko ;;
+    *) echo en ;;
+  esac
+}
+
+# Read once: a run speaks one language even if the setting changes halfway.
+lang=$(system_lang)
+
+# Prints message $1 as one line in $lang, with $2... in place of its %s in order.
+# Values (extensions, bundle ids, error text) go in as arguments, never into the format.
+say() {
+  say_key=$1
+  shift
+  say_s=s
+  [ "${1:-}" = 1 ] && say_s=
+  case "$lang.$say_key" in
+    ko.windows_to_router) say_fmt='macOS 확인 창이 %s번 뜹니다. 창마다 Side Viewer Router로 바꾸는 쪽을 고르세요.' ;;
+    en.windows_to_router) say_fmt="macOS will show %s confirmation window$say_s. In each window, choose to change to Side Viewer Router." ;;
+    ko.windows_to_original) say_fmt='macOS 확인 창이 %s번 뜹니다. 창마다 원래 앱으로 바꾸는 쪽을 고르세요.' ;;
+    en.windows_to_original) say_fmt="macOS will show %s confirmation window$say_s. In each window, choose to change back to the original app." ;;
+    ko.changed) say_fmt='바뀜:%s' ;;
+    en.changed) say_fmt='Changed:%s' ;;
+    ko.kept) say_fmt='유지를 선택함:%s' ;;
+    en.kept) say_fmt='Chose to keep:%s' ;;
+    *) printf '%s\n' "$say_key"; return ;;
+  esac
+  printf "$say_fmt\n" "$@"
+}
+
 usage() {
   echo "usage: takeover.sh make-default [code] | restore | status" >&2
   exit 2
@@ -56,7 +96,8 @@ siblings=""
 left=""
 
 # Sends the requests in $plan (lines of "<file type><TAB><extension><TAB><app>"), one per file
-# type, after saying how many confirmation windows that means. $1 tells the person what to pick.
+# type, after saying how many confirmation windows that means. $1: the message that says so and
+# tells the person what to pick.
 run_plan() {
   count=$(cut -f 1 "$plan" | awk 'NF && !seen[$0]++' | wc -l | tr -d ' ')
   if [ "$count" -eq 0 ]; then
@@ -66,7 +107,7 @@ run_plan() {
     [ -n "$siblings" ] && rm -f "$siblings"
     return 0
   fi
-  echo "macOS 확인 창이 ${count}번 뜹니다. $1"
+  say "$1" "$count"
 
   changed=""
   kept=""
@@ -123,8 +164,8 @@ run_plan() {
   rm -f "$plan" "$errors" "$types"
   [ -n "$siblings" ] && rm -f "$siblings"
 
-  [ -n "$changed" ] && echo "바뀜:$changed"
-  [ -n "$kept" ] && echo "유지를 선택함:$kept"
+  [ -n "$changed" ] && say changed "$changed"
+  [ -n "$kept" ] && say kept "$kept"
   [ -n "$left" ] && echo "라우터에 남음:$left (이 확장자를 맡은 앱이 라우터뿐입니다)"
   [ "$failed" -eq 1 ] && return 1
   [ -n "$kept" ] && return 3
@@ -165,7 +206,7 @@ make_default() {
   fi
   mv "$new" "$record"
 
-  run_plan "창마다 Side Viewer Router로 바꾸는 쪽을 고르세요."
+  run_plan windows_to_router
 }
 
 # The app a sibling of extension $1 (same file type) that the router does not hold opens in,
@@ -243,7 +284,7 @@ restore() {
   left=$(awk -F '\t' 'NR == FNR { if ($4 == "ask") asked[$1] = 1; next } !asked[$1] { printf " %s", $2 }' "$wishes" "$wishes")
   rm -f "$wishes"
 
-  run_plan "창마다 원래 앱으로 바꾸는 쪽을 고르세요."
+  run_plan windows_to_original
 }
 
 # One line per extension: extension, current default app, recorded original app ("-" when none).

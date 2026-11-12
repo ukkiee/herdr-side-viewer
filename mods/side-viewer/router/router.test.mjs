@@ -39,7 +39,24 @@ printf '%s\\n' "$*" >> "$FAKE_STATE/open.log"
 exit 0
 `;
 
-function world({ extensions, defaults = {}, sameType = {}, record } = {}) {
+// Stands in for /usr/bin/defaults: logs its arguments and answers `read -g AppleLanguages`
+// with the file `languages`, or fails the way macOS does when that file is missing.
+const FAKE_DEFAULTS = `#!/bin/sh
+printf '%s\\n' "$*" >> "$FAKE_STATE/defaults.log"
+[ "$*" = "read -g AppleLanguages" ] || exit 1
+[ -e "$FAKE_STATE/languages" ] || { echo "The domain/default pair of (kCFPreferencesAnyApplication, AppleLanguages) does not exist" >&2; exit 1; }
+cat "$FAKE_STATE/languages"
+`;
+
+// `defaults read -g AppleLanguages` output, the way macOS prints it.
+const appleLanguages = (...tags) => `(\n${tags.map((tag) => `    "${tag}"`).join(",\n")}\n)\n`;
+const KOREAN = appleLanguages("ko-KR", "en-KR");
+const ENGLISH = appleLanguages("en-KR", "ko-KR");
+const HANGUL = /[가-힣]/;
+
+// languages: what the fake `defaults` answers, null for a failing read. Korean by default, so
+// the Korean lines are checked exactly as the router has always printed them.
+function world({ extensions, defaults = {}, sameType = {}, record, languages = KOREAN } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "side-viewer-router-"));
   const state = join(dir, "state");
   const data = join(dir, "data");
@@ -47,8 +64,11 @@ function world({ extensions, defaults = {}, sameType = {}, record } = {}) {
   for (const d of [state, data, bin]) mkdirSync(d);
   writeFileSync(join(dir, "router"), FAKE_ROUTER);
   writeFileSync(join(bin, "open"), FAKE_OPEN);
+  writeFileSync(join(bin, "defaults"), FAKE_DEFAULTS);
   chmodSync(join(dir, "router"), 0o755);
   chmodSync(join(bin, "open"), 0o755);
+  chmodSync(join(bin, "defaults"), 0o755);
+  if (languages !== null) writeFileSync(join(state, "languages"), languages);
   writeFileSync(
     join(dir, "extensions.json"),
     JSON.stringify(extensions ?? { markdown: ["md"], image: ["png", "jpg", "jpeg"], code: ["txt", "py"] }),
@@ -79,6 +99,8 @@ function world({ extensions, defaults = {}, sameType = {}, record } = {}) {
     gone: (...ids) => writeFileSync(join(state, "gone"), ids.map((id) => `${id}\n`).join("")),
     openOriginal: (file) => spawnSync("/bin/sh", [join(here, "open-original.sh"), file], { env, encoding: "utf8" }),
     opened: () => (existsSync(join(state, "open.log")) ? readFileSync(join(state, "open.log"), "utf8") : ""),
+    // Every `defaults` call, one line of arguments each.
+    defaultsCalls: () => (existsSync(join(state, "defaults.log")) ? readFileSync(join(state, "defaults.log"), "utf8").trim().split("\n") : []),
   };
   // Setting the scene is not a request the person would be asked about.
   writeFileSync(join(state, "quiet"), "");
@@ -363,6 +385,18 @@ test("make-default does not try another app when the router itself is not found"
   const r = w.takeover("make-default");
   assert.equal(r.status, 1);
   assert.deepEqual(w.requests(), [`md ${ROUTER_ID}`]);
+});
+
+test("make-default speaks English when the first preferred language is not Korean, with the same exit code and line order", () => {
+  const w = world({ extensions: { markdown: ["md"], image: ["png"], code: [] }, defaults: { md: "com.example.Notes", png: "com.apple.Preview" }, languages: ENGLISH });
+  w.keep("png");
+  const r = w.takeover("make-default");
+  assert.equal(r.status, 3);
+  assert.equal(
+    r.stdout,
+    "macOS will show 2 confirmation windows. In each window, choose to change to Side Viewer Router.\nChanged: md\nChose to keep: png\n",
+  );
+  assert.equal(r.stderr, "");
 });
 
 test("status prints the current default app and the recorded original app per extension", () => {
