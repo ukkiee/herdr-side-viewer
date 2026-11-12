@@ -4,11 +4,13 @@
 // A viewer keeps one ShellPane: it remembers the pane it opened and puts later blocks there
 // while that pane still shows the same terminal, and which zsh there it has prepared.
 import { hc, run, exec, panes, focused, props, home, appHome, notify, readTextFile, writeTextFile } from "herdr";
-import { insertFileOf, insertFolderOf, insertText, insertPlan, shellState, noticeOf, viewerPaneOf, liveShell, openedShell, splitOf, shellFolder } from "./terminal-insert.js";
+import { insertFileOf, insertFolderOf, insertText, insertPlan, pressOutcome, isRemote, shellState, noticeOf, viewerPaneOf, liveShell, openedShell, splitOf, shellFolder } from "./terminal-insert.js";
 
 // How long a new pane may take to show up in panes(), and a new shell to reach its prompt.
 const WAIT_MS = 5000;
 const STEP_MS = 100;
+// How often to look whether the shell took the handoff file.
+const TAKE_STEP_MS = 50;
 
 export class ShellPane {
   constructor() {
@@ -44,10 +46,12 @@ export class ShellPane {
     if (kept) {
       const state = await this.settled(kept.terminal, cx);
       if (state.state === "busy") return noticeOf(state);
-      if (state.state === "ready") return this.send(kept, command, state, false);
+      if (state.state === "ready") return this.send(kept, command, state, false, cx);
     }
     const viewer = viewerPaneOf({ props: props(), focused: focused(), panes: all });
     if (!viewer) return noticeOf({ state: "failed" });
+    // A split of another machine's viewer opens a shell there, which never sees the handoff file.
+    if (isRemote(viewer)) return noticeOf({ state: "remote" });
     const folder = shellFolder({ viewerTab, file, viewer, panes: all, shell: this.shell, home: home() });
     run("pane.split", splitOf(viewer, folder));
     const opened = await this.appeared(all, viewer, cx);
@@ -56,7 +60,7 @@ export class ShellPane {
     const state = await this.settled(opened.terminal, cx);
     if (state.state === "busy") return noticeOf(state);
     if (state.state !== "ready") return noticeOf({ state: "failed" });
-    return this.send(this.shell, command, state, true);
+    return this.send(this.shell, command, state, true, cx);
   }
 
   // The pane a split below `viewer` opened, once panes() shows it.
@@ -85,22 +89,38 @@ export class ShellPane {
     return state;
   }
 
-  // Writes the command to the shell's handoff file, prepares the shell if its zsh is not the
-  // one prepared before, presses the key, then gives the shell pane the keyboard so Enter runs it.
-  //   state: the shell's ready state (shellState), whose pid is remembered once it is prepared.
-  async send(shell, command, state, fresh) {
+  // Writes the command to the shell's handoff file, prepares the shell (which puts the command
+  // in) or presses the key, waits for the file to be taken, then gives the shell pane the
+  // keyboard so Enter runs it. A file still there means that zsh did not take it: it is
+  // removed, so it cannot turn up at a later prompt, and the next press prepares the shell.
+  //   state: the shell's ready state (shellState), remembered once the shell took a command.
+  async send(shell, command, state, fresh, cx) {
     const app = appHome();
     const file = insertFileOf(app, shell.terminal);
-    const plan = insertPlan({ terminal: shell.terminal, file, state, prepared: shell.prepared, fresh });
+    const stale = (await readTextFile(file).catch(() => null)) != null;
+    const plan = insertPlan({ terminal: shell.terminal, file, state, prepared: shell.prepared, fresh, stale });
     if (plan.notice) return plan.notice;
     if (!(await this.write(insertFolderOf(app), file, insertText(command)))) return noticeOf({ state: "failed" });
     for (const args of plan.commands) {
       const result = await hc(args);
       if (result.code !== 0) return noticeOf({ state: "failed" });
     }
-    shell.prepared = state.pid;
+    const left = await this.untaken(file, plan.wait, cx);
+    if (left) await exec("rm", ["-f", "--", file]).catch(() => null);
+    const outcome = pressOutcome({ left, state });
+    shell.prepared = outcome.prepared;
+    if (outcome.notice) return outcome.notice;
     run("pane.focus", { pane: shell.pane });
     return null;
+  }
+
+  // Whether the handoff file is still there after `wait` ms.
+  async untaken(file, wait, cx) {
+    for (let waited = 0; ; waited += TAKE_STEP_MS) {
+      if ((await readTextFile(file).catch(() => null)) == null) return false;
+      if (waited >= wait) return true;
+      await cx.sleep(TAKE_STEP_MS);
+    }
   }
 
   // Writes `text` to the handoff file, whether or not an earlier one is still there. The folder

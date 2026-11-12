@@ -23,33 +23,68 @@ const WIDGET = "_side_viewer_insert";
 // The line that teaches a zsh to take a command from `file`: a widget on INSERT_KEY that puts a
 // draft aside with push-line (zsh brings it back at the next prompt), puts the file's text in
 // the input line with the cursor at its end, and removes the file so a stray press puts nothing
-// in. It is bound in the vi keymaps too, so a draft there is never run. `clear` then wipes the
-// line from the screen; the leading space keeps it out of the history where histignorespace is on.
+// in. It is bound in the vi keymaps too, so a draft there is never run.
+// The line then puts this press's text in itself with `print -z`, which zle shows at the next
+// prompt: a key sent right after the line could reach the shell before zle reads again and be
+// echoed as "^[[24;7~". A draft pushed aside before the line sits under it on the buffer stack,
+// so it comes back after the command. `clear` wipes the line from the screen; the leading
+// space keeps it out of the history where histignorespace is on.
 export function prepareLine(file) {
   const bind = (keymap) => `bindkey -M ${keymap} '\\e[24;7~' ${WIDGET};`;
-  return ` ${WIDGET}() { local f=${quoted(file)}; [[ -r $f ]] || return 0; [[ -n $BUFFER ]] && zle push-line;` +
-    ` BUFFER=$(<$f); command rm -f -- $f; CURSOR=$#BUFFER }; zle -N ${WIDGET};` +
-    ` ${bind("emacs")} ${bind("viins")} ${bind("vicmd")} clear`;
+  const path = quoted(file);
+  return ` ${WIDGET}() { local f=${path}; [[ -r "$f" ]] || return 0; [[ -n $BUFFER ]] && zle push-line;` +
+    ` BUFFER="$(<"$f")"; command rm -f -- "$f"; CURSOR=$#BUFFER }; zle -N ${WIDGET};` +
+    ` ${bind("emacs")} ${bind("viins")} ${bind("vicmd")}` +
+    ` [[ -r ${path} ]] && print -rz -- "$(<${path})"; command rm -f -- ${path}; clear`;
 }
 
 // What goes into the handoff file for `command`: the block as written, without its last newline.
 export const insertText = (command) => command.replace(/\n+$/, "");
 
+// How long the handoff file may stay after the commands before the press counts as not taken.
+// A prepared zsh at its prompt runs the widget within milliseconds of `hc keys` returning; the
+// rest is room for a slow machine. A prepare line runs after whatever the shell is still doing,
+// a new login shell's rc files included, so it gets longer.
+export const KEY_WAIT_MS = 500;
+export const PREPARE_WAIT_MS = 3000;
+
+// The zsh `state` (a ready shellState) as remembered once prepared. `exec zsh` keeps the pid,
+// so its arguments tell it apart too, unless it was started with the same ones.
+export const shellOf = (state) => ({ pid: state.pid, argv: state.argv });
+const sameShell = (prepared, state) =>
+  prepared != null && prepared.pid === state.pid && JSON.stringify(prepared.argv) === JSON.stringify(state.argv);
+
+// Whether hc address `address` is on another machine ("mini/t7").
+export const isRemote = (address) => address.includes("/");
+
 // What to do to put the handoff file's text into terminal `terminal`, as
-// { commands: hc argument lists in order, notice: what to tell instead, or null }.
-//   state: shellState() of the terminal now; prepared: the pid of the zsh last prepared there,
-//   or null; fresh: the shell was just opened by this viewer, so it has no draft.
-// A zsh with another pid than the one prepared (exec zsh, a zsh started inside) lacks the
-// widget, so it is prepared again. Its draft is pushed aside with alt+q first, or `hc send`
-// would run it together with the prepare line; in a vi keymap alt+q is not push-line, so that
-// one case can still run a draft. A fresh shell gets no alt+q: sent before zsh reads its keys
-// it would only show up on screen as "^[q".
-export function insertPlan({ terminal, file, state, prepared, fresh }) {
-  if (state.state === "busy") return { commands: [], notice: noticeOf(state) };
-  const key = ["keys", terminal, INSERT_KEY];
-  if (prepared === state.pid) return { commands: [key], notice: null };
+// { commands: hc argument lists in order, notice: what to tell instead, or null,
+//   wait: how long the handoff file may stay before the press counts as not taken (ms) }.
+//   state: shellState() of the terminal now; prepared: shellOf() the zsh last prepared there,
+//   or null; fresh: the shell was just opened by this viewer, so it has no draft;
+//   stale: an earlier press's handoff file was still there, so that zsh did not take it.
+// A zsh other than the one prepared, or one that left the file, lacks the widget, so it is
+// prepared again. Its draft is pushed aside with alt+q first, or `hc send` would run it
+// together with the prepare line; in a vi keymap alt+q is not push-line, so that one case can
+// still run a draft. A fresh shell gets no alt+q: sent before zsh reads its keys it would only
+// show up on screen as "^[q". Another machine's shell would never find the handoff file.
+export function insertPlan({ terminal, file, state, prepared, fresh, stale }) {
+  if (isRemote(terminal)) return { commands: [], notice: noticeOf({ state: "remote" }), wait: 0 };
+  if (state.state === "busy") return { commands: [], notice: noticeOf(state), wait: 0 };
+  if (!stale && sameShell(prepared, state)) {
+    return { commands: [["keys", terminal, INSERT_KEY]], notice: null, wait: KEY_WAIT_MS };
+  }
   const prepare = ["send", terminal, prepareLine(file)];
-  return { commands: fresh ? [prepare, key] : [["keys", terminal, "alt+q"], prepare, key], notice: null };
+  return { commands: fresh ? [prepare] : [["keys", terminal, "alt+q"], prepare], notice: null, wait: PREPARE_WAIT_MS };
+}
+
+// After a press, whether the zsh took it: `left` says the handoff file was still there once
+// the plan's wait was over. Then that zsh lacks the widget (exec zsh with the same arguments,
+// a shell that never ran the prepare line), so it is forgotten and the next press prepares it.
+// The unbound key has put ";7~" in its input line, which the notice mentions.
+//   state: the ready shellState the press went to.
+export function pressOutcome({ left, state }) {
+  return left ? { prepared: null, notice: noticeOf({ state: "unprepared" }) } : { prepared: shellOf(state), notice: null };
 }
 
 // Inside single quotes zsh takes everything as it is except the quote itself.
@@ -58,16 +93,17 @@ const quoted = (text) => `'${text.replaceAll("'", "'\\''")}'`;
 // Whether the terminal `info` (`hc get <t> --json`, null when that failed) can take a line now.
 // zsh reports no hc status, so the foreground process tells: the shell itself while it waits
 // at its prompt, anything else while a program runs. Another shell counts as busy too, since
-// only zsh has zle widgets. A ready shell's pid tells one zsh from another in the same terminal.
+// only zsh has zle widgets. A ready shell's pid and arguments tell one zsh from another in the
+// same terminal (shellOf).
 // A shell from splitOf is "starting" until its short zsh has become the login shell, and so
 // is a terminal hc has no foreground for yet.
-//   { state: "ready", pid } | { state: "busy", program } | { state: "starting" } | { state: "gone" }
+//   { state: "ready", pid, argv } | { state: "busy", program } | { state: "starting" } | { state: "gone" }
 export function shellState(info) {
   if (info?.state !== "live") return { state: "gone" };
   const foreground = info.foreground;
   if (!foreground || foreground.argv?.[1] === "-c") return { state: "starting" };
   const program = String(foreground.name ?? "").split("/").pop();
-  return /^-?zsh$/.test(program) ? { state: "ready", pid: foreground.pid } : { state: "busy", program };
+  return /^-?zsh$/.test(program) ? { state: "ready", pid: foreground.pid, argv: foreground.argv } : { state: "busy", program };
 }
 
 const MOD = "side-viewer";
@@ -131,7 +167,7 @@ export function shellFolder({ viewerTab, file, viewer, panes, shell, home }) {
 }
 
 // The notification (herdr notify) for a line that was not put in.
-//   reason: { state: "busy", program } | { state: "failed" }
+//   reason: { state: "busy", program } | { state: "unprepared" } | { state: "remote" } | { state: "failed" }
 export function noticeOf(reason) {
   if (reason.state === "busy") {
     return {
@@ -140,5 +176,16 @@ export function noticeOf(reason) {
       level: "warning",
     };
   }
-  return { title: "터미널에 넣지 못했습니다", body: "셸 pane을 열거나 찾지 못했습니다.", level: "error" };
+  const title = "터미널에 넣지 못했습니다";
+  if (reason.state === "unprepared") {
+    return {
+      title,
+      body: "셸이 명령을 받지 않았습니다(exec zsh 등으로 다시 시작됨). 입력 칸에 ;7~가 남았다면 지우고 다시 누르세요.",
+      level: "error",
+    };
+  }
+  if (reason.state === "remote") {
+    return { title, body: "다른 기계의 셸에는 넣을 수 없습니다. 복사 버튼으로 붙여 넣으세요.", level: "error" };
+  }
+  return { title, body: "셸 pane을 열거나 찾지 못했습니다.", level: "error" };
 }
