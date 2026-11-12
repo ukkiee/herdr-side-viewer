@@ -31,3 +31,13 @@
 - [ ] 고친 뒤 렌더링으로 바꾸면 고친 내용으로 그린다
 
 **완료 조건:** 위 항목 전부, 경계 1·3 통과, 첫 단계의 cmd+S 확인 결과 기록.
+
+## Comments
+
+### 2026-11-12 첫 단계: cmd+S 실측(주 진행자와 사용자, 구현과 병행)
+
+시험 mod(`"focusable": true`, 바깥 `v_flex`에 `track_focus(handle)`·`on_key_down`, 안에 `EditorState.new({readonly: false})`의 `Editor`)를 실제 Herdr 앱에 띄우고 사용자가 눌렀다. 기록은 mod가 파일에 남긴 키 이벤트다. 시험 mod와 pane은 끝난 뒤 지웠다.
+
+- **바깥 핸들에 포커스:** cmd+S가 `on_key_down`에 `keystroke` `"cmd-s"`(`key` `"s"`, `key_char` 없음)로 왔다.
+- **편집기에 포커스(`handle.is_focused()`는 `false`):** cmd+S가 바깥 `on_key_down`에 `"cmd-s"`로 왔고 편집기 글에 `s`가 들어가지 않았다. 일반 글자도 바깥 `on_key_down`에 먼저 오고, 같은 시각에 `EditorState.on("change")`가 오며 `value()`에 바뀐 글이 있다. `on("focus")`·`on("blur")`도 온다.
+- **Herdr가 cmd+S를 가로채지 않았다.** 명세 "구현 결정"의 cmd+S 방식(`미확인`이던 부분)이 성립한다. 결과는 작업자 sv2-02에게 hc로 전달했다.
