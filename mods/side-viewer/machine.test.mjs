@@ -1,7 +1,7 @@
 // node --test: which machine a viewer reads from, and what it asks that machine, without Herdr.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spaceValue, machineOf } from "./machine.js";
+import { spaceValue, machineOf, headerActions } from "./machine.js";
 
 // Space ids as `herdr-app status` and spaces() give them (observed 2026-11-13): this Mac's
 // bare, another machine's with its `<machine>/` prefix.
@@ -48,4 +48,14 @@ test("a viewer whose space is not listed reads from this Mac", () => {
 
 test("a space value is matched whole, not as the end of a longer id", () => {
   assert.deepEqual(machineOf({ space: NUC.slice(4) }, SPACES), THIS_MAC);
+});
+
+test("a remote file's header has no original app and no Finder, only the new tab", () => {
+  assert.deepEqual(headerActions({ remote: true, newTab: true }), ["newTab"]);
+  assert.deepEqual(headerActions({ remote: true, newTab: false }), []);
+});
+
+test("a file on this Mac keeps every header action", () => {
+  assert.deepEqual(headerActions({ remote: false, newTab: true }), ["newTab", "original", "finder"]);
+  assert.deepEqual(headerActions({ remote: false, newTab: false }), ["original", "finder"]);
 });

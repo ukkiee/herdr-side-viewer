@@ -23,3 +23,10 @@ export function machineOf(props, spaces) {
   const machine = space?.machine ?? null;
   return { machine, remote: machine !== null };
 }
+
+// The header's actions, left to right (header.js). "Open in the original app" and "Show in
+// Finder" act on this Mac, where a remote file is not, so a remote file has neither.
+// `newTab`: whether the content can open in a tab (views.js opensInTab).
+export function headerActions({ remote, newTab }) {
+  return [...(newTab ? ["newTab"] : []), ...(remote ? [] : ["original", "finder"])];
+}
