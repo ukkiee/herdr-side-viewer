@@ -11,19 +11,19 @@ command into a terminal's input line.
 ![Side Viewer](preview.png)
 
 - **Markdown** (`md`, `markdown`, `mdx`): rendered block by block, in the manner of Warp's
-  markdown view, with code blocks as cards. The header's `렌더링 | 원문` switch shows the
+  markdown view, with code blocks as cards. The header's `Rendered | Source` switch shows the
   source, which you can edit.
 - **Code and text**: an editor with line numbers and syntax colors, and you can edit them.
   `html` is code here: you see and edit its source, not the page.
-- **Images**: drawn no wider than the pane. An `svg` also has the `렌더링 | 원문` switch,
+- **Images**: drawn no wider than the pane. An `svg` also has the `Rendered | Source` switch,
   and its source can be edited.
-- **Saving** (cmd+S): edits are saved with cmd+S or the header's `저장` button, never on
+- **Saving** (cmd+S): edits are saved with cmd+S or the header's `Save` button, never on
   their own. The one exception is a checkbox click in a file without edits (see
   [Edit and save](#edit-and-save)).
 - **One viewer per tab**: a viewer already showing in the tab takes the next file, so panes
   don't pile up, and `←` goes back to the file before. The viewer reloads when the file
   changes on disk.
-- **Viewer tab**: the header's `새 탭으로 열기` button gives the file a tab of its own.
+- **Viewer tab**: the header's `Open in New Tab` button gives the file a tab of its own.
 - **`>_` on shell blocks**: types a code block's command into a shell pane below the viewer,
   without running it (one narrow case with zsh's vi keys, see [Limits](#limits)).
 - **Outside Herdr** (Finder, another terminal) the same files keep opening in the app they
@@ -44,44 +44,44 @@ everything back.
 - **Where.** The markdown source, the svg source and the code view take typing. The
   markdown rendering, images (an svg's picture too), the code block cards inside a
   document and the notices do not. An empty (or blank) markdown or svg file shows
-  `이 파일은 비어 있습니다.` on its rendering side, and its `렌더링 | 원문` source is ready
+  `This file is empty.` on its rendering side, and its `Rendered | Source` source is ready
   to type; back on the rendering, what was typed is drawn. An empty (or blank) code file
   opens as an empty code view. An empty `svgz` or picture still gets only the notice.
   An `svgz` has no source view. The sources wrap long
   lines to the pane; the code view does not. All three have line numbers.
-- **Edited.** Once you change something, the header shows `편집됨` and a `저장`
+- **Edited.** Once you change something, the header shows `Edited` and a `Save`
   button. cmd+S or the button writes the file and both go away; so does undoing your
   change by hand. cmd+S with nothing changed does nothing. That spot in the header is the
   file's status: a failed save or a change on disk shows there too, in red, in place of
-  `편집됨`. In a narrow pane the file name and folder are cut first, then the status;
+  `Edited`. In a narrow pane the file name and folder are cut first, then the status;
   hover it to read all of it.
 - **Kept per file, until the pane closes.** Edits not yet saved stay with that viewer, for
   each file: follow a link, go back, or cmd-click another file, and when you return to the
   file your edits and their status are back. Closing the pane or quitting Herdr drops them,
   and nothing asks first.
-- **Preview before saving.** Switch an edited source to `렌더링` and you see the document,
+- **Preview before saving.** Switch an edited source to `Rendered` and you see the document,
   or the svg's picture, drawn from your edits. The file is not written.
 - **Changed outside.** If the file changes on disk while you have edits (an agent wrote
-  it, say), the viewer does not read it over them. The status says `외부에서 바뀌었어요`,
-  and two buttons take the place of `저장`: `다시 읽기` (drop your edits and show the
-  disk) and `덮어쓰기` (save yours over it). A save that finds the file changed since the
+  it, say), the viewer does not read it over them. The status says `Changed on disk`,
+  and two buttons take the place of `Save`: `Reload` (drop your edits and show the
+  disk) and `Overwrite` (save yours over it). A save that finds the file changed since the
   viewer last read it writes nothing and shows the same. You can keep typing meanwhile.
   Without edits the viewer reloads by itself, as before.
-- **Save failures.** When a save fails, the status says why, `저장` stays, and your
-  edits stay: `쓰기 권한이 없어요` (no permission), `파일이 지워졌어요` (the file was
-  deleted; this also shows as soon as an edited file disappears), `너무 커서 저장할 수
-  없어요` (over 1 MiB, 1,048,576 bytes), or `저장하지 못했어요` for anything else, where
-  hovering it shows the error.
+- **Save failures.** When a save fails, the status says why, `Save` stays, and your
+  edits stay: `No write permission`, `File deleted` (this also shows as soon as an edited
+  file disappears), `Too large to save` (over 1 MiB, 1,048,576 bytes), or `Couldn't save`
+  for anything else, where hovering it shows the error.
 - **Checkboxes.** Clicking a task box (`- [ ]`) in the rendering flips it and turns that
   source line's `[ ]` into `[x]` or back. With no edits in the file it is saved at once,
   the one exception to "never on their own"; if the file changed on disk meanwhile, nothing
-  is written and the status says `외부에서 바뀌었어요`. With edits, the click joins them and
-  stays `편집됨`.
+  is written and the status says `Changed on disk`. With edits, the click joins them and
+  stays `Edited`.
 
 ### Open in a new tab
 
-The header's `새 탭으로 열기` button (the leftmost of the three icons on the right, there
-while a file is drawn, not on a notice such as "too large" or "gone") opens a
+The header's `Open in New Tab` button (the leftmost of the three icons on the right, there
+while a file is drawn, not on a notice such as `Too large to open in the viewer.` or
+`This file no longer exists.`) opens a
 **viewer tab**: a tab right after the current one, in the same space, holding only a side
 viewer of this file, and switches to it. The tab is named after the file and follows it
 through links, `←` and new files. It starts with an empty history. The same file opens a new
@@ -115,26 +115,46 @@ file opens in it, not in a new pane.
   clipboard: check it, then press Enter yourself. The shell is zsh and starts in the folder of
   the conversation terminal beside the viewer (in a viewer tab, the document's folder). The
   next `>_` goes into the same shell pane while it is open. If that shell is running a
-  program, nothing is typed and a notification says so (`터미널에 넣지 않았습니다`). When it
+  program, nothing is typed and a notification says so (`Not inserted into the terminal`). When it
   first opens the shell pane it writes the command to a file in the data folder and sends zsh
   one line that teaches it a key, `ctrl+alt+F12`, puts that file's command in and clears the
   screen, so no line is left on the shell's screen. After that `>_` writes the file and
   presses only that key. Text you had typed at the prompt is moved aside with zsh's push-line
   and comes back after the command (with vi keys too). If the shell has not taken the file
   half a second after the key (3 seconds after the line), a notification says the command did
-  not go in (`터미널에 넣지 못했습니다`) and the next `>_` teaches the shell again. A shell on
+  not go in (`Couldn't insert into the terminal`) and the next `>_` teaches the shell again. A shell on
   another machine gets nothing and the same notification: the file is on this Mac.
 - **Pictures.** A local picture on a line of its own (`![alt](path)`, relative to the
   document's folder, or absolute) is drawn in the document: as wide as the pane at most,
   never larger than itself, at most 420 high, centered. One that can't be read shows
-  `그림을 못 읽음: <path>` in its place.
+  `Couldn't read image: <path>` in its place.
+
+### Language
+
+The viewer and the router's commands speak Korean when macOS's first preferred language
+(the first entry of `defaults read -g AppleLanguages`) is Korean, and English otherwise.
+There is no switch.
+
+- **The viewer** reads the language when it opens, and every viewer, viewer tabs included,
+  follows the language the newest one read. After you change the system language, viewers
+  already open switch only once you open a new one (cmd-click a file in a tab without a
+  viewer, or `Open in New Tab`); they don't read it again on their own.
+- **When it can't be read**, a viewer keeps the language it had (English the first time)
+  and asks again after 1, 3 and 10 seconds, then every 15 seconds until it gets an answer.
+- **The router's commands** read it once per run, and speak English when they can't.
+- **Not translated**: code block labels (`Shell`, `JavaScript` and so on), file names and
+  paths, the error Herdr gives (shown when hovering `Couldn't save`), and the header's
+  `Side Viewer` when no file is open.
 
 ## Before you add it
 
 - **Programs**: the router is built on your machine from
   [`mods/side-viewer/router/main.swift`](mods/side-viewer/router/main.swift) and signed ad
   hoc. The mod and the router run shell commands (`sh`, `open`, `stat`, `cp`, `rm` and the
-  like, and `herdr-app`), and read the files you open.
+  like, and `herdr-app`), and read the files you open. To pick the language, the viewer and
+  the router's commands run `defaults read -g AppleLanguages`.
+- **Herdr's shared state**: the viewer keeps the language last read under
+  `side-viewer.lang` (`"en"` or `"ko"`), which every viewer reads.
 - **Your files**: the mod writes a file when you save it or click a checkbox in it.
 - **Terminal**: the `>_` button opens a zsh pane and types into it through Herdr's `hc`
   (`hc send`, `hc keys`, `hc get`). A shell it opens gets one line binding an insert widget
@@ -188,14 +208,14 @@ router --make-default code   # the same, plus the code extensions
 
 macOS asks you to confirm every change of a default app, once per file type, and no app can
 answer for you. Extensions of one file type (`jpg`, `jpeg`, `jpe`) share one window. The
-command first prints how many windows are coming (`macOS 확인 창이 N번 뜹니다.`) and then
+command first prints how many windows are coming (`macOS will show N confirmation windows.`) and then
 sends the requests one at a time, waiting up to 300 seconds for each answer. It asks only for
 what the router does not hold yet, so N can be smaller than the counts below.
 
 In each window pick **Side Viewer Router**. If you pick the button that keeps the current
-app, that extension stays as it was, and the command lists it under `유지를 선택함`
-("chose to keep") rather than as a failure. Changed extensions are listed under `바뀜`,
-real failures under `실패` with the reason.
+app, that extension stays as it was, and the command lists it under `Chose to keep`
+rather than as a failure. Changed extensions are listed under `Changed`, real failures
+under `Failed` with the reason.
 
 Before asking, the command records each extension's original app in
 `~/.config/herdr-app/data/side-viewer/original-apps.tsv`. Running it again never replaces
@@ -218,7 +238,7 @@ and when to run it is your choice.
 3. In every window pick **Side Viewer Router**. The `html` window names your browser as
    the current app; picking the router there is what sends `html` files to the viewer.
    Outside Herdr they still open in that browser.
-4. Check the output: `바뀜` for what changed, `유지를 선택함` for any window where the
+4. Check the output: `Changed` for what changed, `Chose to keep` for any window where the
    current app was kept. Run the command again to be asked about those only.
 
 To undo it, `router --restore` (below) gives everything back, the browser's `html`
@@ -296,7 +316,7 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
   taught last, the viewer sees a new zsh and sends it the line that teaches it the insert key
   again, then `clear`. When the arguments match (a second `exec zsh` in a row, say), it
   can't tell: that `>_` leaves `;7~` in the input line, a notification says
-  `터미널에 넣지 못했습니다`, and the next `>_` teaches the shell again. Only when that line is
+  `Couldn't insert into the terminal`, and the next `>_` teaches the shell again. Only when that line is
   sent is a draft moved aside with alt+q, so if that new zsh uses vi keys and its prompt
   holds text, the text can run along with that line. Clear the prompt before the first `>_`
   after starting a new zsh.
@@ -324,7 +344,7 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
   any `--make-default`. Those have no original app on record, so the router opens them in
   TextEdit (Preview for images). One with a sibling extension of the same file type (`rb`
   for `rbw`, `cpp` for `cp`) stays with the router after `--restore`, which lists it under
-  `라우터에 남음`: macOS sets defaults per file type, and no app but the router claims that
+  `Stayed with the router`: macOS sets defaults per file type, and no app but the router claims that
   extension itself. The router keeps opening it in TextEdit or Preview, and deleting the
   router app frees it. One without such a sibling (`mdx`, `jsonc`) goes to TextEdit or
   Preview.
@@ -335,7 +355,9 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
 - **The router looks in the default places**: `~/.local/bin/herdr-app` and
   `~/.config/herdr-app`. With Herdr elsewhere, or if Herdr doesn't answer within 5 seconds,
   the file opens in its original app.
-- **The viewer's buttons, notices and tooltips and the commands' output are in Korean.**
+- **English and Korean only**, picked from macOS's first preferred language with no switch
+  (see [Language](#language)). Viewers already open follow a changed system language only
+  once a new viewer opens.
 
 ## License
 

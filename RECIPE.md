@@ -13,6 +13,10 @@ list of extensions and passes each file to the viewer or to its **original app**
 
 ## What you see
 
+Words on screen and command output are quoted here and below as a Korean screen shows
+them; an English screen shows the matching entries of the `messages-*.js` tables and of
+`takeover.sh`'s `say` table (see "Language" under How it behaves).
+
 One pane, to the right of the pane that had focus. `background` fill, `foreground` text.
 Top to bottom:
 
@@ -128,6 +132,23 @@ The mod shows files, not agents, so it has no agent statuses.
 - **Theme.** The code view's colors are fixed when its editor is made, so each check also
   compares them with the theme: after a theme change the open code is redrawn with the new
   colors within 15 seconds. Code block cards take the new colors at the same check.
+- **Language.** Each viewer, when it starts, runs `defaults read -g AppleLanguages`
+  (timeout 5 s). `i18n.js` takes the list's first tag: `ko` when it is `ko` alone or `ko`
+  followed by `-`, `_`, `.` or `@` (`ko-KR`, `ko_KR.UTF-8`, any case), `en` for anything
+  else or an empty list. The result goes into Herdr's shared state `side-viewer.lang`, only
+  when it differs; that write redraws every copy, and every draw takes its words from that
+  value through `translator` (English until a value is known). A run that fails or can't
+  start writes nothing and asks again after 1, 3 and 10 seconds, then every 15 seconds
+  (`askAgainAfter`). A viewer tab gets no language in its props: like any new viewer it
+  starts with the shared value and reads once itself. A viewer already open never reads
+  again, so a changed system language reaches open viewers when a new one opens. `>_`'s
+  notifications speak the language of the press, a new tab's the language of the moment
+  it is written. Not translated: code card labels, file names and paths, Herdr's error text,
+  and `Side Viewer` with no file. The router's commands read the language once per run
+  with the same rule in `takeover.sh`'s `system_lang` (a failed `defaults` or an answer that
+  isn't a list gives `en`) and print every line through `say <key> <values…>`: the line
+  for `$lang.$key` from its `case` table, values only as `%s` arguments. The English count
+  line says `window` when N is 1.
 - **Source switch.** `렌더링 | 원문`, shown only while a markdown document or an svg with a
   source is drawn, not on a notice. There is no cmd+E. Every file opens rendered: opening
   another file, `←` and a link all switch back from the source.
@@ -255,7 +276,7 @@ The mod shows files, not agents, so it has no agent statuses.
   "side-viewer", props: {file}}`; `props.file` is the absolute path to show. A viewer tab's
   props are `{file, viewerTab: true, handoff?}`.
 - `mods/side-viewer/main.js`: the one `View`: state, reads, requests, the watch, edits and
-  saves, the tab and shell commands' wiring. Drawing is in `header.js`,
+  saves, the language read, the tab and shell commands' wiring. Drawing is in `header.js`,
   `markdown-view.js`, `code-card.js`, `code-view.js`, `image-view.js`, `notice-view.js`;
   `markdown-image-loader.js` makes the copies of pictures in markdown, `shell-pane.js` runs
   `>_`. The decisions sit in modules without `herdr` imports, so `node --test` runs them:
@@ -269,7 +290,17 @@ The mod shows files, not agents, so it has no agent statuses.
   colors, shell; wrapped rows and editor height; card fill), `markdown-images.js` (picture
   paths and sizes), `svg-preview.js` (edited svg previews), `terminal-insert.js` (`>_`'s
   folder, shell state, commands, notices), `viewer-tab.js` (props, handoff file, tab
-  placement and name), `checkbox.js` (turning over a task line). Each has a `*.test.mjs`.
+  placement and name), `checkbox.js` (turning over a task line), `i18n.js` (the language
+  from `AppleLanguages`, the asking-again delays, the translator `tr`). Each has a
+  `*.test.mjs`.
+- The words on screen, each a `{ en, ko }` table whose keys start with its area:
+  `messages-header.js` (`header.`: the switch, buttons, tooltips and the status),
+  `messages-body.js` (`body.`: the notices and the picture error), `messages-alerts.js`
+  (`alerts.`: the `>_` and new-tab notifications). Values go in through `{name}` places.
+  The pure modules take `tr` as their last argument and speak English without it.
+  `i18n.test.mjs` checks that both languages have the same keys and places, that every key
+  is used and every key used exists, that every call of a function that writes a sentence
+  passes `tr`, and that no Korean screen words sit outside the tables.
 - `mods/side-viewer/extensions.json`: the listed extensions in three groups, `markdown`,
   `image`, `code`. The router build and the mod both read it, and it alone says which
   extensions are markdown. A listed extension is taken over only once the router is its
@@ -280,7 +311,8 @@ The mod shows files, not agents, so it has no agent statuses.
   and otherwise runs `herdr-app do pane.split --direction right --mod side-viewer --props
   '{"file":"…"}'`. Answer files older than a minute are deleted on the next run.
 - `mods/side-viewer/router/`: `main.swift` (the app: receives files, reads and sets one
-  default app at a time), `takeover.sh` (make-default, restore, status), `open-original.sh`,
+  default app at a time), `takeover.sh` (make-default, restore, status; `system_lang` picks
+  the language and `say` holds every line it prints in both), `open-original.sh`,
   `lib.sh`, `build.sh`, `router.test.mjs`. `build.sh` compiles with `swiftc -O` into
   `~/Applications/Side Viewer Router.app` (bundle id `dev.ukkiee.side-viewer-router`,
   `LSBackgroundOnly`, document types from `extensions.json` at rank `Alternate`), copies
@@ -295,15 +327,16 @@ The mod shows files, not agents, so it has no agent statuses.
   with no icon.
 - `herdr` functions: `props`, `readTextFile`, `writeTextFile`, `nextCommand`, `home`,
   `appHome`, `theme`, `settings`, `exec`, `watchFolder`, `run`, `spaces`, `focused`,
-  `panes`, `hc`, `notify`; `cx.spawn`, `cx.timer.every`, `cx.timer.after`, `cx.notify`,
+  `panes`, `hc`, `notify`, `shared`, `setShared`; `cx.spawn`, `cx.timer.every`, `cx.timer.after`, `cx.notify`,
   `cx.write_to_clipboard`. `gpui-kit`: `View`, `div`, `image`, `svg`, `PathBuilder`,
   `Background`. `gpui-base`: `v_flex`, `h_flex`, `TextView.markdown`, `Editor`,
   `EditorState`. Node: `fs/promises` `readFile`.
 - Command for scripts: `side-viewer.show`. Herdr commands the mod runs: `pane.split`,
   `tab.new`, `tab.move`, `tab.select`, `tab.rename`; hc: `get`, `keys`, `send`.
 - Programs the mod runs: `sh` (with `stat`, `head`, `od`, `cp`, `touch`, `mkdir`), `open`,
-  `rm`, `mkdir`, `touch`, `sleep`, and `/bin/zsh` in the shell pane. The scripts also use
-  `herdr-app`, `plutil`, `awk`, `sed`, `find`, `mktemp`.
+  `rm`, `mkdir`, `touch`, `sleep`, `defaults`, and `/bin/zsh` in the shell pane. The scripts
+  also use `herdr-app`, `plutil`, `awk`, `sed`, `find`, `mktemp`, and `defaults` and `tr`
+  for the language.
 - Files outside the mod folder, all under the app home's `data/side-viewer/`:
   `original-apps.tsv` (`<extension><TAB><bundle id>` per line), `request.json`,
   `answer-<id>`, `images/<path hash>-<bytes>-<modified>.<kind>` (copies of images and of
@@ -346,8 +379,8 @@ Platform:
   buttons show only while the pointer is on the header, at its right end, one row above the
   viewer's own buttons. A viewer closed there is gone with its history; the next cmd-click
   opens a new one.
-- `herdr-app check` draws once, with no file, so it only ever sees `열 파일이 없습니다.`
-  It does not finish async work either, so what a save failure really says was never seen
+- `herdr-app check` draws once, with no file and an empty shared state, so it only ever
+  sees the English `No file to open.` It does not finish async work either, so what a save failure really says was never seen
   through it. The tickets checked other screens with temporary copies whose first scene was
   changed; nothing after a read or a click is covered by check.
 - Language names the editor knows are not documented. `toml`, `swift`, `kotlin`, `scss`,
@@ -406,6 +439,14 @@ Platform:
   and a notification says so. The rename follows `focused().tab`; several windows were not tried.
 - Props are saved with a tab, so unsaved edits never go in them, only a handoff id. After an
   app restart a viewer tab shows its first file under its last name.
+- In the viewer `t` is the theme, so the translator is always `tr`. A pure module called
+  without `tr` quietly speaks English, which is why `i18n.test.mjs` reads the sources for
+  calls that leave it out.
+- `setShared` redraws every mod, which is how one viewer's language read reaches all of
+  them; there is no per-copy language. Whether `side-viewer.lang` survives an app restart
+  was not seen: if it doesn't, a viewer can show English for a moment until its own read.
+  The English header (`Changed on disk` with `Reload` and `Overwrite`) in a narrow pane and
+  the English notifications at Herdr's notification width were not seen either.
 
 macOS:
 
@@ -460,14 +501,17 @@ Limits and assumptions:
 - A request is ignored when its time is more than 5 seconds off, its id is not
   `[A-Za-z0-9_-]+`, or its path is not absolute.
 - Two viewers in one tab: whichever creates the answer file first takes the file.
-- Notices, tooltips and command output are in Korean.
+- English and Korean only, from macOS's first preferred language, with no switch. An open
+  viewer doesn't read the language again on its own.
 
 ## Done when
 
 Two lists: v1's, with the items v2 changed rewritten, and v2's. The AC numbers in the v1
 list are those of `docs/features/side-viewer/spec.md`, in the v2 list those of
 `docs/features/side-viewer-v2/spec.md`. Both lists are done by hand in the app; nothing
-drives the Herdr window.
+drives the Herdr window. The words on screen and the command output in both lists are as a
+Korean screen shows them (macOS's first preferred language Korean); v2 steps 30 and 31
+check English.
 
 ### v1
 
@@ -703,5 +747,35 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
     `herdr-app status` reports no mod error after this whole list. (AC-19)
 29. `./install.sh` installs this version and passes `herdr-app check`; `node --test
     mods/side-viewer/` passes with no failures. (AC-20)
+30. English screen. With a side viewer showing `~/sv2-check/markdown-sample.md`, open System
+    Settings → General → Language & Region and put English first under Preferred
+    Languages; `defaults read -g AppleLanguages` now prints an English tag first. The
+    viewer stays Korean. Cmd-click `~/sv2-check/main.js` in a tab without a viewer: the new
+    viewer and the one already open are both English within a few seconds. Then, in a
+    viewer:
+    - the markdown's switch reads `Rendered | Source`, and the tooltips read
+      `Open in New Tab`, `Open in Original App` and `Show in Finder`;
+    - type in the source: `Edited` and `Save` (tooltip `Save (⌘S)`). Run step 7's `echo`:
+      `Changed on disk` with `Reload` and `Overwrite`. Narrow the pane: the name and folder
+      are cut first and the buttons stay whole. Click `Reload`;
+    - the picture under `본문 이미지` reads `Couldn't read image: ../../../preview.png`;
+    - `: > ~/sv2-check/empty-en.md` and open it: `This file is empty.`.
+      `herdr-app do pane.split --direction right --mod side-viewer --props '{"file":"/etc/hosts"}'`
+      shows `The viewer can't open this kind of file.`;
+    - in `docs/features/side-viewer-v2/code-sample.md` the card labels are still `Shell`,
+      `JavaScript` and so on. Run `sleep 30` in the shell pane and click `>_`: the
+      notification reads `Not inserted into the terminal` and
+      `Another program (sleep) is running in the shell. Press again when it ends.`, whole.
+    (AC-23)
+31. Korean again, and the router. Put Korean first again and open a new viewer: every
+    viewer turns Korean, with the words quoted in the steps above. Quit Herdr and open it
+    again: the viewers come back in Korean (a moment of English first is the gap in Watch
+    out). The router's lines in both languages are checked by
+    `node --test mods/side-viewer/router/router.test.mjs`, which runs `--make-default` and
+    `--restore` against a fake `defaults` (Korean first, English first, an empty answer, a
+    failure) and fake default-app tools, so no default app changes. Of the
+    real commands run only `router --status`: it prints bundle ids, the same in both
+    languages. Don't run `--make-default` or `--restore` to see their language; they can
+    bring up confirmation windows. (AC-23)
 
 Clean up: `rm -rf ~/sv2-check ~/sv2-conflict.md`.
