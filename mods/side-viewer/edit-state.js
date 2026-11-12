@@ -110,15 +110,6 @@ export function refusalOf(error) {
   return "other";
 }
 
-// A save of `file` was refused for a reason other than a change on disk: the edits stay,
-// and the header's status says why.
-export function saveFailed(edits, file, error) {
-  if (!file || !edits[file]) return edits;
-  const reason = refusalOf(error);
-  const bar = { kind: "failed", reason, ...(reason === "other" ? { detail: messageOf(error) } : {}) };
-  return withBar(edits, file, bar);
-}
-
 // A refusal of writeTextFile other than "changed" as the failure of a write (writeFailed):
 // { reason: "permission" | "large" } or { reason: "other", detail } with Herdr's own wording.
 export function refusalFailureOf(error) {
