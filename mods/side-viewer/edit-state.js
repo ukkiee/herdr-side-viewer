@@ -6,7 +6,8 @@
 // A file without an entry shows what is on disk. An entry may also carry `bar`, what is wrong
 // with the edits, which the header's status shows in place of 편집됨 (statusOf):
 // { kind: "conflict", disk } when the disk now holds `disk` instead, or
-// { kind: "failed", reason, detail? } when a save failed or the file was deleted. The name
+// { kind: "failed", reason, detail?, machine? } when a save failed or the file was deleted
+// (`machine`: the machine a remote save could not reach). The name
 // `bar` stays because entries travel to new viewer tabs in the handoff file (takeEdit).
 import { wordsOf } from "./i18n.js";
 
@@ -114,6 +115,18 @@ export function saveFailed(edits, file, error) {
   return withBar(edits, file, bar);
 }
 
+// A save of `file` to the machine `machine` failed: `failure` is remote-results.js
+// saveFailureOf's { reason, detail? }. The edits stay, and the header's status says why, the
+// machine being out of reach among the reasons. A remote file that changed or went away is
+// not a failure: its read goes to diskRead, as here.
+export function remoteSaveFailed(edits, file, failure, machine) {
+  if (!file || !edits[file]) return edits;
+  const reason = failure?.reason;
+  if (reason === "unreachable") return withBar(edits, file, { kind: "failed", reason, machine });
+  if (reason === "permission") return withBar(edits, file, { kind: "failed", reason });
+  return withBar(edits, file, { kind: "failed", reason: "other", detail: failure?.detail });
+}
+
 // Handing `file`'s edits to a new viewer tab, as { edits, edit }: `edit` is the file's entry,
 // bar included, or null when it has none; `edits` no longer holds it, so this viewer shows
 // the disk text.
@@ -149,6 +162,8 @@ export function barOf(edits, file, tr) {
   if (!bar) return null;
   const words = wordsOf(tr);
   if (bar.kind === "conflict") return { kind: bar.kind, message: words(MESSAGES.conflict) };
+  // The sentence the viewer's body shows for a machine it cannot reach.
+  if (bar.reason === "unreachable") return { kind: bar.kind, message: words("body.unreachable", { machine: bar.machine }) };
   if (typeof MESSAGES[bar.reason] === "string" && bar.reason !== "other") return { kind: bar.kind, message: words(MESSAGES[bar.reason]) };
   return { kind: bar.kind, message: words(MESSAGES.other), detail: bar.detail };
 }

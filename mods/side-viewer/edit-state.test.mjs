@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf as barIn, statusOf as statusIn, discarded, overwritten, refusalOf, saveFailed, startSave, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf as barIn, statusOf as statusIn, discarded, overwritten, refusalOf, saveFailed, startSave, takeEdit, putEdit, checkboxToggled, remoteSaveFailed } from "./edit-state.js";
 import { translator } from "./i18n.js";
 
 const A = "/work/a.md";
@@ -444,4 +444,36 @@ test("the header's status in English: short states, and Herdr's wording kept as 
   // Without a translator the status throws rather than speaking English.
   assert.throws(() => statusIn(edits, A), /translator/);
   assert.throws(() => barIn(diskRead(edits, A, "theirs\n").edits, A), /translator/);
+});
+
+// Saves to another machine: remote-results.js saveFailureOf says why one failed.
+test("a remote save that cannot reach the machine keeps the edits and names the machine", () => {
+  const edits = remoteSaveFailed(typed(noEdits(), A, "one\n", "mine\n"), A, { reason: "unreachable" }, "nuc-pro");
+  assert.equal(shownText(edits, A, "one\n"), "mine\n");
+  assert.deepEqual(statusOf(edits, A),
+    { kind: "failed", message: "nuc-pro 기계에 연결할 수 없어요.", tip: "nuc-pro 기계에 연결할 수 없어요.", buttons: ["save"] });
+  assert.equal(statusIn(edits, A, translator("en")).message, "Can't reach the machine nuc-pro.");
+});
+
+test("a remote save refused for permission or otherwise shows as a save here does", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const denied = remoteSaveFailed(edits, A, { reason: "permission" }, "nuc-pro");
+  const other = remoteSaveFailed(edits, A, { reason: "other", detail: "/w/a.md: Is a directory (os error 21)" }, "nuc-pro");
+  assert.equal(statusOf(denied, A).message, "쓰기 권한이 없어요");
+  assert.deepEqual(statusOf(other, A),
+    { kind: "failed", message: "저장하지 못했어요", tip: "/w/a.md: Is a directory (os error 21)", buttons: ["save"] });
+  assert.equal(shownText(other, A, "one\n"), "mine\n");
+});
+
+test("a failed remote save's reason outlives typing and a read of the disk as it was, and goes with a save", () => {
+  let edits = remoteSaveFailed(typed(noEdits(), A, "one\n", "mine\n"), A, { reason: "unreachable" }, "nuc-pro");
+  edits = typed(edits, A, "one\n", "mine!\n");
+  edits = diskRead(edits, A, "one\n").edits;
+  assert.equal(statusOf(edits, A).message, "nuc-pro 기계에 연결할 수 없어요.");
+  assert.equal(statusOf(saved(edits, A, "mine!\n"), A), null);
+});
+
+test("a remote save's failure on a file without edits changes nothing", () => {
+  const edits = noEdits();
+  assert.equal(remoteSaveFailed(edits, A, { reason: "unreachable" }, "nuc-pro"), edits);
 });
