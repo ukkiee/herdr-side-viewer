@@ -29,15 +29,39 @@
 //                             copy. Rejects as exec does.
 //   access.key(path)          a name for the file `path` there that no file of the same path on
 //                             another machine shares, for naming its copies.
+//   access.write(path, text, expected)
+//                             Another machine only (this Mac's saves are writeTextFile's, which
+//                             compares and writes in one step). Promise, never rejecting, of
+//                             { saved: true }; { saved: false, disk } when the file there no
+//                             longer holds `expected` (disk: its text now, null when gone),
+//                             nothing written; or { saved: false, failure } (remote-results.js
+//                             saveFailureOf). The file is read just before it is written, so a
+//                             change in between, under a second, is not seen.
 // runHc(args, { timeout })    Promise<{ code, stdout, stderr }>: `hc <args>` on this Mac, the one
 //                             on PATH or else ~/.local/bin/hc (machine.js FIND_HC). Rejects as
 //                             exec does; an hc found nowhere exits nonzero.
 //
 // Other tickets' functions join the access; these keep their names, arguments and results.
-import { exec, readTextFile, home } from "herdr";
+import { exec, readTextFile, writeTextFile, home, appHome } from "herdr";
 import { EXISTS, existingOf, HOME_FOLDER, homeOf, hcCommand, FIND_HC } from "./machine.js";
 import { COPY } from "./image-copies.js";
-import { changeMark } from "./remote-results.js";
+import { changeMark, saveFailureOf } from "./remote-results.js";
+
+// A remote save hands its text to `hc file write --on`, which takes it on stdin, from a copy in
+// this folder of the data folder; exec has no stdin, and an argument that long is refused. The
+// copy is removed once the write ends, whatever its end. `hc file write` replaces the file with
+// a new one and keeps its mode, and writes through a symbolic link to its target (nuc-pro,
+// 2026-11-13).
+const SAVES = "data/side-viewer/remote-saves";
+
+// Run on this Mac as `sh -c SAVES_FOLDER sh <folder>`: the folder, readable by the user alone,
+// without copies a quit in the middle of a save left behind.
+const SAVES_FOLDER = 'umask 077; mkdir -p "$1" && chmod 700 "$1" && find "$1" -type f -mmin +10 -delete';
+
+// Run on this Mac as `sh -c REMOTE_WRITE sh <machine> <path> <copy>`.
+const REMOTE_WRITE = `${FIND_HC}
+exec "$hc" file write --on "$1" "$2" < "$3"
+`;
 
 // Run on this Mac as `sh -c REMOTE_COPY sh <machine> <file> <copy>`: COPY's rule with the bytes
 // of `hc exec --on <machine> cat <file>`, which passes them through unchanged (a 315,093-byte
@@ -98,7 +122,31 @@ function remoteAccess(machine) {
     mark: (path, options) => markWith(run, path, options),
     copy: (path, copy) => exec("sh", ["-c", REMOTE_COPY, "sh", machine, path, copy]),
     key: (path) => `${machine}:${path}`,
+    write: (path, text, expected) => writeThere(machine, path, text, expected),
   };
+}
+
+async function writeThere(machine, path, text, expected) {
+  let disk;
+  try {
+    disk = await readTextFile(path, { on: machine });
+  } catch (error) {
+    return { saved: false, failure: saveFailureOf(error) };
+  }
+  if (disk !== expected) return { saved: false, disk };
+  const folder = `${appHome()}/${SAVES}`;
+  const copy = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.txt`;
+  try {
+    const made = await exec("sh", ["-c", SAVES_FOLDER, "sh", folder]);
+    if (made.code !== 0) return { saved: false, failure: saveFailureOf(made) };
+    await writeTextFile(copy, text, null);
+    const answer = await exec("sh", ["-c", REMOTE_WRITE, "sh", machine, path, copy]);
+    return answer.code === 0 ? { saved: true } : { saved: false, failure: saveFailureOf(answer) };
+  } catch (error) {
+    return { saved: false, failure: saveFailureOf(error) };
+  } finally {
+    await exec("rm", ["-f", copy]).catch(() => {});
+  }
 }
 
 async function markWith(run, path, options) {

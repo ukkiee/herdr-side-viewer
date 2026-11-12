@@ -16,6 +16,10 @@
 //   unavailable(machines, name) -> boolean
 //     Whether Herdr's machines() lists the machine `name` with its layout "unavailable",
 //     which is a machine that cannot be reached as well.
+//   saveFailureOf(failure) -> { reason: "unreachable" | "permission" } | { reason: "other", detail }
+//     Why a save to another machine failed: `failure` is the nonzero answer of
+//     `hc file write --on` ({ code, stdout, stderr }, its JSON error on stderr), or a rejection
+//     of the exec that ran it or of the read before it. `detail` is the error's own words.
 
 // `cksum` prints "<sum> <size> <path>". The path is left out: a file opened through a link
 // gives the same sum under another path.
@@ -40,6 +44,31 @@ export function failureOf(error) {
   if (UNREACHABLE.test(message)) return "unreachable";
   if (message.includes(NO_SH)) return "windows";
   return "other";
+}
+
+// Rust's io errors for a write the system refuses: EACCES, EPERM, EROFS (edit-state.js
+// refusalOf reads this Mac's refusals the same way).
+const NO_PERMISSION = /\(os error (13|1|30)\)/;
+
+export function saveFailureOf(failure) {
+  const message = saveMessageOf(failure);
+  if (UNREACHABLE.test(message)) return { reason: "unreachable" };
+  if (NO_PERMISSION.test(message)) return { reason: "permission" };
+  return { reason: "other", detail: message };
+}
+
+function saveMessageOf(failure) {
+  if (failure && typeof failure === "object" && "stderr" in failure) {
+    const stderr = String(failure.stderr ?? "").trim();
+    try {
+      const message = JSON.parse(stderr)?.error?.message;
+      if (typeof message === "string") return message;
+    } catch {
+      // Not hc's JSON: the shell's own words, as when hc cannot start.
+    }
+    return stderr || String(failure.stdout ?? "").trim();
+  }
+  return String(failure?.message ?? failure ?? "").replace(/^`herdr\.[\w.]+`: /, "");
 }
 
 export function unavailable(machines, name) {

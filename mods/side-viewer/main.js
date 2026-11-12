@@ -19,7 +19,7 @@ import * as fs from "fs/promises";
 import { contentOf, failedContentOf } from "./document.js";
 import { failureOf, unavailable } from "./remote-results.js";
 import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, editedContentOf, blankSvg, sourceOnlySvg, rendersEmpty } from "./views.js";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, statusOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, statusOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit, checkboxToggled, remoteSaveFailed } from "./edit-state.js";
 import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab, unplacedNotice } from "./viewer-tab.js";
 import { toggleCheckbox } from "./checkbox.js";
 import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, LIST } from "./image-copies.js";
@@ -660,12 +660,14 @@ export default class SideViewer extends View {
     this.saving = true;
     cx.spawn(async (cx) => {
       try {
-        // writeTextFile writes on this Mac only: a file on another machine fails the save
-        // instead of landing on this Mac's file of the same path.
-        if (this.access().remote) throw new Error("Saving to another machine's file is not supported.");
-        await writeTextFile(request.path, request.text, request.expected);
-        this.edits = saved(this.edits, request.path, request.text);
-        if (this.content.file === request.path) this.content.text = request.text;
+        // writeTextFile writes on this Mac only, so a file on another machine is saved through
+        // its file access instead of landing on this Mac's file of the same path.
+        const access = this.access();
+        const wrote = access.remote ? await this.saveThere(access, request) : (await writeTextFile(request.path, request.text, request.expected), true);
+        if (wrote) {
+          this.edits = saved(this.edits, request.path, request.text);
+          if (this.content.file === request.path) this.content.text = request.text;
+        }
       } catch (error) {
         if (refusalOf(error) !== "changed") {
           this.edits = saveFailed(this.edits, request.path, error);
@@ -684,6 +686,21 @@ export default class SideViewer extends View {
       }
     });
     return true;
+  }
+
+  // A save to another machine (file-access.js write). Returns whether it wrote. A file there
+  // that no longer holds the text the edit started from is not written, and its text goes to
+  // diskRead as a refused save's read does here (changed or deleted); a failed write keeps the
+  // edits with its reason, a machine out of reach among them.
+  async saveThere(access, request) {
+    const outcome = unavailable(machines(), access.machine)
+      ? { saved: false, failure: { reason: "unreachable" } }
+      : await access.write(request.path, request.text, request.expected);
+    if (outcome.saved) return true;
+    this.edits = outcome.failure
+      ? remoteSaveFailed(this.edits, request.path, outcome.failure, access.machine)
+      : diskRead(this.edits, request.path, outcome.disk).edits;
+    return false;
   }
 
   // The saves asked for during a save, in order. One that starts a save makes the rest wait
