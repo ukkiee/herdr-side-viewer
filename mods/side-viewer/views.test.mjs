@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, switchable } from "./views.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const probe = (bytes) => ({ found: true, readable: true, bytes, modified: 1, head: [] });
@@ -209,4 +209,44 @@ test("the markdown source's editor wraps long lines, the code view's does not", 
   assert.deepEqual(editorOf("code"), { soft_wrap: false });
   assert.equal(editorOf("image"), null);
   assert.equal(editorOf("missing"), null);
+});
+
+test("an svg is drawn as a picture that also has its source; svgz and other images have none", () => {
+  assert.equal(imageState("/work/logo.svg", "svg", 900), "svg");
+  assert.equal(imageState("/work/LOGO.SVG", "svg", 900), "svg");
+  // svgz is compressed: there is no text to show or edit.
+  assert.equal(imageState("/work/logo.svgz", "svgz", 900), "image");
+  // An svgz file that holds plain svg text is still an svgz to the user.
+  assert.equal(imageState("/work/logo.svgz", "svg", 900), "image");
+  assert.equal(imageState("/work/shot.png", "png", 900), "image");
+  // The source is read as text, so it has the text views' limit.
+  assert.equal(imageState("/work/logo.svg", "svg", 1024 * 1024), "svg");
+  assert.equal(imageState("/work/logo.svg", "svg", 1024 * 1024 + 1), "image");
+});
+
+test("the rendering and source switch is on markdown and svg, nowhere else", () => {
+  assert.equal(switchable("markdown"), true);
+  assert.equal(switchable("svg"), true);
+  for (const state of ["image", "code", "none", "loading", "empty", "missing", "unreadable", "unsupported", "large"]) {
+    assert.equal(switchable(state), false, state);
+  }
+});
+
+test("an svg takes typing in its source only; the picture and other images never do", () => {
+  assert.equal(editable("svg", true), true);
+  assert.equal(editable("svg", false), false);
+  assert.equal(editable("image", true), false);
+});
+
+test("an svg's source is edited with XML colors and wraps long lines like the markdown source", () => {
+  assert.deepEqual(editorOf("svg"), { soft_wrap: true, language: "xml" });
+});
+
+test("a changed svg keeps its source editor and only gets the new text", () => {
+  const shown = { state: "svg", text: "<svg/>", path: "data/side-viewer/images/a-6-1.svg", size: null, theme: "#1", editor: {} };
+  const next = { state: "svg", text: "<svg />", path: "data/side-viewer/images/a-7-2.svg", size: null, theme: "#1" };
+  assert.equal(refreshOf(shown, next), "retext");
+  assert.equal(refreshOf(shown, { ...next, theme: "#2" }), "replace");
+  assert.equal(refreshOf(shown, { ...shown, editor: undefined }), "keep");
+  assert.equal(refreshOf(shown, { ...next, state: "image" }), "replace");
 });

@@ -40,16 +40,31 @@ export function viewOf(file, groups) {
   return null;
 }
 
-// Whether the body for a content state takes typing: the code view, and the markdown view
-// while it shows the source (`raw`). The rendering, images and notices do not.
+// The content state an image is drawn in. "svg": a picture that also has its source, the
+// file's text, to show and edit; only a file named .svg whose bytes are svg (`kind`, from
+// image-copies.js) and small enough to read as text. "image": a picture alone. svgz is
+// compressed, so it never has a source, whatever its bytes.
+export function imageState(file, kind, bytes) {
+  return kind === "svg" && extensionOf(file) === "svg" && bytes <= TEXT_LIMIT ? "svg" : "image";
+}
+
+// Whether a content state has the header's "rendering | source" switch: the views with a
+// source behind what they draw.
+export function switchable(state) {
+  return state === "markdown" || state === "svg";
+}
+
+// Whether the body for a content state takes typing: the code view, and the markdown and
+// svg views while they show the source (`raw`). Renderings, images and notices do not.
 export function editable(state, raw) {
-  return state === "code" || (state === "markdown" && raw === true);
+  return state === "code" || (switchable(state) && raw === true);
 }
 
 // The editor state options a content state gets once its text is read, or null for one
-// drawn without an editor. The markdown source wraps long lines to the pane; code does not.
+// drawn without an editor. Sources wrap long lines to the pane; code does not.
 export function editorOf(state) {
   if (state === "markdown") return { soft_wrap: true };
+  if (state === "svg") return { soft_wrap: true, language: "xml" };
   if (state === "code") return { soft_wrap: false };
   return null;
 }
@@ -122,7 +137,8 @@ export function sameProbe(last, file, probe) {
 
 // What a finished read does to the content on screen:
 // "keep": nothing changed, so nothing is redrawn and the scroll position stays.
-// "retext": the code changed; its editor takes the new text and keeps its place.
+// "retext": the code or the svg changed; its editor takes the new text and keeps its place
+// (an svg also takes its new copy).
 // "replace": anything else. That includes code under another theme (`theme` is a mark of
 // the syntax colors): an editor's colors are fixed when it is made.
 export function refreshOf(shown, next) {
@@ -131,6 +147,6 @@ export function refreshOf(shown, next) {
   const same = shown.text === next.text && look && shown.path === next.path
     && shown.size?.width === next.size?.width && shown.size?.height === next.size?.height;
   if (same) return "keep";
-  if (next.state === "code" && shown.editor && look) return "retext";
+  if ((next.state === "code" || next.state === "svg") && shown.editor && look) return "retext";
   return "replace";
 }
