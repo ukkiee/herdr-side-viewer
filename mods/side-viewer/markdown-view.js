@@ -198,9 +198,10 @@ function renderImageBlock(ctx, block, key) {
 }
 
 // A code block is a card (code-card.js). Inside a list item or a quote it takes the column
-// that item's or quote's other blocks take.
+// that item's or quote's other blocks take. The document's column puts 12 between blocks;
+// 2 more on each side keeps two cards 16 apart there.
 function renderCodeBlock(ctx, block, key) {
-  return renderCodeCard(ctx.t, ctx.takeCard, block, key, ctx.onTerminal);
+  return renderCodeCard(ctx.t, ctx.takeCard, block, key, ctx.onTerminal).my(2);
 }
 
 // The footnotes' text, numbered as their marks in the body, at the end of the document.
