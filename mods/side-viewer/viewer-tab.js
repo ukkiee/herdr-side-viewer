@@ -8,6 +8,8 @@
 // {"id": "...", "file": "/abs/path", "at": <unix seconds>, "edit": {disk, text, bar?}},
 // the entry of edit-state.js's takeEdit.
 
+import { labelOf } from "./document.js";
+
 // The id becomes part of a file name, so it may not carry a path.
 const ID = /^[A-Za-z0-9_-]+$/;
 
@@ -44,4 +46,22 @@ export function handoffFrom(text, { id, now }) {
   if (typeof file !== "string" || !file.startsWith("/")) return null;
   if (typeof at !== "number" || Math.abs(now / 1000 - at) > MAX_AGE_SECONDS) return null;
   return { file, edit: edit ?? null };
+}
+
+// The props of a new viewer tab. `handoff` is null when there were no edits to hand over.
+export function tabProps({ file, handoff }) {
+  return handoff ? { file, viewerTab: true, handoff } : { file, viewerTab: true };
+}
+
+// What a copy's props say: { file, handoff } for a viewer tab (handoff null when there is
+// none to read), or null for a viewer beside a conversation.
+export function viewerTabOf(props) {
+  if (props?.viewerTab !== true) return null;
+  const handoff = typeof props.handoff === "string" && ID.test(props.handoff) ? props.handoff : null;
+  return { file: typeof props.file === "string" ? props.file : null, handoff };
+}
+
+// The tab's name: the file name, as the header shows it.
+export function tabName(file) {
+  return labelOf(file, "").name;
 }

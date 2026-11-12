@@ -1,7 +1,7 @@
 // node --test: what a viewer tab is given when it opens, and where it goes, without Herdr.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { handoffFile, handoffId, handoffText, handoffFrom } from "./viewer-tab.js";
+import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName } from "./viewer-tab.js";
 
 const NOW = 1_800_000_000_000;
 const FILE = "/work/notes/plan.md";
@@ -36,6 +36,26 @@ test("an old handoff is not taken, so a tab that comes back later does not take 
 test("a handoff for another tab is not taken", () => {
   const text = handoffText({ id: "a1", file: FILE, edit: EDIT, now: NOW });
   assert.equal(handoffFrom(text, { id: "b2", now: NOW }), null);
+});
+
+test("a viewer tab's props name its file and its handoff, and say it is a viewer tab", () => {
+  assert.deepEqual(viewerTabOf(tabProps({ file: FILE, handoff: "a1" })), { file: FILE, handoff: "a1" });
+  assert.deepEqual(viewerTabOf(tabProps({ file: FILE, handoff: null })), { file: FILE, handoff: null });
+});
+
+test("the props of a viewer beside a conversation are not a viewer tab's", () => {
+  for (const props of [null, undefined, {}, { file: FILE }, { file: FILE, handoff: "a1" }]) {
+    assert.equal(viewerTabOf(props), null, JSON.stringify(props));
+  }
+});
+
+test("a handoff id that could reach outside the data folder is dropped", () => {
+  const props = { ...tabProps({ file: FILE, handoff: "a1" }), handoff: "../escape" };
+  assert.deepEqual(viewerTabOf(props), { file: FILE, handoff: null });
+});
+
+test("the tab is named by the file, as the header names it", () => {
+  assert.equal(tabName("/work/notes/계획 v2.md"), "계획 v2.md");
 });
 
 test("a missing or broken handoff is ignored", () => {
