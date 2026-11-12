@@ -23,6 +23,7 @@ import { renderMarkdown } from "./markdown-view.js";
 import { renderCode } from "./code-view.js";
 import { renderImage } from "./image-view.js";
 import { renderNotice } from "./notice-view.js";
+import { MarkdownImages } from "./markdown-image-loader.js";
 
 // The folder watch can miss a change, so the shown file is also read again this often.
 const RECHECK_MS = 15000;
@@ -64,6 +65,8 @@ export default class SideViewer extends View {
     // The viewer's own keyboard target: cmd+S is heard on the root that tracks it, whether
     // it or the editor inside it holds the keyboard.
     this.focus = cx.focus_handle();
+    // Copies of the images inside the shown markdown document (markdown-image-loader.js).
+    this.images = new MarkdownImages({ sweep: () => this.sweep(), dropOlder: (path) => this.dropOlder(path) });
     this.show(given?.file ?? props()?.file, cx);
     this.watch(cx);
     this.listen(cx);
@@ -188,6 +191,7 @@ export default class SideViewer extends View {
     this.content = content;
     this.generation++;
     cx.notify();
+    if (content.state === "markdown") this.images.prepare(content.file, shownText(this.edits, content.file, content.text), true, cx);
   }
 
   // What to show for a file, as { content, probe }: the view's content or the state of a
@@ -296,6 +300,7 @@ export default class SideViewer extends View {
     this.edits = typed(this.edits, content.file, content.text, editor.value());
     // The rendering draws the edited text, and the markdown element needs a new id for it.
     if (content.state === "markdown") this.generation++;
+    if (content.state === "markdown") this.images.prepare(content.file, editor.value(), false, cx);
     if (unsaved(this.edits, content.file) !== was) cx.notify();
   }
 
@@ -434,6 +439,7 @@ export default class SideViewer extends View {
         text: shownText(this.edits, content.file, content.text), raw: this.raw, generation: this.generation,
         onLink: (url, cx) => this.followLink(url, cx),
         file: this.file,
+        images: this.images.forDocument(content.file),
       });
     }
     if (content.state === "image") {
