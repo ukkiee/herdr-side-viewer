@@ -2,7 +2,7 @@
 // The answers are the words nuc-pro (Linux) gave on 2026-11-13 through `hc exec --on nuc-pro`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changeMark, failureOf, unavailable } from "./remote-results.js";
+import { changeMark, failureOf, unavailable, saveFailureOf } from "./remote-results.js";
 
 const DIR = "/tmp/side-viewer-t05-20043";
 
@@ -71,4 +71,53 @@ test("a file that cannot be read is marked apart from a gone one and from any su
   const folder = changeMark({ code: 1, stdout: "", stderr: `cksum: ${DIR}/dir.md: Is a directory\n` });
   assert.equal(denied, "unreadable");
   assert.equal(folder, "unreadable");
+});
+
+// `hc file write --on nuc-pro <path> < <file>` from this Mac's sh, 2026-11-13: it puts its error
+// as JSON on stderr. A read-only file in a writable folder is replaced (no error); a folder
+// that cannot be written is what refuses.
+const SAVE_DIR = "/tmp/side-viewer-t07";
+
+test("a remote save the folder's permissions refuse fails for want of write permission", () => {
+  const answer = {
+    code: 1,
+    stdout: "",
+    stderr: `{"error":{"hint":"","kind":"io","message":"${SAVE_DIR}/ro-dir/f.txt: Permission denied (os error 13)"}}\n`,
+  };
+  assert.deepEqual(saveFailureOf(answer), { reason: "permission" });
+});
+
+test("any other refusal of a remote save fails with hc's own words as its detail", () => {
+  const folder = {
+    code: 1,
+    stdout: "",
+    stderr: `{"error":{"hint":"","kind":"io","message":"${SAVE_DIR}/dir: Is a directory (os error 21)"}}\n`,
+  };
+  const unknown = {
+    code: 4,
+    stdout: "",
+    stderr: '{"error":{"hint":"machines: nuc-pro, mac-m1-max, imac-i7","kind":"machine_unknown","message":"unknown machine \\"nosuch-machine\\""}}\n',
+  };
+  assert.deepEqual(saveFailureOf(folder), { reason: "other", detail: `${SAVE_DIR}/dir: Is a directory (os error 21)` });
+  assert.deepEqual(saveFailureOf(unknown), { reason: "other", detail: 'unknown machine "nosuch-machine"' });
+});
+
+test("a remote save whose hc cannot run fails with the shell's words as its detail", () => {
+  // Ticket 01: an hc found neither on PATH nor in ~/.local/bin.
+  const answer = { code: 126, stdout: "", stderr: "sh: /Users/ukyi/.local/bin/hc: cannot execute: No such file or directory\n" };
+  assert.deepEqual(saveFailureOf(answer), { reason: "other", detail: "sh: /Users/ukyi/.local/bin/hc: cannot execute: No such file or directory" });
+});
+
+test("a remote save that cannot reach the machine fails as unreachable", () => {
+  // Not observed: Herdr's words for exec (herdr.d.ts) and the git-tools mod's tests.
+  assert.deepEqual(saveFailureOf(new Error("the machine is unreachable")), { reason: "unreachable" });
+  assert.deepEqual(saveFailureOf({ code: 1, stdout: "", stderr: '{"error":{"hint":"","kind":"io","message":"machine nuc-pro is unreachable"}}\n' }), { reason: "unreachable" });
+});
+
+test("the re-read before a remote save, refused for permission, fails the save the same way", () => {
+  // `hc file read` on nuc-pro for a file it may not read (ticket 05).
+  assert.deepEqual(saveFailureOf(new Error(`${SAVE_DIR}/noread.md: Permission denied (os error 13)`)), { reason: "permission" });
+  assert.deepEqual(saveFailureOf(new Error("something else")), { reason: "other", detail: "something else" });
+  // Herdr puts its function's name in front of every API error (edit-state.js messageOf).
+  assert.deepEqual(saveFailureOf(new Error("`herdr.readTextFile`: something else")), { reason: "other", detail: "something else" });
 });
