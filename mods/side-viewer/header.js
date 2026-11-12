@@ -16,7 +16,7 @@ import { div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { home } from "herdr";
 import { labelOf } from "./document.js";
-import { switchable } from "./views.js";
+import { switchable, opensInTab } from "./views.js";
 
 // The header: back, file name and folder.
 export function renderHeader(t, header) {
@@ -30,7 +30,7 @@ export function renderHeader(t, header) {
     .when(Boolean(file && unsaved), (el) => el.child(renderUnsaved(t, header)))
     // The switch belongs to a drawn markdown document or svg, not to a notice about one.
     .when(switchable(state), (el) => el.child(renderSwitch(t, header)))
-    .when(Boolean(file), (el) => el.child(renderActions(t, header)));
+    .when(Boolean(file), (el) => el.child(renderActions(t, header, opensInTab(state))));
 }
 
 // Back, drawn only while there is a file to go back to.
@@ -69,11 +69,11 @@ function renderCell(t, id, label, selected, onToggleRaw) {
     .child(label);
 }
 
-// "Open in a new tab", "Open in the original app" and "Show in Finder", for the header and
-// for a notice screen.
-function renderActions(t, { onNewTab, onOriginal, onFinder }) {
+// "Open in a new tab" (`newTab`: only over drawn content, views.js opensInTab), "Open in the
+// original app" and "Show in Finder".
+function renderActions(t, { onNewTab, onOriginal, onFinder }, newTab) {
   return h_flex().flex_none().gap(2)
-    .child(renderButton(t, "side-viewer-new-tab", "new-tab", "새 탭으로 열기", (_event, cx) => onNewTab(cx)))
+    .when(newTab, (el) => el.child(renderButton(t, "side-viewer-new-tab", "new-tab", "새 탭으로 열기", (_event, cx) => onNewTab(cx))))
     .child(renderButton(t, "side-viewer-original", "original", "원래 앱으로 열기", (_event, cx) => onOriginal(cx)))
     .child(renderButton(t, "side-viewer-finder", "finder", "Finder에서 보기", (_event, cx) => onFinder(cx)));
 }

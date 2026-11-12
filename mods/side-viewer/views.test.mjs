@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, switchable, editedContentOf } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, switchable, editedContentOf, opensInTab } from "./views.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const probe = (bytes) => ({ found: true, readable: true, bytes, modified: 1, head: [] });
@@ -270,4 +270,11 @@ test("a read that can be drawn, or a file without edits, keeps the read's own co
   assert.deepEqual(editedContentOf("/work/plan.md", { state: "missing" }, md, undefined), { state: "missing" });
   assert.deepEqual(editedContentOf("/work/plan.md", { state: "unsupported" }, null, "# plan\n"), { state: "unsupported" });
   assert.deepEqual(editedContentOf("/work/shot.png", { state: "missing" }, viewOf("/work/shot.png", groups), "x"), { state: "missing" });
+});
+
+test("only drawn content offers a new tab; a notice offers the original app and Finder alone", () => {
+  for (const state of ["markdown", "code", "image", "svg"]) assert.equal(opensInTab(state), true, state);
+  for (const state of ["none", "loading", "empty", "missing", "unreadable", "unsupported", "large"]) {
+    assert.equal(opensInTab(state), false, state);
+  }
 });

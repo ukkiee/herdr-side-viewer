@@ -54,6 +54,13 @@ export function switchable(state) {
   return state === "markdown" || state === "svg";
 }
 
+// Whether a content state has the header's "open in a new tab": drawn content only. A notice
+// keeps v1's two actions, the original app and Finder. A file with unsaved edits always has
+// a drawn state, since a notice gives way to their editor (editedContentOf).
+export function opensInTab(state) {
+  return state === "markdown" || state === "code" || state === "image" || state === "svg";
+}
+
 // Whether the body for a content state takes typing: the code view, and the markdown and
 // svg views while they show the source (`raw`). Renderings, images and notices do not.
 export function editable(state, raw) {
