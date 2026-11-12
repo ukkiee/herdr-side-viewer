@@ -1,23 +1,27 @@
 // Side viewer: shows one file in a pane beside the conversation. open.sh opens it with
 // `pane.split {direction: "right", mod: "side-viewer", props: {file}}`.
-// This file talks to Herdr and draws. The decisions live in modules without Herdr imports,
-// each with its own tests: document.js, views.js, image-copies.js, history.js, request.js,
-// links.js and original.js.
-import { View, div, image, svg } from "gpui-kit";
-import { v_flex, h_flex, TextView, Editor, EditorState } from "gpui-base";
+// This file holds the viewer's state and talks to Herdr: reading, taking requests from
+// open.sh and watching. Drawing is in header.js and the views' modules (markdown-view.js,
+// code-view.js, image-view.js, notice-view.js), which get what to show and callbacks from here.
+// The decisions live in modules without Herdr imports, each with its own tests: document.js,
+// views.js, image-copies.js, history.js, request.js, links.js and original.js.
+import { View } from "gpui-kit";
+import { v_flex, EditorState } from "gpui-base";
 import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder } from "herdr";
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
-import { contentOf, labelOf, noticeFor } from "./document.js";
+import { contentOf } from "./document.js";
 import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe } from "./views.js";
-import { kindOf, copyName, sizeOf, fitted, staleCopies, olderCopies, FOLDER, COPY, LIST } from "./image-copies.js";
+import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, COPY, LIST } from "./image-copies.js";
 import { start, open, back, canGoBack } from "./history.js";
 import { takeRequest } from "./request.js";
-import { watchedFolder, linkAction, rawMarkdown, touches } from "./links.js";
+import { watchedFolder, linkAction, touches } from "./links.js";
 import { openOriginalCommands } from "./original.js";
-
-// Space around an image, on each side.
-const IMAGE_PADDING = 20;
+import { renderHeader } from "./header.js";
+import { renderMarkdown } from "./markdown-view.js";
+import { renderCode } from "./code-view.js";
+import { renderImage } from "./image-view.js";
+import { renderNotice } from "./notice-view.js";
 
 // The folder watch can miss a change, so the shown file is also read again this often.
 const RECHECK_MS = 15000;
@@ -262,43 +266,6 @@ export default class SideViewer extends View {
     });
   }
 
-  // Back, drawn only while there is a file to go back to.
-  renderBack(t) {
-    return div().id("side-viewer-back").flex_none().w(24).h(24).rounded(4)
-      .flex().items_center().justify_center().text_size(14).text_color(t.muted).cursor_pointer()
-      .hover((s) => s.bg(t.hover))
-      .on_click((_event, cx) => this.goBack(cx))
-      .child("←");
-  }
-
-  // The header: back, file name and folder.
-  renderHeader(t) {
-    const label = this.file ? labelOf(this.file, home()) : { name: "Side Viewer", folder: "" };
-    return h_flex().h(40).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border)
-      .when(canGoBack(this.visits), (el) => el.child(this.renderBack(t)))
-      .child(div().min_w(0).truncate().text_size(13).font_semibold().child(label.name))
-      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(label.folder))
-      // The buttons never shrink: a narrow viewer cuts the name and the folder instead.
-      // The switch belongs to a drawn markdown document, not to a notice about one.
-      .when(this.content.state === "markdown", (el) => el.child(this.raw
-        ? this.renderButton(t, "side-viewer-rendered", "rendered", "렌더링 보기", (_event, cx) => this.toggleRaw(cx))
-        : this.renderButton(t, "side-viewer-source", "source", "원문 보기", (_event, cx) => this.toggleRaw(cx))))
-      .when(Boolean(this.file), (el) => el.child(this.renderActions(t)));
-  }
-
-  // "Open in the original app" and "Show in Finder", for the header and for a notice screen.
-  renderActions(t) {
-    return h_flex().flex_none().gap(2)
-      .child(this.renderButton(t, "side-viewer-original", "original", "원래 앱으로 열기", (_event, cx) => this.openOriginal(cx)))
-      .child(this.renderButton(t, "side-viewer-finder", "finder", "Finder에서 보기", (_event, cx) => this.revealInFinder(cx)));
-  }
-
-  renderButton(t, id, icon, label, onClick) {
-    return h_flex().id(id).flex_none().size(24).items_center().justify_center().rounded(4)
-      .text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover)).tooltip(label).on_click(onClick)
-      .child(svg(`mods/side-viewer/${icon}.svg`).size(14));
-  }
-
   toggleRaw(cx) {
     this.raw = !this.raw;
     cx.notify();
@@ -370,53 +337,47 @@ export default class SideViewer extends View {
     });
   }
 
+  // The image view's width, from its size report.
+  setRoom(width, cx) {
+    if (width === this.room) return;
+    this.room = width;
+    cx.notify();
+  }
+
+  // What the header shows, and where its clicks go (header.js).
+  header() {
+    return {
+      file: this.file,
+      canGoBack: canGoBack(this.visits),
+      state: this.content.state,
+      raw: this.raw,
+      onBack: (cx) => this.goBack(cx),
+      onToggleRaw: (cx) => this.toggleRaw(cx),
+      onOriginal: (cx) => this.openOriginal(cx),
+      onFinder: (cx) => this.revealInFinder(cx),
+    };
+  }
+
   // The body, by what this.content holds.
   renderBody(t) {
     const content = this.content;
-    if (content.state === "markdown") return this.renderMarkdown(content.text, t);
-    if (content.state === "code") return this.renderCode(content, t);
-    if (content.state === "image") return this.renderImage(content, t);
-    return this.renderNotice(t, content.state);
-  }
-
-  // The reason shown in place of content that cannot be drawn.
-  renderNotice(t, state) {
-    return div().flex_1().min_h(0).p(20).text_size(13).text_color(t.dim).child(noticeFor(state) ?? "");
-  }
-
-  renderCode(content, _t) {
-    return div().flex_1().min_h(0).overflow_hidden().child(Editor.new(content.editor).size_full());
-  }
-
-  // The image at its own size, shrunk to the viewer's width. The width comes from the
-  // size report, so nothing is drawn until the first one arrives.
-  renderImage(content, _t) {
-    const known = this.room > 0;
-    const { width, height } = fitted(content.size, (this.room ?? 0) - 2 * IMAGE_PADDING);
-    return div().id("side-viewer-image").flex_1().min_h(0).overflow_hidden()
-      .on_size_change((size, cx) => {
-        if (size.width === this.room) return;
-        this.room = size.width;
-        cx.notify();
-      })
-      .child(div().id("side-viewer-image-scroll").size_full().overflow_y_scrollbar()
-        .when(known, (e) => e.child(h_flex().w_full().justify_center().p(IMAGE_PADDING)
-          .child(image(content.path).w(width).h(height).flex_none()))));
-  }
-
-  renderMarkdown(text, _t) {
-    return div().id("side-viewer-scroll").flex_1().min_h(0).overflow_y_scrollbar()
-      .child(h_flex().w_full().justify_center()
-        .child(v_flex().flex_1().min_w(0).max_w(860).overflow_hidden().px(28).py(24).text_size(14)
-          // The source is drawn by the same element, fenced as one code block.
-          .child(TextView.markdown(`side-viewer-markdown-${this.generation}${this.raw ? "-source" : ""}`, this.raw ? rawMarkdown(text) : text)
-            .selectable(true).on_link_click((url, cx) => this.followLink(url, cx)))));
+    if (content.state === "markdown") {
+      return renderMarkdown(t, {
+        text: content.text, raw: this.raw, generation: this.generation,
+        onLink: (url, cx) => this.followLink(url, cx),
+      });
+    }
+    if (content.state === "code") return renderCode(t, content);
+    if (content.state === "image") {
+      return renderImage(t, { content, room: this.room, onRoom: (width, cx) => this.setRoom(width, cx) });
+    }
+    return renderNotice(t, content.state);
   }
 
   render(_cx) {
     const t = theme();
     return v_flex().id("side-viewer").size_full().min_h(0).bg(t.background).text_color(t.foreground)
-      .child(this.renderHeader(t))
+      .child(renderHeader(t, this.header()))
       .child(this.renderBody(t));
   }
 }
