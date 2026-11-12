@@ -107,6 +107,16 @@ test("a viewer opened without a space value is on this Mac, so it leaves a remot
   assert.equal(requestFrom(asked(REMOTE), viewerIn(null)), null);
 });
 
+test("a viewer whose space is not listed yet leaves a request without a space value", () => {
+  // As after a restart, before Herdr lists a remote space: the viewer's space may be another
+  // machine's, so a request for this Mac is not its to take.
+  const UNLISTED = "sp0d6a4b1e9c7f2a3b5d8e0f1a2b3c4d5e";
+  assert.equal(requestFrom(asked(undefined), viewerIn(UNLISTED)), null);
+  assert.equal(requestFrom(asked(null), viewerIn(UNLISTED)), null);
+  // A request for its own space is still its own.
+  assert.deepEqual(requestFrom(asked(UNLISTED), viewerIn(UNLISTED)), TAKEN);
+});
+
 test("a request whose space value is no text is ignored", () => {
   for (const space of [7, {}, ["x"]]) assert.equal(requestFrom(asked(space), viewerIn(HERE)), null, String(space));
 });

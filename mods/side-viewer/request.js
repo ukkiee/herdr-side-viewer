@@ -27,10 +27,13 @@ export function answerFile(id) {
 }
 
 // Whether a request for the space value `asked` is for the viewer of the space value `own`.
-// Either may be null. `spaces` is Herdr's spaces().
+// Either may be null. `spaces` is Herdr's spaces(). A viewer whose space is not listed yet
+// may be another machine's (machine.js `unlisted`), so it leaves a request for this Mac.
 function forViewer(asked, own, spaces) {
   if (asked && own) return asked === own;
-  return !machineOf({ space: asked ?? own }, spaces).remote;
+  const where = machineOf({ space: asked ?? own }, spaces);
+  if (own && where.unlisted) return false;
+  return !where.remote;
 }
 
 // `text` is what reading REQUEST_FILE gave (null when it is not there). `answered` is the id
