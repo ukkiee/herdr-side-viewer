@@ -114,10 +114,12 @@ file opens in it, not in a new pane.
   clipboard: check it, then press Enter yourself. The shell is zsh and starts in the folder of
   the conversation terminal beside the viewer (in a viewer tab, the document's folder). The
   next `>_` goes into the same shell pane while it is open. If that shell is running a
-  program, nothing is typed and a notification says so (`터미널에 넣지 않았습니다`). A line
-  `print -rz -- '…'` is left on the shell's screen. Text you had typed at its prompt is moved
-  aside with zsh's push-line (alt+q) and comes back after the command (not with vi keys: see
-  [Limits](#limits)).
+  program, nothing is typed and a notification says so (`터미널에 넣지 않았습니다`). When it
+  first opens the shell pane it sends zsh a line that teaches it one key, `ctrl+alt+F12`, and
+  clears the screen, so no line is left on the shell's screen. After that `>_` writes the
+  command to a file in the data folder and presses only that key. Text you had typed at the
+  prompt is moved aside with zsh's push-line and comes back after the command (with vi keys
+  too).
 - **Pictures.** A local picture on a line of its own (`![alt](path)`, relative to the
   document's folder, or absolute) is drawn in the document: as wide as the pane at most,
   never larger than itself, at most 420 high, centered. One that can't be read shows
@@ -131,7 +133,8 @@ file opens in it, not in a new pane.
   like, and `herdr-app`), and read the files you open.
 - **Your files**: the mod writes a file when you save it or click a checkbox in it.
 - **Terminal**: the `>_` button opens a zsh pane and types into it through Herdr's `hc`
-  (`hc send`, `hc keys alt+q`, `hc get`).
+  (`hc send`, `hc keys`, `hc get`). A shell it opens gets one line binding an insert widget
+  to `ctrl+alt+F12`.
 - **Network**: nothing reaches the network; a web or mail link you click in a document is
   handed to macOS.
 - **Data folder** (`~/.config/herdr-app/data/side-viewer/`): the mod and the router write:
@@ -140,7 +143,9 @@ file opens in it, not in a new pane.
   - `images/`, copies of the images you view and of the pictures inside markdown documents;
   - `previews/`, copies of edited svg sources, drawn before they are saved;
   - `handoff-<id>.json`, the unsaved edits handed to a new viewer tab, deleted once the tab
-    has read them (one can be left behind if Herdr quits in between).
+    has read them (one can be left behind if Herdr quits in between);
+  - `shell/<terminal>.txt`, the command `>_` hands to a shell pane, deleted by the shell as it
+    puts it in the input line.
 
   A copy in `images/` or `previews/` is deleted when a newer copy of the same file replaces
   it, or when not shown for 30 days.
@@ -281,10 +286,11 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
 - **No autosave and no "save changes?" prompt.** Edits not saved are gone when the pane
   closes or Herdr quits. The one save without cmd+S is a checkbox click on a file without
   edits.
-- **`>_` with zsh's vi keys can run what you had typed.** With a vi keymap (zsh picks one when
-  `EDITOR` or `VISUAL` contains "vi", or after `bindkey -v`), text left at the shell pane's
-  prompt is not moved aside: the command joins it and the line runs, draft and all. Clear
-  the prompt before clicking `>_`, or use emacs keys (`bindkey -e`).
+- **The first `>_` after starting a new zsh in the shell pane clears its screen.** If you ran
+  `zsh` or `exec zsh` there, the new zsh is sent the line that teaches it the insert key
+  again, then `clear`. Only then is a draft moved aside with alt+q, so if that new zsh uses
+  vi keys and its prompt holds text, the text can run along with that line. Clear the prompt
+  before the first `>_` after starting a new zsh.
 - **No keyboard navigation** between blocks, no `cmd+E` for the source switch, no filling in
   of `{{placeholders}}` in commands.
 - **A path with text stuck to its end doesn't open.** Herdr reads the letters right after a

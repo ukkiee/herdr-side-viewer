@@ -168,9 +168,16 @@ The mod shows files, not agents, so it has no agent statuses.
   {direction: "down", pane: <viewer>, argv: [/bin/zsh -c 'cd -- "$1" 2>/dev/null; exec
   /bin/zsh -l' zsh <folder>]}` and finds it by comparing `panes()` (up to 5 s). The folder: in a viewer tab
   the document's; beside a conversation the `cwd` of a terminal pane in the same tab, an
-  agent's first; else home. The command goes in with `hc send <terminal> " print -rz --
-  '<command>'"`, after `hc keys <terminal> alt+q` when the shell was not just opened. The
-  viewer gives that pane the keyboard. The next `>_` uses the same pane while it shows the
+  agent's first; else home. The command (without its last newline) is written to
+  `data/side-viewer/shell/<terminal>.txt` (folder made with `umask 077`; `writeTextFile`
+  with the file's current text, or null, as `expected`, tried twice), then `hc keys
+  <terminal> ctrl+alt+f12`. Before that key, a zsh not yet prepared gets the prepare line
+  with `hc send`: a zle widget `_side_viewer_insert` that pushes a draft aside (`zle
+  push-line`), reads the file into `BUFFER`, puts the cursor at its end and removes the file,
+  bound to `\e[24;7~` in the emacs, viins and vicmd keymaps, then `clear`. The viewer
+  remembers the pid of the zsh it prepared (`hc get`'s `foreground.pid` at the prompt); a
+  shell just opened is prepared without alt+q, a zsh with another pid in the same pane is
+  prepared again after `hc keys <terminal> alt+q`. The viewer gives that pane the keyboard. The next `>_` uses the same pane while it shows the
   same terminal. When `hc get`'s `foreground` is not zsh, nothing is sent and a Herdr
   notification says `터미널에 넣지 않았습니다` / `셸에서 다른 프로그램(<name>)이 실행
   중입니다. 끝난 뒤 다시 누르세요.`; when no pane can be opened or found,
@@ -291,8 +298,9 @@ The mod shows files, not agents, so it has no agent statuses.
   `original-apps.tsv` (`<extension><TAB><bundle id>` per line), `request.json`,
   `answer-<id>`, `images/<path hash>-<bytes>-<modified>.<kind>` (copies of images and of
   pictures in markdown, mode 600), `previews/` (edited svg sources, same names, folder mode
-  700), and `handoff-<id>.json` (`{"id","file","at","edit"}`, deleted by the tab that reads
-  it). A copy or preview is deleted when a newer one of the same file replaces it, or when
+  700), `handoff-<id>.json` (`{"id","file","at","edit"}`, deleted by the tab that reads
+  it), and `shell/<terminal>.txt` (the command for `>_`, folder mode 700, deleted by the
+  shell's widget as it reads it). A copy or preview is deleted when a newer one of the same file replaces it, or when
   not shown for 30 days. The viewer reads whichever file it is asked to show and writes the
   file it saves.
 - `install.sh`: runs `herdr-app check` on the mod folder, runs `build.sh`, then copies the
@@ -361,15 +369,17 @@ Platform:
 - A mod has no per-character style: text inside a block is a `TextView`. Whether a
   wrapping `div`'s size, weight and color reach the `TextView` (headings, quotes, footnotes)
   was not seen before ticket 12.
-- `hc keys` can't type `"` `|` `$` `>` `&` `~` or Korean, so `>_` sends a zsh line instead:
-  ` print -rz -- '<command>'` puts the command in the next prompt's input line without
-  running it; the leading space keeps it out of history with `histignorespace`. zsh only,
-  and the `print -rz` line stays on screen. `hc send` waits up to 60 seconds after the last
-  key when the person has typed something and pastes after it: hence alt+q (push-line)
-  first, which a vi keymap doesn't have. With a vi keymap (zsh starts in one when `EDITOR`
-  or `VISUAL` holds "vi") alt+q only leaves insert mode, so a draft at the prompt stays, the
-  `print -rz` line joins it, and `hc send`'s Enter runs the joined line, draft included. The
-  viewer cannot see the keymap or the draft, so this stays a limit (README, Limits).
+- `hc keys` can't type `"` `|` `$` `>` `&` `~` or Korean, and `hc send` presses Enter and
+  pastes after a draft (waiting up to 60 seconds after the person's last key). So `>_` never
+  sends the command as a line: the shell is prepared once with a zle widget on
+  `ctrl+alt+f12` (the highest key `hc keys` names, `\e[24;7~`, unbound in zsh), and each
+  command goes through a file and that key. Nothing runs, the prepare line is wiped by
+  `clear` (and kept out of history by its leading space with `histignorespace`), and the
+  widget's push-line works in every keymap, so a vi-keymap draft is never run. zsh only.
+  The one line still sent with `hc send` is the prepare line: to a shell just opened (no
+  draft yet), or after alt+q when the pane's zsh has another pid (`zsh` or `exec zsh` run
+  there). In that case alt+q is not push-line in a vi keymap, so a draft can run with the
+  prepare line, and `clear` wipes that shell's screen (README, Limits).
 - zsh reports no hc status, so `hc get`'s `status` is always null; `foreground.name` (`zsh`
   at the prompt, `sleep` while it runs) tells a busy shell.
 - `pane.split` takes no folder, so the shell starts as a short zsh that `cd`s and becomes
@@ -627,8 +637,9 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
     flat cards (within 15 seconds). (AC-15)
 18. Still in the code sample beside a conversation: `>_` is on the `Shell` cards only. Note
     `pbpaste | shasum`. Click `>_` on `git status --short`: a shell pane opens below the
-    viewer, with `git status --short` in its input line, not run; its prompt is in the
-    conversation terminal's folder; `pbpaste | shasum` is unchanged. Clear the line
+    viewer, with `git status --short` in its input line, not run, and no other line on its
+    screen; its prompt is in the conversation terminal's folder; `pbpaste | shasum` is
+    unchanged. Clear the line
     (ctrl+U), click `>_` on the first `Shell` card: the command goes into the same pane, no
     new one. (AC-16)
 19. Busy shell, shown for real: in that shell pane clear the line and run `sleep 30`. While
@@ -637,7 +648,7 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
     typed. When `sleep` ends, click `>_` again: the command goes into the same pane. (AC-16)
 20. In that shell type `echo draft` without Enter, click `>_`: the input line holds the
     command; clear it (ctrl+U) and press Enter on the empty line: `echo draft` comes back.
-    (AC-16)
+    The same after ` bindkey -v`: the draft is not run and comes back. (AC-16)
 21. In the side viewer showing `~/sv2-check/markdown-sample.md`, click `새 탭으로 열기`: a
     new tab right after the current one, named `markdown-sample.md`, holding only a side
     viewer, and it is shown; there is no `←`. Go back and click it again: a second tab.
