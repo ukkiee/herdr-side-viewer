@@ -18,6 +18,17 @@ import { wordsOf } from "./i18n.js";
 const LIST_MAX = 352;
 const ROW = 32;
 
+// A failed `hc read` says why on stderr as {"error":{"kind","message","hint"}} (rc 3 for
+// `no terminal "t9"`, rc 4 for `unknown machine "x"`), the shape failureOf reads.
+function hcError(read) {
+  const said = String(read.stderr || read.stdout || "").trim();
+  try {
+    const json = JSON.parse(said);
+    if (json?.error) return json;
+  } catch {}
+  return new Error(said || `hc read exited ${read.code}`);
+}
+
 export class PathPicker {
   // open({ file, conversation, space }, cx): main.js's openPicked. tr: the viewer's
   // translator when the popup opens, for the filter's placeholder.
@@ -67,7 +78,7 @@ export class PathPicker {
       } catch (error) {
         const failure = failureOf(error);
         this.state = failure === "unreachable" || failure === "windows" ? failure : "failed";
-        this.reason = String(error?.message ?? error).split("\n")[0];
+        this.reason = String(error?.error?.message ?? error?.message ?? error).split("\n")[0];
       }
       cx.notify();
     });
@@ -79,7 +90,7 @@ export class PathPicker {
     const access = accessOf(this.machine);
     const home = await access.home();
     const read = await hc(["read", this.conversation.terminal, "--lines", "1000"]);
-    if (read.code !== 0) throw new Error(read.stderr || read.stdout || `hc read exited ${read.code}`);
+    if (read.code !== 0) throw hcError(read);
     const groups = JSON.parse(await readTextFile(`${appHome()}/mods/side-viewer/extensions.json`));
     const candidates = pathCandidates({ text: read.stdout, cwd: this.conversation.cwd, home, groups });
     const found = await access.exists(candidates);
