@@ -6,7 +6,8 @@ A side viewer for the [Herdr](https://herdr.dev) desktop app, macOS only. Cmd-cl
 path in an agent's conversation and the file opens in a pane to the right of it, instead of
 in another app. Read markdown drawn block by block, read and edit code with syntax colors,
 look at images, save with cmd+S, give a file a tab of its own, and put a document's shell
-command into a terminal's input line.
+command into a terminal's input line. `cmd-o` lists the paths a conversation printed and
+opens the one you pick, which is also how files open in a space on another machine.
 
 ![Side Viewer](preview.png)
 
@@ -26,6 +27,10 @@ command into a terminal's input line.
 - **Viewer tab**: the header's `Open in New Tab` button gives the file a tab of its own.
 - **`>_` on shell blocks**: types a code block's command into a shell pane below the viewer,
   without running it (one narrow case with zsh's vi keys, see [Limits](#limits)).
+- **Path picker** (`cmd-o`): a popup of the file paths in the focused conversation; pick
+  one to open it beside the conversation (see [The path picker](#the-path-picker-cmd-o)).
+- **Remote spaces**: in a space on a Linux machine or another Mac, the viewer shows, edits
+  and saves that machine's files (see [Remote spaces](#remote-spaces)).
 - **Outside Herdr** (Finder, another terminal) the same files keep opening in the app they
   opened in before.
 
@@ -38,6 +43,70 @@ Herdr sends the file to the side viewer, anything else sends it to the **origina
 the one that was the default before. The router takes over only when you run the take-over
 command below (the one exception is under [Limits](#limits)), and one command gives
 everything back.
+
+### The path picker (cmd-o)
+
+`cmd-o` opens a popup at the top of the window with the file paths the focused conversation
+printed, and opens the one you pick in the side viewer. It works the same in a space on this
+Mac and in a [remote space](#remote-spaces), where it is the way in: a cmd-click there opens
+nothing, because the file is not on this Mac. On this Mac it also opens files whose
+extension the router has not taken over.
+
+- **Which paths.** From the focused terminal's screen and the 1000 lines above it: absolute
+  paths, `~` paths, paths relative to the terminal's folder, paths with a line number
+  (`a.md:12`, `a.md:12:3`, `a.md:12-20`; the number is dropped) and paths in backticks. Only
+  files with an extension in the [list](#extensions) that exist on that terminal's machine,
+  newest (lowest on screen) first, each once, at most 30. Each row shows the file name and
+  its folder.
+- **Picking.** Type to keep only the paths that contain what you typed (case ignored). ↑↓
+  move, Enter or a click opens. Esc, the `Esc` button or a click beside the popup closes it
+  and changes nothing.
+- **Where it opens.** A side viewer showing in the conversation's tab takes the file, so no
+  pane is added; otherwise a new viewer splits off to the right of the conversation. The
+  popup closes once that is settled, within about half a second.
+- **Focus.** With focus on a side viewer beside a conversation, the picker reads that
+  conversation (an agent's terminal first). Anywhere else without a terminal (a viewer tab,
+  another mod) it says `Click a conversation terminal, then press again.`
+- **Its other lines**: `Finding…`, `This conversation shows no file path to open.`,
+  `No path matches.`, the two remote notices below, and `Couldn't look for paths: <reason>`
+  for any other failure (the terminal closed, say).
+
+### Remote spaces
+
+A side viewer reads and writes the files of the machine its space is on. In a space on
+another machine connected to Herdr, open a file with `cmd-o`; links, `←` and viewer tabs
+then stay on that machine. Linux and macOS machines are supported.
+
+- **The same as on this Mac**: markdown (rendered and source), code, images with the svg
+  switch, pictures in markdown (relative to the document's folder, or absolute, on that
+  machine), the size limits and notices, editing, cmd+S, checkboxes, `Changed on disk`,
+  the save failures, and `Open in New Tab`, which opens the tab in the same remote space and
+  takes unsaved edits along.
+- **No `Open in Original App` or `Show in Finder`** in the header: both act on this Mac,
+  where the file is not.
+- **Changes show within about 3 seconds.** Every 3 seconds the viewer asks the machine for
+  the file's checksum and reads the file again only when it changed. With unsaved edits it
+  reads nothing over them and says `Changed on disk`, as on this Mac.
+- **Saving** writes the file on that machine. Just before writing, the viewer reads it
+  again: if it no longer holds the text last read, nothing is written and the status says
+  `Changed on disk`. The file keeps its mode (an executable stays executable), and a file
+  opened through a symbolic link stays a link, with its target changed. The text passes
+  through a copy in the data folder on this Mac, deleted once the write ends. Failures show
+  as on this Mac (`No write permission`, `File deleted`, `Too large to save`,
+  `Couldn't save`).
+- **Links** in a remote document: markdown, code and image files open in the viewer; any
+  other file gets a notification, `Can't show this file`, with its path. `~` is that
+  machine's home. Web and mail links open on this Mac.
+- **Out of reach.** When the machine can't be reached, the viewer shows
+  `Can't reach the machine <name>.` instead of `This file no longer exists.`, and the
+  picker says the same. Unsaved edits stay in the editor, and a save meanwhile fails with
+  that line as its status. Once the machine is back, the viewer reads the file again at
+  its next check.
+- **Windows machines are not supported.** The viewer and the picker show
+  `Files on Windows machines can't be shown yet.`
+- **The router stays out of remote spaces.** A file that reaches the router while a remote
+  space has focus (a path that also exists on this Mac, say) opens in its original app.
+- **`>_` doesn't type into a shell on another machine** (see [Limits](#limits)).
 
 ### Edit and save
 
@@ -152,19 +221,34 @@ There is no switch.
   [`mods/side-viewer/router/main.swift`](mods/side-viewer/router/main.swift) and signed ad
   hoc. The mod and the router run shell commands (`sh`, `open`, `stat`, `cp`, `rm` and the
   like, and `herdr-app`), and read the files you open. To pick the language, the viewer and
-  the router's commands run `defaults read -g AppleLanguages`.
+  the router's commands run `defaults read -g AppleLanguages`. The path picker reads the
+  focused terminal with `hc read` and checks which paths are files with one `sh` on that
+  terminal's machine.
+- **Programs on another machine**: in a remote space the viewer runs, on that machine
+  through Herdr, `sh` (with `stat`, `head`, `od`, `uname`, `printf`) and `cksum`, and
+  reads files there. To save a file there or copy a picture's bytes it runs Herdr's `hc`
+  command line on this Mac (`hc file write --on`, `hc exec --on … cat`), the `hc` on your
+  `PATH`, else `~/.local/bin/hc`.
 - **Herdr's shared state**: the viewer keeps the language last read under
   `side-viewer.lang` (`"en"` or `"ko"`), which every viewer reads.
-- **Your files**: the mod writes a file when you save it or click a checkbox in it.
+- **Your files**: the mod writes a file when you save it or click a checkbox in it, on the
+  machine of the viewer's space.
+- **Herdr's keys**: `install.sh` adds `cmd-o` to Herdr's `keys.json` (see [Install](#install)).
 - **Terminal**: the `>_` button opens a zsh pane and types into it through Herdr's `hc`
   (`hc send`, `hc keys`, `hc get`). A shell it opens gets one line binding an insert widget
   to `ctrl+alt+F12`, and a new zsh started there gets it again.
-- **Network**: nothing reaches the network; a web or mail link you click in a document is
-  handed to macOS.
+- **Network**: the mod opens no connection of its own. A file on another machine is read
+  and written through Herdr's connection to that machine. A web or mail link you click in a
+  document is handed to macOS.
 - **Data folder** (`~/.config/herdr-app/data/side-viewer/`): the mod and the router write:
   - `original-apps.tsv`, the record of original apps;
-  - `request.json` and `answer-<id>`, the request passed from the router to the viewer;
-  - `images/`, copies of the images you view and of the pictures inside markdown documents;
+  - `request.json` and `answer-<id>`, the request passed from the router or the path
+    picker to the viewer;
+  - `images/`, copies of the images you view and of the pictures inside markdown documents,
+    those from another machine too;
+  - `remote-saves/`, the text of a save to another machine on its way there, deleted once
+    the write ends (one left by a quit in the middle is deleted by a remote save at least
+    10 minutes later);
   - `previews/`, copies of edited svg sources, drawn before they are saved;
   - `handoff-<id>.json`, the unsaved edits handed to a new viewer tab, deleted once the tab
     has read them (one can be left behind if Herdr quits in between);
@@ -194,6 +278,24 @@ fails, the mod and the router that were installed stay as they were. It does not
 take-over command below; building alone can still make the router the default for an
 extension no other app claims (see "Building alone can change a default" under
 [Limits](#limits)). **Run it again after `git pull` to update.**
+
+### The cmd-o shortcut
+
+`install.sh` also merges the path picker's key into Herdr's `keys.json`:
+`"cmd-o": "mod.open:side-viewer"` under `global`. It prints what it did under
+`Shortcut keys`.
+
+- **Already there**: left as it is, so running it again adds nothing.
+- **`cmd-o` bound to something else**, in any section (`global`, `terminal`, `layout:*`,
+  `mod:*`): left as it is, and the output says so. Bind `mod.open:side-viewer` to another
+  key yourself.
+- **No `keys.json` yet, a `keys.json` that isn't valid JSON, or no Node**: nothing is
+  changed and the output shows the line to add by hand.
+- Other keys are never touched, and a `keys.json` that is a link stays a link.
+
+**A changed `keys.json` no longer gets new default keys.** On an upgrade Herdr gives new
+default shortcuts only to a keys file nobody edited; once this line is in, any new default
+key has to be added by hand.
 
 ### Take over the extensions
 
@@ -294,8 +396,9 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
 
 ## Limits
 
-- **macOS only.**
-- **Line numbers are ignored.** Clicking `app.ts:12` shows the file from the top.
+- **macOS only**, for the Herdr app this runs in. Remote spaces can be on Linux or macOS
+  machines; **Windows machines are not supported** (the viewer says so).
+- **Line numbers are ignored.** Clicking or picking `app.ts:12` shows the file from the top.
 - **Everything not in the list opens as it does today**: files without an extension,
   extensions outside the list, and `txt`, `diff` and `patch`, which are left out on purpose
   (`txt` would drag in extensionless text files such as `README`; `diff` and `patch` share a
@@ -327,12 +430,24 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
 - **A path with text stuck to its end doesn't open.** Herdr reads the letters right after a
   path as part of it (`/tmp/notes/plan.md에서`), so it finds no file. With a space after the
   path it opens.
-- **Paths printed by a terminal on another machine are not supported.**
+- **A cmd-click in a remote space opens nothing.** The file is not on this Mac, so nothing
+  reaches the router; use `cmd-o`.
+- **A remote save has a gap of under a second.** The viewer reads the file there again just
+  before writing it, so a change that lands in between is overwritten without
+  `Changed on disk`.
+- **A read-only file on another machine is saved anyway** when its folder is writable: a
+  file with mode 444 is replaced and keeps 444. `No write permission` shows only for a
+  folder without write permission. (On this Mac, Herdr's own save probably does the same:
+  see RECIPE.md, Watch out.)
+- **The path picker misses some paths.** A path with a space or one of `,;=*` in it is
+  found only inside backticks. Whether a path longer than the terminal is wide, wrapped
+  onto two lines on screen, is found has not been checked.
 - **Web addresses go to the browser**, not the viewer. A web or mail link inside a markdown
   document is handed to macOS; a link to another markdown file opens in the viewer, and a
-  link to any other local file only shows it in Finder.
-- **Too big to draw**: text over 1 MB and images over 20 MB get a notice instead. The
-  header's buttons still open the file in its original app or show it in Finder. An `svg`
+  link to any other local file only shows it in Finder (in a remote space, see
+  [Remote spaces](#remote-spaces)).
+- **Too big to draw**: text over 1 MB and images over 20 MB get a notice instead. On this
+  Mac the header's buttons still open the file in its original app or show it in Finder. An `svg`
   over 1 MB is drawn but has no source switch.
 - **Restore can merge apps within one file type.** macOS keeps one default per file type,
   yet two extensions of a type can open in different apps (seen with `js` and `mjs`; also
