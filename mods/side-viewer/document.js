@@ -19,11 +19,11 @@ export function noticeFor(state) {
 // `text` is what reading the file gave: a string, or null when the file is not there.
 // `found` is the file's view from views.js (null: no view for this file).
 // Returns { state, text?, language? }; "markdown" and "code" are the states with text to draw.
+// Empty or blank text still gets its view, so a new file can be written in at once.
 export function contentOf(file, text, found) {
   if (!file) return { state: "none" };
   if (!found || (found.view !== "markdown" && found.view !== "code")) return { state: "unsupported" };
   if (text === null || text === undefined) return { state: "missing" };
-  if (text.trim() === "") return { state: "empty" };
   if (found.view === "code") return { state: "code", text, language: found.language };
   return { state: "markdown", text };
 }

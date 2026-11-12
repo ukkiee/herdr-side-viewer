@@ -16,10 +16,15 @@ test("a code file with text is shown as code in its language", () => {
     { state: "code", text: "started", language: null });
 });
 
-test("an empty file gets the empty notice", () => {
-  assert.equal(contentOf("/work/plan.md", "", markdown).state, "empty");
-  assert.equal(contentOf("/work/plan.md", " \n\n", markdown).state, "empty");
-  assert.equal(contentOf("/work/app.ts", "\n", { view: "code", language: "javascript" }).state, "empty");
+test("an empty or blank markdown or code file opens in its view with its text as it is", () => {
+  assert.deepEqual(contentOf("/work/plan.md", "", markdown), { state: "markdown", text: "" });
+  assert.deepEqual(contentOf("/work/plan.md", " \n\n", markdown), { state: "markdown", text: " \n\n" });
+  const ts = { view: "code", language: "javascript" };
+  assert.deepEqual(contentOf("/work/app.ts", "", ts), { state: "code", text: "", language: "javascript" });
+  assert.deepEqual(contentOf("/work/app.ts", "\n", ts), { state: "code", text: "\n", language: "javascript" });
+});
+
+test("the empty notice keeps its words for the pictures that still get it", () => {
   assert.equal(noticeFor("empty"), "이 파일은 비어 있습니다.");
 });
 
