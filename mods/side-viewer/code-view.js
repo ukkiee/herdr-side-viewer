@@ -1,4 +1,4 @@
-// The code view's body: the editor state main.js made after the read.
+// The code view's body, and the markdown source's: the editor state main.js made after the read.
 import { div } from "gpui-kit";
 import { Editor } from "gpui-base";
 
