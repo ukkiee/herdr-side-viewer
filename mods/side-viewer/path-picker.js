@@ -1,4 +1,18 @@
 // The path picker's decisions. No Herdr imports, so it runs under `node --test`.
+//
+// The picker uses them in this order:
+//   conversationOf({ focused, panes }) -> { pane, terminal, cwd } | null
+//     the conversation to read; null: ask for a click on a conversation terminal
+//   pathCandidates({ text, cwd, home, groups }) -> string[]
+//     absolute paths from that terminal's text (`hc read <terminal> --lines 1000`), latest first,
+//     at most CHECK_LIMIT; cwd null leaves relative paths out; groups: extensions.json
+//   existingPaths(candidates, output) -> string[]
+//     the candidates the machine has, at most PICK_LIMIT; output: the existence check run once on
+//     that machine with the candidates, printing each existing path on a line of its own
+//   filterPaths(paths, typed) -> string[]
+//     the paths containing what was typed, ignoring case
+//   openTargetOf({ conversation, panes }) -> { viewer: pane } | { split: { pane, direction } }
+//     where the pick opens: the side viewer shown in the conversation's tab, else a split
 import { viewOf } from "./views.js";
 
 // How many candidates go to the existence check at most. False ones ("Next.js", a path that
@@ -47,6 +61,35 @@ export function existingPaths(candidates, output) {
 export function filterPaths(paths, typed) {
   const wanted = String(typed ?? "").toLowerCase();
   return paths.filter((path) => path.toLowerCase().includes(wanted));
+}
+
+const MOD = "side-viewer";
+
+// The conversation whose text the picker reads, as { pane, terminal, cwd }, or null when the
+// focus is on none (a viewer tab, another mod, no pane): the picker then asks for a click on a
+// conversation terminal. A focused terminal is it. A focused side viewer stands for its tab's
+// conversation, an agent's terminal before a plain shell's.
+//   focused: herdr focused(); panes: herdr panes()
+export function conversationOf({ focused, panes }) {
+  if (!focused?.pane) return null;
+  const here = panes.find((p) => p.pane === focused.pane);
+  if (focused.terminal) return { pane: focused.pane, terminal: focused.terminal, cwd: here?.cwd ?? focused.cwd ?? null };
+  if (here?.mod !== MOD) return null;
+  const terminals = panes.filter((p) => p.tab === here.tab && p.terminal);
+  const found = terminals.find((p) => p.program?.agent || p.status) ?? terminals[0];
+  return found ? { pane: found.pane, terminal: found.terminal, cwd: found.cwd ?? null } : null;
+}
+
+// Where a picked file opens: { viewer: pane } when a side viewer shows in the conversation's
+// tab, else { split: { pane, direction: "right" } } beside the conversation. A viewer behind
+// another pane's zoom does not show, and `side-viewer.show` reaches shown copies only.
+//   conversation: the conversation's pane id; panes: herdr panes()
+export function openTargetOf({ conversation, panes }) {
+  const tab = panes.find((p) => p.pane === conversation)?.tab;
+  const inTab = panes.filter((p) => p.tab === tab);
+  const zoomed = inTab.find((p) => p.zoomed);
+  const viewer = inTab.find((p) => p.mod === MOD && (!zoomed || zoomed === p));
+  return viewer ? { viewer: viewer.pane } : { split: { pane: conversation, direction: "right" } };
 }
 
 // The paths written in one line, in order. A code span with spaces is also tried whole, for

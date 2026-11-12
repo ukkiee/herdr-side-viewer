@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { pathCandidates, existingPaths, filterPaths } from "./path-picker.js";
+import { pathCandidates, existingPaths, filterPaths, conversationOf, openTargetOf } from "./path-picker.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const HOME = "/Users/me";
@@ -115,4 +115,59 @@ test("typing keeps the paths that contain what was typed, in any case", () => {
   assert.deepEqual(filterPaths(shown, "work/app"), ["/Users/me/work/app/docs/plan.md", "/Users/me/work/app/README.md"]);
   assert.deepEqual(filterPaths(shown, ""), shown);
   assert.deepEqual(filterPaths(shown, "없는"), []);
+});
+
+// Herdr's panes(): a terminal pane, or a mod pane (terminal null).
+const pane = (id, tab, more = {}) => ({
+  pane: id, tab, terminal: null, cwd: null, status: null, zoomed: false,
+  program: { key: "shell", agent: false, shell: true }, ...more,
+});
+const agentPane = (id, tab, terminal, cwd) =>
+  pane(id, tab, { terminal, cwd, status: "idle", program: { key: "claude", agent: true, shell: false } });
+const shellPane = (id, tab, terminal, cwd) => pane(id, tab, { terminal, cwd });
+const viewerPane = (id, tab, more = {}) =>
+  pane(id, tab, { mod: "side-viewer", program: { key: "mod", agent: false, shell: false }, ...more });
+const otherModPane = (id, tab) => pane(id, tab, { mod: "notes", program: { key: "mod", agent: false, shell: false } });
+// Herdr's focused() on pane `id`.
+const focusOn = (p) => ({ space: "s1", tab: p.tab, pane: p.pane, terminal: p.terminal, shown: null, agent: null, cwd: p.cwd });
+
+const conversation = agentPane("p1", "w1", "t1", CWD);
+const shell = shellPane("p2", "w1", "t2", "/tmp");
+const viewer = viewerPane("p3", "w1");
+const viewerTab = viewerPane("p9", "w2");
+const PANES = [conversation, shell, viewer, viewerTab];
+
+test("a focused terminal is the conversation that is read", () => {
+  assert.deepEqual(conversationOf({ focused: focusOn(conversation), panes: PANES }), { pane: "p1", terminal: "t1", cwd: CWD });
+  assert.deepEqual(conversationOf({ focused: focusOn(shell), panes: PANES }), { pane: "p2", terminal: "t2", cwd: "/tmp" });
+});
+
+test("a focused side viewer beside a conversation reads that conversation, an agent before a shell", () => {
+  assert.deepEqual(conversationOf({ focused: focusOn(viewer), panes: PANES }), { pane: "p1", terminal: "t1", cwd: CWD });
+  const shellOnly = [shellPane("p5", "w3", "t5", "/srv"), viewerPane("p6", "w3")];
+  assert.deepEqual(conversationOf({ focused: focusOn(shellOnly[1]), panes: shellOnly }), { pane: "p5", terminal: "t5", cwd: "/srv" });
+});
+
+test("a remote conversation keeps its machine address", () => {
+  const remote = [agentPane("p7", "w4", "nuc/t3", "/home/me/app"), viewerPane("p8", "w4")];
+  assert.deepEqual(conversationOf({ focused: focusOn(remote[1]), panes: remote }), { pane: "p7", terminal: "nuc/t3", cwd: "/home/me/app" });
+});
+
+test("focus on a viewer tab, another mod or nothing has no conversation", () => {
+  const notes = otherModPane("p4", "w1");
+  assert.equal(conversationOf({ focused: focusOn(viewerTab), panes: PANES }), null);
+  assert.equal(conversationOf({ focused: focusOn(notes), panes: [...PANES, notes] }), null);
+  assert.equal(conversationOf({ focused: { ...focusOn(conversation), pane: null, terminal: null }, panes: PANES }), null);
+  assert.equal(conversationOf({ focused: null, panes: PANES }), null);
+});
+
+test("a pick opens in the side viewer shown in the conversation's tab", () => {
+  assert.deepEqual(openTargetOf({ conversation: "p1", panes: PANES }), { viewer: "p3" });
+});
+
+test("without a shown side viewer in its tab a pick splits the conversation to the right", () => {
+  const alone = [conversation, viewerTab];
+  assert.deepEqual(openTargetOf({ conversation: "p1", panes: alone }), { split: { pane: "p1", direction: "right" } });
+  const zoomed = [{ ...conversation, zoomed: true }, viewer];
+  assert.deepEqual(openTargetOf({ conversation: "p1", panes: zoomed }), { split: { pane: "p1", direction: "right" } });
 });
