@@ -48,8 +48,9 @@ export function renderMarkdown(t, { text, raw, generation, file, onLink }) {
     t, onLink, footnotes: doc.footnotes,
     // A TextView sees one block, so reference-style links need the definitions next to them.
     references: doc.references.length ? `\n\n${doc.references.join("\n")}` : "",
-    // Ids carry the generation for the same reason as the source's.
-    id: (key) => `side-viewer-md-${generation}-${key}`,
+    // A TextView keeps drawing its first text under the same id. Unsaved edits change the
+    // text without a new generation, so the id also carries a hash of what it draws.
+    id: (key, drawn) => `side-viewer-md-${generation}-${key}-${hashOf(drawn)}`,
   };
   return scroll.child(v_flex().w_full().min_w(0).overflow_hidden().px(28).py(24).gap(12).text_size(BODY)
     .when(Boolean(file), (el) => el.child(renderTitle(t, file)))
@@ -82,8 +83,15 @@ function renderBlocks(ctx, blocks, key, depth) {
   });
 }
 
+function hashOf(text) {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) hash = (hash * 33 + text.charCodeAt(i)) >>> 0;
+  return hash.toString(36);
+}
+
 function renderInline(ctx, key, text) {
-  return TextView.markdown(ctx.id(key), withFootnoteMarks(text, ctx.footnotes) + ctx.references)
+  const drawn = withFootnoteMarks(text, ctx.footnotes) + ctx.references;
+  return TextView.markdown(ctx.id(key, drawn), drawn)
     .selectable(true).on_link_click((url, cx) => ctx.onLink(url, cx));
 }
 
@@ -147,7 +155,7 @@ function renderTable(ctx, block, key) {
   const { t } = ctx;
   const rows = [block.header, ...block.rows];
   const justify = { left: "justify_start", center: "justify_center", right: "justify_end" };
-  return div().id(ctx.id(key)).w_full().min_w(0).overflow_x_scrollbar()
+  return div().id(`side-viewer-table-${key}`).w_full().min_w(0).overflow_x_scrollbar()
     .child(h_flex().flex_none().items_start().children(block.header.map((_, column) =>
       v_flex().flex_none().children(rows.map((row, index) => {
         const cell = h_flex().w_full().h(LINE + 12).px(10).items_center()[justify[block.align[column]] ?? "justify_start"]()
@@ -180,7 +188,7 @@ function renderCodeBlock(ctx, block, key) {
   for (const run of block.text.match(/`+/g) ?? []) longest = Math.max(longest, run.length);
   const fence = "`".repeat(longest + 1);
   const source = `${fence}${block.lang}\n${block.text}\n${fence}`;
-  return div().w_full().min_w(0).child(TextView.markdown(ctx.id(key), source).selectable(true));
+  return div().w_full().min_w(0).child(TextView.markdown(ctx.id(key, source), source).selectable(true));
 }
 
 // The footnotes' text, numbered as their marks in the body, at the end of the document.
