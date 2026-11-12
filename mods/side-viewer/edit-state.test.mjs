@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, refusalOf, saveFailed, startSave, checkboxToggled } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, refusalOf, saveFailed, startSave, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
 
 const A = "/work/a.md";
 
@@ -242,6 +242,47 @@ test("a save of up to 1,048,576 UTF-8 bytes goes ahead; a larger one is stopped 
 
 test("starting a save with nothing to save writes nothing", () => {
   assert.deepEqual(startSave(noEdits(), A), { edits: noEdits(), write: null });
+});
+
+test("handing a file's edits to a viewer tab leaves this viewer showing the disk text", () => {
+  const B = "/work/b.md";
+  let edits = typed(noEdits(), A, "# A\n", "# A!\n");
+  edits = typed(edits, B, "# B\n", "# B!\n");
+  const out = takeEdit(edits, A);
+  assert.deepEqual(out.edit, { disk: "# A\n", text: "# A!\n" });
+  assert.equal(unsaved(out.edits, A), false);
+  assert.equal(shownText(out.edits, A, "# A\n"), "# A\n");
+  // The other file keeps its edits here.
+  assert.equal(shownText(out.edits, B, "# B\n"), "# B!\n");
+});
+
+test("a file without edits has nothing to hand over", () => {
+  const edits = typed(noEdits(), A, "# A\n", "# A!\n");
+  const out = takeEdit(edits, "/work/other.md");
+  assert.equal(out.edit, null);
+  assert.equal(unsaved(out.edits, A), true);
+});
+
+test("the viewer tab that takes the edits shows them as unsaved and saves against the same disk text", () => {
+  const { edit } = takeEdit(typed(noEdits(), A, "# A\n", "# A!\n"), A);
+  const edits = putEdit(noEdits(), A, edit);
+  assert.equal(unsaved(edits, A), true);
+  assert.equal(shownText(edits, A, "# A\n"), "# A!\n");
+  assert.deepEqual(saveOf(edits, A), { path: A, text: "# A!\n", expected: "# A\n" });
+});
+
+test("a conflict bar moves with the edits", () => {
+  let edits = typed(noEdits(), A, "one\n", "mine\n");
+  edits = diskRead(edits, A, "theirs\n").edits;
+  const moved = putEdit(noEdits(), A, takeEdit(edits, A).edit);
+  assert.equal(barOf(moved, A).message, "밖에서 바뀌었습니다");
+  assert.deepEqual(saveOf(overwritten(moved, A), A), { path: A, text: "mine\n", expected: "theirs\n" });
+});
+
+test("a missing or broken edit puts nothing in", () => {
+  for (const edit of [null, undefined, {}, { disk: "a" }, { text: "a" }, { disk: 1, text: "a" }, "text"]) {
+    assert.equal(unsaved(putEdit(noEdits(), A, edit), A), false, JSON.stringify(edit));
+  }
 });
 
 test("a deleted file's edits stay even when typed back to the text read before", () => {

@@ -108,6 +108,23 @@ export function saveFailed(edits, file, error) {
   return withBar(edits, file, bar);
 }
 
+// Handing `file`'s edits to a new viewer tab, as { edits, edit }: `edit` is the file's entry,
+// bar included, or null when it has none; `edits` no longer holds it, so this viewer shows
+// the disk text.
+export function takeEdit(edits, file) {
+  const entry = file ? edits[file] : null;
+  if (!entry) return { edits, edit: null };
+  return { edits: without(edits, file), edit: { ...entry } };
+}
+
+// The viewer tab receiving an entry that takeEdit gave, through the handoff file. Anything
+// that is not an entry puts nothing in.
+export function putEdit(edits, file, edit) {
+  if (!file || typeof edit?.disk !== "string" || typeof edit?.text !== "string") return edits;
+  const { disk, text, bar } = edit;
+  return { ...edits, [file]: bar && typeof bar === "object" ? { disk, text, bar } : { disk, text } };
+}
+
 const MESSAGES = {
   conflict: "밖에서 바뀌었습니다",
   deleted: "파일이 지워졌습니다.",
