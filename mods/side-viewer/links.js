@@ -37,15 +37,19 @@ function normalize(path) {
   return "/" + parts.join("/");
 }
 
-// `url` is the link as written, `file` the document it is in, `home` the home folder,
-// `groups` extensions.json.
+// `url` is the link as written, `file` the document it is in, `home` the home folder of the
+// document's machine (null when not known: a `~` link then does nothing), `groups`
+// extensions.json, `remote` whether the document is on another machine (machine.js).
 // Returns one of:
-//   { action: "show", file }    another markdown document: open it in this viewer
-//   { action: "system", url }   a web or mail address: the system's handler opens it
-//   { action: "reveal", file }  any other local file: only shown in Finder. A link could
+//   { action: "show", file }    open it in this viewer: another markdown document; on another
+//                               machine also a file the viewer knows (code, image)
+//   { action: "system", url }   a web or mail address: this Mac's handler opens it
+//   { action: "reveal", file }  any other file on this Mac: only shown in Finder. A link could
 //                               point at something that runs, so it is never opened.
+//   { action: "unshown", file } any other file on another machine: Finder cannot show it, so
+//                               the viewer says it cannot show the file
 //   { action: "none" }          an anchor inside the document, or a scheme we do not follow
-export function linkAction(url, file, home, groups) {
+export function linkAction(url, file, home, groups, remote = false) {
   const none = { action: "none" };
   let path = typeof url === "string" ? url.trim() : "";
   if (/^(https?|mailto):/i.test(path)) return { action: "system", url: path };
@@ -61,14 +65,17 @@ export function linkAction(url, file, home, groups) {
     // A stray "%" is a legal file name: keep the path as written.
   }
 
-  if (path === "~" || path.startsWith("~/")) path = (home ?? "") + path.slice(1);
-  else if (!path.startsWith("/")) {
+  if (path === "~" || path.startsWith("~/")) {
+    if (typeof home !== "string" || !home) return none;
+    path = home + path.slice(1);
+  } else if (!path.startsWith("/")) {
     const folder = folderOf(file);
     if (!folder) return none;
     path = `${folder}/${path}`;
   }
   path = normalize(path);
-  return isMarkdown(path, groups) ? { action: "show", file: path } : { action: "reveal", file: path };
+  if (isMarkdown(path, groups) || (remote && viewOf(path, groups))) return { action: "show", file: path };
+  return remote ? { action: "unshown", file: path } : { action: "reveal", file: path };
 }
 
 // Whether a batch of changed paths from the folder watch concerns the shown file. The watch

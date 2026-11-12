@@ -87,6 +87,51 @@ test("before the list has been read nothing counts as markdown, so a link only s
   assert.deepEqual(linkAction("https://example.com", DOC, HOME, null), { action: "system", url: "https://example.com" });
 });
 
+// A document on another machine, whose home is not this Mac's.
+const RDOC = "/home/me/notes/guide/intro.md";
+const RHOME = "/home/me";
+const remote = (url, doc = RDOC, home = RHOME) => linkAction(url, doc, home, GROUPS, true);
+
+test("on another machine a markdown link opens in the viewer, from the document's folder or as written", () => {
+  assert.deepEqual(remote("setup.md#install"), { action: "show", file: "/home/me/notes/guide/setup.md" });
+  assert.deepEqual(remote("../README.md"), { action: "show", file: "/home/me/notes/README.md" });
+  assert.deepEqual(remote("/etc/notes/a.md"), { action: "show", file: "/etc/notes/a.md" });
+  assert.deepEqual(remote("file:///home/me/docs/a.md"), { action: "show", file: "/home/me/docs/a.md" });
+});
+
+test("on another machine a code or image file the viewer knows opens in the viewer too", () => {
+  assert.deepEqual(remote("src/main.go"), { action: "show", file: "/home/me/notes/guide/src/main.go" });
+  assert.deepEqual(remote("run.sh"), { action: "show", file: "/home/me/notes/guide/run.sh" });
+  assert.deepEqual(remote("../shots/a.PNG"), { action: "show", file: "/home/me/notes/shots/a.PNG" });
+  assert.deepEqual(remote("/srv/logo.svg"), { action: "show", file: "/srv/logo.svg" });
+});
+
+test("on another machine any other file is not shown: the viewer says it cannot show it", () => {
+  assert.deepEqual(remote("report.pdf"), { action: "unshown", file: "/home/me/notes/guide/report.pdf" });
+  assert.deepEqual(remote("images/"), { action: "unshown", file: "/home/me/notes/guide/images" });
+  assert.deepEqual(remote("/usr/bin/tool"), { action: "unshown", file: "/usr/bin/tool" });
+});
+
+test("on another machine ~ is that machine's home, and without a home a ~ link does nothing", () => {
+  assert.deepEqual(remote("~/docs/a.md"), { action: "show", file: "/home/me/docs/a.md" });
+  assert.deepEqual(remote("~"), { action: "unshown", file: "/home/me" });
+  assert.deepEqual(remote("~/docs/a.md", RDOC, null), { action: "none" });
+  assert.deepEqual(remote("docs/a.md", RDOC, null), { action: "show", file: "/home/me/notes/guide/docs/a.md" });
+});
+
+test("on another machine web and mail addresses still go to this Mac's system, other schemes still do nothing", () => {
+  assert.deepEqual(remote("https://example.com/a.md"), { action: "system", url: "https://example.com/a.md" });
+  assert.deepEqual(remote("mailto:someone@example.com"), { action: "system", url: "mailto:someone@example.com" });
+  assert.deepEqual(remote("#install"), { action: "none" });
+  assert.deepEqual(remote("vscode://file/a.md"), { action: "none" });
+});
+
+test("on this Mac a code or image link is still only shown in Finder", () => {
+  assert.deepEqual(act("src/main.go"), { action: "reveal", file: "/Users/me/notes/guide/src/main.go" });
+  assert.deepEqual(act("a.png"), { action: "reveal", file: "/Users/me/notes/guide/a.png" });
+  assert.deepEqual(linkAction("a.png", DOC, HOME, GROUPS, false), { action: "reveal", file: "/Users/me/notes/guide/a.png" });
+});
+
 test("touches: a batch of changed paths concerns the shown file", () => {
   const file = "/tmp/docs/a.md";
   assert.equal(touches(["/tmp/docs/a.md"], file), true);
