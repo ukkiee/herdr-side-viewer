@@ -90,9 +90,9 @@ function renderCell(t, id, label, selected, onToggleRaw) {
 
 // "Open in a new tab", "Open in the original app" and "Show in Finder", those of `actions`
 // (machine.js headerActions) that apply.
-function renderActions(t, header, actions) {
+function renderActions(t, { tr, onNewTab, onOriginal, onFinder }, actions) {
   return h_flex().flex_none().gap(2)
-    .children(actions.map((action) => ACTIONS[action](t, header)));
+    .children(actions.map((action) => ACTIONS[action](t, { tr, onNewTab, onOriginal, onFinder })));
 }
 
 const ACTIONS = {
