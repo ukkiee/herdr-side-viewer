@@ -177,8 +177,8 @@ The mod shows files, not agents, so it has no agent statuses.
   bound to `\e[24;7~` in the emacs, viins and vicmd keymaps, then `clear`. The viewer
   remembers the pid of the zsh it prepared (`hc get`'s `foreground.pid` at the prompt); a
   shell just opened is prepared without alt+q, a zsh with another pid in the same pane is
-  prepared again after `hc keys <terminal> alt+q`. The viewer gives that pane the keyboard. The next `>_` uses the same pane while it shows the
-  same terminal. When `hc get`'s `foreground` is not zsh, nothing is sent and a Herdr
+  prepared again after `hc keys <terminal> alt+q`. The viewer gives that pane the keyboard.
+  The next `>_` uses the same pane while it shows the same terminal. When `hc get`'s `foreground` is not zsh, nothing is sent and a Herdr
   notification says `터미널에 넣지 않았습니다` / `셸에서 다른 프로그램(<name>)이 실행
   중입니다. 끝난 뒤 다시 누르세요.`; when no pane can be opened or found,
   `터미널에 넣지 못했습니다` / `셸 pane을 열거나 찾지 못했습니다.`.
