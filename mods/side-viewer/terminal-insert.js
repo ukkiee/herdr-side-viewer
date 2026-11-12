@@ -33,6 +33,24 @@ export function shellState(info) {
   return /^-?zsh$/.test(program) ? { state: "ready" } : { state: "busy", program };
 }
 
+// The folder a new shell pane starts in. In a viewer tab, the shown document's folder. Beside
+// a conversation, that conversation terminal's live folder: the viewer was split off it, so it
+// is a terminal pane in the viewer's own tab, an agent's before a plain shell's, and never the
+// shell this viewer opened. Home when there is none.
+//   viewer: the viewer's pane id or null; panes: herdr panes(); shell: { pane, terminal } or null
+export function shellFolder({ viewerTab, file, viewer, panes, shell, home }) {
+  if (viewerTab) {
+    if (!file) return home;
+    const folder = file.slice(0, file.lastIndexOf("/"));
+    return folder || "/";
+  }
+  const tab = panes.find((p) => p.pane === viewer)?.tab;
+  if (!tab) return home;
+  const terminals = panes.filter((p) => p.tab === tab && p.terminal && p.cwd && p.pane !== shell?.pane);
+  const conversation = terminals.find((p) => p.program?.agent || p.status) ?? terminals[0];
+  return conversation?.cwd ?? home;
+}
+
 // The notification (herdr notify) for a line that was not put in.
 //   reason: { state: "busy", program } | { state: "failed" }
 export function noticeOf(reason) {
