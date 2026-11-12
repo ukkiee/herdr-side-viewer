@@ -56,6 +56,38 @@ test("merging twice leaves one line and the second time writes nothing", () => {
   assert.equal(once.text.split('"cmd-o"').length - 1, 1);
 });
 
+// AC-5: cmd-o bound to another action in any section stays the person's, and they are told.
+for (const [section, action] of [
+  ["global", "app.palette"],
+  ["terminal", "terminal"],
+  ["layout:terminals", "space.next"],
+  ["mod:editor", { command: "editor.open", args: {} }],
+]) {
+  test(`cmd-o bound in ${section} is left as it is and the person is told`, () => {
+    const keys = { global: { "alt-1": "space.select:1" } };
+    (keys[section] ??= {})["cmd-o"] = action;
+    const result = mergeKeys(JSON.stringify(keys), wanted);
+    assert.equal(result.text, null);
+    const told = result.lines.join("\n");
+    assert.match(told, /cmd-o/);
+    assert.ok(told.includes(section), `names the section: ${told}`);
+  });
+}
+
+test("a keys.json that is not valid JSON is not written and the line to add by hand is given", () => {
+  const result = mergeKeys('{ "global": { "alt-1": "space.select:1", }', wanted);
+  assert.equal(result.text, null);
+  assert.ok(result.lines.some((line) => line.includes('"cmd-o": "mod.open:side-viewer"')));
+});
+
+test("a keys.json that is JSON but not an object of sections is not written", () => {
+  for (const text of ["null", "[]", '{ "global": "cmd-o" }']) {
+    const result = mergeKeys(text, wanted);
+    assert.equal(result.text, null, text);
+    assert.ok(result.lines.some((line) => line.includes('"cmd-o": "mod.open:side-viewer"')), text);
+  }
+});
+
 test("a keys.json without a global section gets one", () => {
   const result = mergeKeys('{ "terminal": { "ctrl-1": "terminal" } }', wanted);
   assert.deepEqual(JSON.parse(result.text), {
