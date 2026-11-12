@@ -6,7 +6,11 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, switchable, editedContentOf, opensInTab, blankSvg, sourceOnlySvg, rendersEmpty } from "./views.js";
+
+import { contentOf } from "./document.js";
+import { noEdits, typed, diskRead, shownText, barOf } from "./edit-state.js";
+import { translator } from "./i18n.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const probe = (bytes) => ({ found: true, readable: true, bytes, modified: 1, head: [] });
@@ -31,7 +35,7 @@ test("every other listed extension gets the code view", () => {
 
 test("a file outside the listed extensions has no view", () => {
   assert.equal(viewOf("/work/report.pdf", groups), null);
-  assert.equal(viewOf("/work/page.html", groups), null);
+  assert.equal(viewOf("/work/page.xhtml", groups), null);
   assert.equal(viewOf("/work/README", groups), null);
   assert.equal(viewOf("/work/notes.md/README", groups), null);
   assert.equal(viewOf("/work/plan.md", null), null);
@@ -50,6 +54,15 @@ test("code files get their editor language", () => {
   assert.equal(language("util.h"), "c");
   assert.equal(language("util.cc"), "cpp");
   assert.equal(language("job.rbw"), "ruby");
+});
+
+test("html files, with the extensions macOS gives the same file type, open in the code view with HTML colors", () => {
+  // macOS files html, htm, shtml and shtm under one type (public.html), so taking over
+  // html brings all four to the router.
+  for (const name of ["page.html", "page.htm", "page.shtml", "page.shtm", "INDEX.HTML"]) {
+    assert.deepEqual(viewOf(`/work/${name}`, groups), { view: "code", language: "html" }, name);
+  }
+  assert.equal(editable(viewOf("/work/page.html", groups).view, false), true);
 });
 
 test("TypeScript and JSX use JavaScript colors", () => {
@@ -78,12 +91,24 @@ test("an image is drawn up to exactly 20 MB and not beyond", () => {
   assert.equal(blockerOf(found, probe(20971521)), "large");
 });
 
-test("a file that is gone, unreadable, empty or of no view is stopped with its reason", () => {
+test("a file that is gone, unreadable or of no view is stopped with its reason", () => {
   const found = viewOf("/work/app.ts", groups);
   assert.equal(blockerOf(null, probe(10)), "unsupported");
   assert.equal(blockerOf(found, { found: false }), "missing");
   assert.equal(blockerOf(found, { found: true, readable: false }), "unreadable");
-  assert.equal(blockerOf(found, probe(0)), "empty");
+});
+
+test("an empty markdown, code or svg file is read into its view; an empty svgz or picture gets the empty notice", () => {
+  for (const name of ["plan.md", "app.ts", "server.log", "logo.svg", "LOGO.SVG"]) {
+    assert.equal(blockerOf(viewOf(`/work/${name}`, groups), probe(0), `/work/${name}`), null, name);
+  }
+  for (const name of ["shot.png", "logo.svgz"]) {
+    assert.equal(blockerOf(viewOf(`/work/${name}`, groups), probe(0), `/work/${name}`), "empty", name);
+  }
+  assert.equal(editable("code", false), true);
+  assert.equal(editable("markdown", true), true);
+  assert.equal(editable("markdown", false), false);
+  assert.equal(editable("empty", true), false);
 });
 
 // The probe is the script the mod runs to learn about a file before reading it.
@@ -111,6 +136,76 @@ test("the probe tells a missing file from one that cannot be read", () => {
   chmodSync(locked, 0o000);
   assert.deepEqual(run(locked), { found: true, readable: false });
   assert.deepEqual(readProbe(""), { found: true, readable: false });
+});
+
+test("an svg with nothing written in it yet is blank: named .svg, empty or only whitespace", () => {
+  const dir = mkdtempSync(join(tmpdir(), "side-viewer-blank-"));
+  const at = (name, text) => {
+    const file = join(dir, name);
+    writeFileSync(file, text);
+    return file;
+  };
+  for (const [name, text] of [["empty.svg", ""], ["blank.svg", " \n\t\r\n"], ["BLANK.SVG", "\n"]]) {
+    const file = at(name, text);
+    assert.equal(blankSvg(file, run(file)), true, name);
+  }
+  for (const [name, text] of [["logo.svg", "<svg/>"], ["spaced.svg", "\n<svg/>\n"], ["blank.svgz", " \n"], ["blank.png", " \n"], ["blank.md", ""]]) {
+    const file = at(name, text);
+    assert.equal(blankSvg(file, run(file)), false, name);
+  }
+  // Whitespace past the probe's first bytes could hide a picture after it: not known blank.
+  const long = at("long.svg", " ".repeat(5000));
+  assert.equal(blankSvg(long, run(long)), false);
+  assert.equal(blankSvg(join(dir, "none.svg"), run(join(dir, "none.svg"))), false);
+  assert.equal(blankSvg("/work/a.svg", { found: true, readable: false }), false);
+});
+
+test("a blank svg is read into its source with no picture, and its rendering shows the empty notice", () => {
+  const svg = viewOf("/work/new.svg", groups);
+  const empty = { found: true, readable: true, bytes: 0, modified: 1, head: [] };
+  assert.equal(blockerOf(svg, empty, "/work/new.svg"), null);
+  const content = sourceOnlySvg(" \n");
+  assert.deepEqual(content, { state: "svg", text: " \n", path: null, size: null });
+  assert.equal(switchable(content.state), true);
+  assert.deepEqual(editorOf(content.state), { soft_wrap: true, language: "xml" });
+  assert.equal(rendersEmpty(shownText(noEdits(), "/work/new.svg", content.text)), true);
+});
+
+test("a rendering with no text to draw shows the empty notice; any written text is drawn", () => {
+  for (const text of ["", " ", "\n\n", " \t\r\n"]) assert.equal(rendersEmpty(text), true, JSON.stringify(text));
+  for (const text of ["#", "x", " <svg/>\n", "\n- [ ] a\n"]) assert.equal(rendersEmpty(text), false, JSON.stringify(text));
+});
+
+test("an empty markdown or svg written in from its source renders the written text", () => {
+  for (const [file, written] of [["/work/new.md", "# new\n"], ["/work/new.svg", "<svg/>"]]) {
+    const edits = typed(noEdits(), file, "", written);
+    assert.equal(rendersEmpty(shownText(edits, file, "")), false, file);
+    // Emptied again in the source, the rendering says so again.
+    assert.equal(rendersEmpty(shownText(typed(edits, file, "", " "), file, "")), true, file);
+  }
+});
+
+test("an edited svg emptied outside keeps the edits on screen and raises the changed-outside bar", () => {
+  const file = "/work/logo.svg";
+  const found = viewOf(file, groups);
+  const blank = { found: true, readable: true, bytes: 0, modified: 1, head: [] };
+  // The viewer's read of the emptied file, as main.js does it: no blocker, a blank svg's source.
+  assert.equal(blockerOf(found, blank, file), null);
+  assert.equal(blankSvg(file, blank), true);
+  const read = sourceOnlySvg("");
+  const edits = typed(noEdits(), file, "<svg/>", "<svg><g/></svg>");
+  const step = diskRead(edits, file, "");
+  assert.equal(step.step, "keep");
+  const content = editedContentOf(file, read, found, step.edits[file].disk);
+  assert.equal(content.state, "svg");
+  assert.equal(shownText(step.edits, file, content.text), "<svg><g/></svg>");
+  assert.equal(rendersEmpty(shownText(step.edits, file, content.text)), false);
+  assert.deepEqual(barOf(step.edits, file, translator("ko")), { kind: "conflict", message: "외부에서 바뀌었어요" });
+  // The disk comes back to the text the edits started from: the bar goes, the edits stay.
+  const back = diskRead(step.edits, file, "<svg/>");
+  assert.equal(back.step, "keep");
+  assert.equal(barOf(back.edits, file, translator("ko")), null);
+  assert.equal(shownText(back.edits, file, "<svg/>"), "<svg><g/></svg>");
 });
 
 test("reading the same file again shows no loading notice, opening another file does", () => {
@@ -181,4 +276,118 @@ test("code drawn under another theme gets a new editor, whose colors are fixed w
 test("changed code in the same language keeps its editor and only gets the new text", () => {
   assert.equal(refreshOf({ state: "code", text: "x", language: "go", editor: {} }, { state: "code", text: "y", language: "go" }), "retext");
   assert.equal(refreshOf({ state: "code", text: "x", language: "go" }, { state: "code", text: "y", language: "go" }), "replace");
+});
+
+test("typing goes into the markdown source and the code view, nowhere else", () => {
+  assert.equal(editable("markdown", true), true);
+  assert.equal(editable("code", false), true);
+  assert.equal(editable("code", true), true);
+  assert.equal(editable("markdown", false), false);
+  assert.equal(editable("image", false), false);
+  for (const notice of ["none", "loading", "empty", "missing", "unreadable", "unsupported", "large"]) {
+    assert.equal(editable(notice, false), false, notice);
+    assert.equal(editable(notice, true), false, notice);
+  }
+});
+
+test("the markdown source's editor wraps long lines, the code view's does not", () => {
+  assert.deepEqual(editorOf("markdown"), { soft_wrap: true });
+  assert.deepEqual(editorOf("code"), { soft_wrap: false });
+  assert.equal(editorOf("image"), null);
+  assert.equal(editorOf("missing"), null);
+});
+
+test("an svg is drawn as a picture that also has its source; svgz and other images have none", () => {
+  assert.equal(imageState("/work/logo.svg", "svg", 900), "svg");
+  assert.equal(imageState("/work/LOGO.SVG", "svg", 900), "svg");
+  // svgz is compressed: there is no text to show or edit.
+  assert.equal(imageState("/work/logo.svgz", "svgz", 900), "image");
+  // An svgz file that holds plain svg text is still an svgz to the user.
+  assert.equal(imageState("/work/logo.svgz", "svg", 900), "image");
+  assert.equal(imageState("/work/shot.png", "png", 900), "image");
+  // The source is read as text, so it has the text views' limit.
+  assert.equal(imageState("/work/logo.svg", "svg", 1024 * 1024), "svg");
+  assert.equal(imageState("/work/logo.svg", "svg", 1024 * 1024 + 1), "image");
+});
+
+test("the rendering and source switch is on markdown and svg, nowhere else", () => {
+  assert.equal(switchable("markdown"), true);
+  assert.equal(switchable("svg"), true);
+  for (const state of ["image", "code", "none", "loading", "empty", "missing", "unreadable", "unsupported", "large"]) {
+    assert.equal(switchable(state), false, state);
+  }
+});
+
+test("an svg takes typing in its source only; the picture and other images never do", () => {
+  assert.equal(editable("svg", true), true);
+  assert.equal(editable("svg", false), false);
+  assert.equal(editable("image", true), false);
+});
+
+test("an svg's source is edited with XML colors and wraps long lines like the markdown source", () => {
+  assert.deepEqual(editorOf("svg"), { soft_wrap: true, language: "xml" });
+});
+
+test("a changed svg keeps its source editor and only gets the new text", () => {
+  const shown = { state: "svg", text: "<svg/>", path: "data/side-viewer/images/a-6-1.svg", size: null, theme: "#1", editor: {} };
+  const next = { state: "svg", text: "<svg />", path: "data/side-viewer/images/a-7-2.svg", size: null, theme: "#1" };
+  assert.equal(refreshOf(shown, next), "retext");
+  assert.equal(refreshOf(shown, { ...next, theme: "#2" }), "replace");
+  assert.equal(refreshOf(shown, { ...shown, editor: undefined }), "keep");
+  assert.equal(refreshOf(shown, { ...next, state: "image" }), "replace");
+});
+
+test("a file with unsaved edits that is now gone, empty or too large comes back as its view, not a notice", () => {
+  const md = viewOf("/work/plan.md", groups);
+  for (const state of ["missing", "empty", "large", "unreadable"]) {
+    assert.deepEqual(editedContentOf("/work/plan.md", { state }, md, "# plan\n"), { state: "markdown", text: "# plan\n" }, state);
+  }
+  assert.deepEqual(editedContentOf("/work/main.py", { state: "missing" }, viewOf("/work/main.py", groups), "x = 1\n"),
+    { state: "code", text: "x = 1\n", language: "python" });
+  assert.deepEqual(editedContentOf("/work/logo.svg", { state: "missing" }, viewOf("/work/logo.svg", groups), "<svg/>"),
+    { state: "svg", text: "<svg/>", path: null, size: null });
+});
+
+test("an edited markdown or code file emptied outside keeps the edits on screen and raises the changed-outside bar", () => {
+  for (const [file, before] of [["/work/plan.md", "# plan\n"], ["/work/main.py", "x = 1\n"]]) {
+    const found = viewOf(file, groups);
+    // The viewer's read of the emptied file, as main.js does it: no blocker, then contentOf.
+    assert.equal(blockerOf(found, probe(0)), null, file);
+    const read = contentOf(file, "", found);
+    const edits = typed(noEdits(), file, before, before + "more\n");
+    const step = diskRead(edits, file, "");
+    assert.equal(step.step, "keep", file);
+    const content = editedContentOf(file, read, found, step.edits[file].disk);
+    assert.equal(content.state, found.view, file);
+    assert.equal(shownText(step.edits, file, content.text), before + "more\n", file);
+    assert.deepEqual(barOf(step.edits, file, translator("ko")), { kind: "conflict", message: "외부에서 바뀌었어요" }, file);
+  }
+});
+
+test("an edited svg that grew past the text limit or stopped being svg comes back as its source, other pictures do not", () => {
+  const svg = viewOf("/work/logo.svg", groups);
+  const grown = { state: "image", path: "/work/logo.svg", size: { width: 10, height: 10 } };
+  assert.deepEqual(editedContentOf("/work/logo.svg", grown, svg, "<svg/>"), { state: "svg", text: "<svg/>", path: null, size: null });
+  assert.deepEqual(editedContentOf("/work/logo.svg", { state: "unsupported" }, svg, "<svg/>"), { state: "svg", text: "<svg/>", path: null, size: null });
+  const png = viewOf("/work/shot.png", groups);
+  const picture = { state: "image", path: "/work/shot.png", size: { width: 10, height: 10 } };
+  assert.equal(editedContentOf("/work/shot.png", picture, png, "x"), picture);
+  assert.deepEqual(editedContentOf("/work/shot.png", { state: "unsupported" }, png, "x"), { state: "unsupported" });
+});
+
+test("a read that can be drawn, or a file without edits, keeps the read's own content", () => {
+  const md = viewOf("/work/plan.md", groups);
+  const read = { state: "markdown", text: "# new\n" };
+  assert.equal(editedContentOf("/work/plan.md", read, md, "# plan\n"), read);
+  assert.equal(editedContentOf("/work/plan.md", null, md, "# plan\n"), null);
+  assert.deepEqual(editedContentOf("/work/plan.md", { state: "missing" }, md, undefined), { state: "missing" });
+  assert.deepEqual(editedContentOf("/work/plan.md", { state: "unsupported" }, null, "# plan\n"), { state: "unsupported" });
+  assert.deepEqual(editedContentOf("/work/shot.png", { state: "missing" }, viewOf("/work/shot.png", groups), "x"), { state: "missing" });
+});
+
+test("only drawn content offers a new tab; a notice offers the original app and Finder alone", () => {
+  for (const state of ["markdown", "code", "image", "svg"]) assert.equal(opensInTab(state), true, state);
+  for (const state of ["none", "loading", "empty", "missing", "unreadable", "unsupported", "large"]) {
+    assert.equal(opensInTab(state), false, state);
+  }
 });

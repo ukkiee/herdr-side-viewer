@@ -71,15 +71,6 @@ export function linkAction(url, file, home, groups) {
   return isMarkdown(path, groups) ? { action: "show", file: path } : { action: "reveal", file: path };
 }
 
-// The source wrapped in a code fence, so the markdown view draws it as written and it stays
-// selectable. The fence is one backtick longer than the longest run inside.
-export function rawMarkdown(text) {
-  let longest = 2;
-  for (const run of text.match(/`+/g) ?? []) longest = Math.max(longest, run.length);
-  const fence = "`".repeat(longest + 1);
-  return `${fence}\n${text}${text.endsWith("\n") ? "" : "\n"}${fence}`;
-}
-
 // Whether a batch of changed paths from the folder watch concerns the shown file. The watch
 // is recursive on macOS, so most batches are about other files.
 export function touches(paths, file) {

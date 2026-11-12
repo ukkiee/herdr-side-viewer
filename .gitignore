@@ -1,3 +1,5 @@
 # Written into a mod folder by `herdr-app check`.
 mods/*/gpui-kit.d.ts
 mods/*/jsconfig.json
+
+.DS_Store

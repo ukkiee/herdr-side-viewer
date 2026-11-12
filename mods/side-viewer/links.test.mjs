@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { isMarkdown, linkAction, rawMarkdown, touches, watchedFolder } from "./links.js";
+import { isMarkdown, linkAction, touches, watchedFolder } from "./links.js";
 
 const DOC = "/Users/me/notes/guide/intro.md";
 const HOME = "/Users/me";
@@ -85,13 +85,6 @@ test("before the list has been read nothing counts as markdown, so a link only s
   assert.equal(isMarkdown("/a/b.md", undefined), false);
   assert.deepEqual(linkAction("setup.md", DOC, HOME, null), { action: "reveal", file: "/Users/me/notes/guide/setup.md" });
   assert.deepEqual(linkAction("https://example.com", DOC, HOME, null), { action: "system", url: "https://example.com" });
-});
-
-test("rawMarkdown fences the source so it is drawn as written", () => {
-  assert.equal(rawMarkdown("# Title\n*x*"), "```\n# Title\n*x*\n```");
-  // The fence must be longer than any run of backticks inside.
-  assert.equal(rawMarkdown("a\n```js\nx\n```\n"), "````\na\n```js\nx\n```\n````");
-  assert.equal(rawMarkdown("`````"), "``````\n`````\n``````");
 });
 
 test("touches: a batch of changed paths concerns the shown file", () => {
