@@ -171,13 +171,21 @@ The mod shows files, not agents, so it has no agent statuses.
   agent's first; else home. The command (without its last newline) is written to
   `data/side-viewer/shell/<terminal>.txt` (folder made with `umask 077`; `writeTextFile`
   with the file's current text, or null, as `expected`, tried twice), then `hc keys
-  <terminal> ctrl+alt+f12`. Before that key, a zsh not yet prepared gets the prepare line
+  <terminal> ctrl+alt+f12`. Instead of that key, a zsh not yet prepared gets the prepare line
   with `hc send`: a zle widget `_side_viewer_insert` that pushes a draft aside (`zle
   push-line`), reads the file into `BUFFER`, puts the cursor at its end and removes the file,
-  bound to `\e[24;7~` in the emacs, viins and vicmd keymaps, then `clear`. The viewer
-  remembers the pid of the zsh it prepared (`hc get`'s `foreground.pid` at the prompt); a
-  shell just opened is prepared without alt+q, a zsh with another pid in the same pane is
-  prepared again after `hc keys <terminal> alt+q`. The viewer gives that pane the keyboard.
+  bound to `\e[24;7~` in the emacs, viins and vicmd keymaps; then `print -rz` of the file's
+  text (shown at the next prompt, above a draft pushed aside before), the file removed, and
+  `clear`. The viewer remembers the pid and argv of the zsh it prepared (`hc get`'s
+  `foreground` at the prompt); a shell just opened is prepared without alt+q, a zsh with
+  another pid or argv in the same pane, or one that left an earlier file, is prepared again
+  after `hc keys <terminal> alt+q`. Then the viewer waits for the file to go (500 ms after
+  the key, 3 s after the prepare line, looking every 50 ms). A file still there is removed,
+  the zsh is forgotten, and a notification says `터미널에 넣지 못했습니다` / `셸이 명령을 받지
+  않았습니다(exec zsh 등으로 다시 시작됨). 입력 칸에 ;7~가 남았다면 지우고 다시 누르세요.`
+  A terminal (or a viewer) whose hc address has a machine prefix (`mini/t7`) gets nothing:
+  `다른 기계의 셸에는 넣을 수 없습니다. 복사 버튼으로 붙여 넣으세요.` Otherwise the viewer
+  gives that pane the keyboard.
   The next `>_` uses the same pane while it shows the same terminal. When `hc get`'s `foreground` is not zsh, nothing is sent and a Herdr
   notification says `터미널에 넣지 않았습니다` / `셸에서 다른 프로그램(<name>)이 실행
   중입니다. 끝난 뒤 다시 누르세요.`; when no pane can be opened or found,
@@ -376,10 +384,16 @@ Platform:
   command goes through a file and that key. Nothing runs, the prepare line is wiped by
   `clear` (and kept out of history by its leading space with `histignorespace`), and the
   widget's push-line works in every keymap, so a vi-keymap draft is never run. zsh only.
-  The one line still sent with `hc send` is the prepare line: to a shell just opened (no
-  draft yet), or after alt+q when the pane's zsh has another pid (`zsh` or `exec zsh` run
-  there). In that case alt+q is not push-line in a vi keymap, so a draft can run with the
-  prepare line, and `clear` wipes that shell's screen (README, Limits).
+  The one line still sent with `hc send` is the prepare line, and it puts that press's command
+  in itself (`print -rz`), so no key can arrive while zle is not reading and be echoed as
+  `^[[24;7~`. It goes to a shell just opened (no draft yet), or after alt+q when the pane's
+  zsh looks new (`zsh` run there, or `exec zsh` with other argv) or left the last file. In
+  that case alt+q is not push-line in a vi keymap, so a draft can run with the prepare line,
+  and `clear` wipes that shell's screen (README, Limits). `exec` keeps the pid, so `exec zsh`
+  with the same argv as the zsh prepared is only caught after its press: the unbound key
+  leaves `;7~` in the input line and the file stays, which the wait above turns into a
+  notification and a prepare on the next press. A shell on another machine never sees the
+  file (`writeTextFile` takes no machine), so it is refused before anything is sent.
 - zsh reports no hc status, so `hc get`'s `status` is always null; `foreground.name` (`zsh`
   at the prompt, `sleep` while it runs) tells a busy shell.
 - `pane.split` takes no folder, so the shell starts as a short zsh that `cd`s and becomes
@@ -495,7 +509,8 @@ and a path in code formatting.
     in the same viewer and `←` returns. An `https` link opens in the browser. A link to a
     local non-markdown file only shows it in Finder. (AC-7)
 12. The `렌더링 | 원문` switch shows for a drawn markdown document (and an svg, v2 list)
-    only, never on a notice, and its other cell flips the view. `원래 앱으로 열기` opens the
+    only, never on a notice state (an empty markdown or svg rendering keeps it with its
+    notice text, v2 AC-22), and its other cell flips the view. `원래 앱으로 열기` opens the
     file in its original app and the side viewer does not change. `Finder에서 보기` opens a
     Finder window with the file selected. Narrow the pane: name and folder are cut short,
     the switch and the three buttons stay. (AC-8; v2 AC-12)
@@ -648,7 +663,11 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
     typed. When `sleep` ends, click `>_` again: the command goes into the same pane. (AC-16)
 20. In that shell type `echo draft` without Enter, click `>_`: the input line holds the
     command; clear it (ctrl+U) and press Enter on the empty line: `echo draft` comes back.
-    The same after ` bindkey -v`: the draft is not run and comes back. (AC-16)
+    The same after ` bindkey -v`: the draft is not run and comes back. Clear the line, run
+    `exec zsh` and click `>_`: the command goes in and no other line is left on the screen.
+    Clear the line, run `exec zsh` again and click `>_`: a notification
+    `터미널에 넣지 못했습니다` comes and the input line may hold `;7~`; clear it and click `>_`
+    again: the command goes in. (AC-16)
 21. In the side viewer showing `~/sv2-check/markdown-sample.md`, click `새 탭으로 열기`: a
     new tab right after the current one, named `markdown-sample.md`, holding only a side
     viewer, and it is shown; there is no `←`. Go back and click it again: a second tab.

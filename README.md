@@ -18,13 +18,14 @@ command into a terminal's input line.
 - **Images**: drawn no wider than the pane. An `svg` also has the `렌더링 | 원문` switch,
   and its source can be edited.
 - **Saving** (cmd+S): edits are saved with cmd+S or the header's `저장` button, never on
-  their own. The one exception is a checkbox click (see [Edit and save](#edit-and-save)).
+  their own. The one exception is a checkbox click in a file without edits (see
+  [Edit and save](#edit-and-save)).
 - **One viewer per tab**: a viewer already showing in the tab takes the next file, so panes
   don't pile up, and `←` goes back to the file before. The viewer reloads when the file
   changes on disk.
 - **Viewer tab**: the header's `새 탭으로 열기` button gives the file a tab of its own.
 - **`>_` on shell blocks**: types a code block's command into a shell pane below the viewer,
-  without running it.
+  without running it (one narrow case with zsh's vi keys, see [Limits](#limits)).
 - **Outside Herdr** (Finder, another terminal) the same files keep opening in the app they
   opened in before.
 
@@ -115,11 +116,14 @@ file opens in it, not in a new pane.
   the conversation terminal beside the viewer (in a viewer tab, the document's folder). The
   next `>_` goes into the same shell pane while it is open. If that shell is running a
   program, nothing is typed and a notification says so (`터미널에 넣지 않았습니다`). When it
-  first opens the shell pane it sends zsh a line that teaches it one key, `ctrl+alt+F12`, and
-  clears the screen, so no line is left on the shell's screen. After that `>_` writes the
-  command to a file in the data folder and presses only that key. Text you had typed at the
-  prompt is moved aside with zsh's push-line and comes back after the command (with vi keys
-  too).
+  first opens the shell pane it writes the command to a file in the data folder and sends zsh
+  one line that teaches it a key, `ctrl+alt+F12`, puts that file's command in and clears the
+  screen, so no line is left on the shell's screen. After that `>_` writes the file and
+  presses only that key. Text you had typed at the prompt is moved aside with zsh's push-line
+  and comes back after the command (with vi keys too). If the shell has not taken the file
+  half a second after the key (3 seconds after the line), a notification says the command did
+  not go in (`터미널에 넣지 못했습니다`) and the next `>_` teaches the shell again. A shell on
+  another machine gets nothing and the same notification: the file is on this Mac.
 - **Pictures.** A local picture on a line of its own (`![alt](path)`, relative to the
   document's folder, or absolute) is drawn in the document: as wide as the pane at most,
   never larger than itself, at most 420 high, centered. One that can't be read shows
@@ -134,7 +138,7 @@ file opens in it, not in a new pane.
 - **Your files**: the mod writes a file when you save it or click a checkbox in it.
 - **Terminal**: the `>_` button opens a zsh pane and types into it through Herdr's `hc`
   (`hc send`, `hc keys`, `hc get`). A shell it opens gets one line binding an insert widget
-  to `ctrl+alt+F12`.
+  to `ctrl+alt+F12`, and a new zsh started there gets it again.
 - **Network**: nothing reaches the network; a web or mail link you click in a document is
   handed to macOS.
 - **Data folder** (`~/.config/herdr-app/data/side-viewer/`): the mod and the router write:
@@ -286,11 +290,17 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
 - **No autosave and no "save changes?" prompt.** Edits not saved are gone when the pane
   closes or Herdr quits. The one save without cmd+S is a checkbox click on a file without
   edits.
-- **The first `>_` after starting a new zsh in the shell pane clears its screen.** If you ran
-  `zsh` or `exec zsh` there, the new zsh is sent the line that teaches it the insert key
-  again, then `clear`. Only then is a draft moved aside with alt+q, so if that new zsh uses
-  vi keys and its prompt holds text, the text can run along with that line. Clear the prompt
-  before the first `>_` after starting a new zsh.
+- **The first `>_` after starting a new zsh in the shell pane clears its screen, and can take
+  a second press.** If you ran `zsh` there, or `exec zsh` with other arguments than the zsh
+  taught last, the viewer sees a new zsh and sends it the line that teaches it the insert key
+  again, then `clear`. When the arguments match (a second `exec zsh` in a row, say), it
+  can't tell: that `>_` leaves `;7~` in the input line, a notification says
+  `터미널에 넣지 못했습니다`, and the next `>_` teaches the shell again. Only when that line is
+  sent is a draft moved aside with alt+q, so if that new zsh uses vi keys and its prompt
+  holds text, the text can run along with that line. Clear the prompt before the first `>_`
+  after starting a new zsh.
+- **`>_` doesn't type into a shell on another machine.** The command goes through a file on
+  this Mac, which that shell can't read; a notification says so. Use the copy button.
 - **No keyboard navigation** between blocks, no `cmd+E` for the source switch, no filling in
   of `{{placeholders}}` in commands.
 - **A path with text stuck to its end doesn't open.** Herdr reads the letters right after a
