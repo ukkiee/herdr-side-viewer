@@ -4,7 +4,7 @@
 
 **Blocked by:** 13 (integrated)
 
-**Status:** ready-for-agent
+**Status:** integrated
 
 **명세:** `docs/features/side-viewer-v2/spec.md` (AC-22, AC-1·AC-19의 빈 파일 문장, "구현 결정"의 "빈 파일(AC-22)")
 
@@ -23,10 +23,24 @@
 - 경계 3: `herdr-app check mods/side-viewer`와 빈 md 렌더링(안내+전환), 빈 svg 렌더링(안내+전환), 빈 svg 원문 장면의 임시 사본 check
 - 경계 4: `~/sv2-check/empty.md`와 `empty.svg`를 열어 안내와 전환, 원문에 써서 렌더링·cmd+S(12에서 다시 확인)
 
-- [ ] 빈·공백뿐인 md의 렌더링에 안내와 전환이 있고 원문에서 써서 저장할 수 있다
-- [ ] 빈·공백뿐인 svg의 렌더링에 안내와 전환이 있고 원문(xml)에서 써서 렌더링하면 그림, cmd+S로 저장된다
-- [ ] 빈 svgz·그림은 안내만이고 빈 코드 파일은 빈 편집기 그대로다
-- [ ] 고친 md·svg가 밖에서 비게 되거나 돌아올 때 F1·RV2-1 규칙이 깨지지 않는다
-- [ ] 문서의 빈 파일 문장이 새 동작과 맞다
+- [x] 빈·공백뿐인 md의 렌더링에 안내와 전환이 있고 원문에서 써서 저장할 수 있다 (경계 1·3과 코드 대조. 실제 앱 확인은 미실행, 12에서 한다)
+- [x] 빈·공백뿐인 svg의 렌더링에 안내와 전환이 있고 원문(xml)에서 써서 렌더링하면 그림, cmd+S로 저장된다 (경계 1·3과 코드 대조. 실제 앱 확인은 미실행, 12에서 한다)
+- [x] 빈 svgz·그림은 안내만이고 빈 코드 파일은 빈 편집기 그대로다 (경계 1·3과 코드 대조. 실제 앱 확인은 미실행, 12에서 한다)
+- [x] 고친 md·svg가 밖에서 비게 되거나 돌아올 때 F1·RV2-1 규칙이 깨지지 않는다 (경계 1·3과 코드 대조. 실제 앱 확인은 미실행, 12에서 한다)
+- [x] 문서의 빈 파일 문장이 새 동작과 맞다 (경계 1·3과 코드 대조. 실제 앱 확인은 미실행, 12에서 한다)
 
 **완료 조건:** 위 항목 전부, 경계 1·3 통과.
+
+## Comments
+
+### 2026-11-12 통합 (주 진행자)
+
+- **결과:** 브랜치 `sv2/14-empty-notice`의 `ba576d5`(빈 md·svg 렌더링에 안내, 빈 svg는 원문만 있는 svg로), `dd9945b`(README·README.ko·RECIPE)를 `feat/side-viewer-v2`에 fast-forward로 합쳤다.
+- **완료 조건:** 경계 1·3 통과.
+  - 작업자(`dd9945b`): `node --test mods/side-viewer/` 309 통과·0 실패·0 skip, `herdr-app check` 통과, 임시 사본 3개(빈 md 렌더링, 빈 svg 렌더링, 빈 svg 원문) check 통과. 새·바뀐 테스트 6개는 기준(`e18230e`)에서 실패했다. 안내·전환·원문 편집기 분기에 throw를 넣은 사본 5개는 check가 실패했다.
+  - 통합 담당(`dd9945b`): `node --test mods/side-viewer/` 309 통과·0 실패·0 skip·0 취소, `herdr-app check mods/side-viewer` 통과.
+- **자리:** `views.js`의 `rendersEmpty(text)`, `blankSvg(file, probe)`(0바이트이거나 ASCII 공백뿐인 `.svg`, probe의 첫 4096바이트 안에서만 판단), `sourceOnlySvg(text)`, `blockerOf(found, probe, file)`. `main.js`의 `read`(blank svg는 글을 읽어 원문만 있는 svg), `ensurePreview`·`renderBody`(빈 글이면 안내). `markdown-view.js`의 빈 문서 안내.
+- **바꾼 기존 테스트 기대:** `views.test.mjs`의 0바이트 `logo.svg`가 "empty"였던 기대를 `null`로.
+- **동작 변화(손 확인에 넣음):** 고친 svg가 밖에서 0바이트가 되면 이제 "밖에서 바뀌었습니다" 막대가 뜬다(md·코드와 같아짐).
+- **경계 사례:** 4096바이트를 넘는 공백뿐인 svg, NBSP 같은 비ASCII 공백뿐인 svg는 blank로 보지 않아 "열 수 없음" 안내가 나온다.
+- **미실행(경계 4):** 빈 md·svg의 안내와 전환, 원문에 써서 렌더링(svg 미리 보기), 0바이트 파일 cmd+S(리뷰 R13-1과 같은 위험).
