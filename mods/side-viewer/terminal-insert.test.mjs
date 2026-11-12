@@ -3,7 +3,7 @@
 // shell is too busy to take it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { insertCommands, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
+import { insertFileOf, insertFolderOf, prepareLine, insertText, insertPlan, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
 
 // Herdr's panes(): a terminal pane, or a mod pane (terminal null).
 const pane = (id, tab, more = {}) => ({
@@ -19,18 +19,29 @@ const HOME = "/Users/me";
 const terminal = (name, argv = [`/bin/${name}`]) =>
   ({ address: "t7", state: "live", argv: ["/bin/zsh", "-l"], status: null, foreground: { name, argv, pid: 2 } });
 
-// The text `hc send` would paste, as zsh reads it back: what lands in the input line.
-const sent = (commands) => commands.find((args) => args[0] === "send")[2];
+const APP = "/Users/me/.config/herdr-app";
+const FILE = `${APP}/data/side-viewer/shell/t7.txt`;
 
-test("the command goes in through push-line, then print -rz, and nothing presses Enter", () => {
-  assert.deepEqual(insertCommands("t7", "ls -la"), [
-    ["keys", "t7", "alt+q"],
-    ["send", "t7", " print -rz -- 'ls -la'"],
-  ]);
+test("each shell has its own handoff file in the app's data folder", () => {
+  assert.equal(insertFileOf(APP, "t7"), FILE);
+  assert.equal(insertFileOf(APP, "mini/t12"), `${APP}/data/side-viewer/shell/mini_t12.txt`);
+  assert.equal(insertFolderOf(APP), `${APP}/data/side-viewer/shell`);
 });
 
-test("a shell just opened has no draft, so nothing is pushed aside before zsh reads its keys", () => {
-  assert.deepEqual(insertCommands("t7", "ls -la", { fresh: true }), [["send", "t7", " print -rz -- 'ls -la'"]]);
+// The widget the prepare line defines, for the handoff file `file` as zsh quotes it.
+const widget = (file) =>
+  ` _side_viewer_insert() { local f=${file}; [[ -r $f ]] || return 0; [[ -n $BUFFER ]] && zle push-line;` +
+  " BUFFER=$(<$f); command rm -f -- $f; CURSOR=$#BUFFER };" +
+  " zle -N _side_viewer_insert;" +
+  " bindkey -M emacs '\\e[24;7~' _side_viewer_insert; bindkey -M viins '\\e[24;7~' _side_viewer_insert;" +
+  " bindkey -M vicmd '\\e[24;7~' _side_viewer_insert; clear";
+
+test("the prepare line binds ctrl+alt+F12 in every keymap to read the handoff file, then clears", () => {
+  assert.equal(prepareLine(FILE), widget(`'${FILE}'`));
+});
+
+test("a handoff file path with a quote stays one word for zsh", () => {
+  assert.equal(prepareLine("/Users/it's me/t7.txt"), widget("'/Users/it'\\''s me/t7.txt'"));
 });
 
 test("a shell still starting is neither ready nor busy", () => {
@@ -40,14 +51,46 @@ test("a shell still starting is neither ready nor busy", () => {
     { state: "starting" });
 });
 
-test("single quotes, Korean, symbols and backslashes are quoted for zsh", () => {
-  assert.equal(sent(insertCommands("t7", "echo 'q' \"a b\" | wc -c > /dev/null; ls $HOME ~ 한글 & `pwd` a\\nb")),
-    " print -rz -- 'echo '\\''q'\\'' \"a b\" | wc -c > /dev/null; ls $HOME ~ 한글 & `pwd` a\\nb'");
+test("single quotes, Korean, symbols and backslashes go into the handoff file as they are", () => {
+  const command = "echo 'q' \"a b\" | wc -c > /dev/null; ls $HOME ~ 한글 & `pwd` a\\nb";
+  assert.equal(insertText(command), command);
 });
 
-test("a shell waiting at its prompt is ready; zsh is told by its foreground process", () => {
-  assert.deepEqual(shellState(terminal("zsh", ["/bin/zsh", "-l"])), { state: "ready" });
-  assert.deepEqual(shellState(terminal("-zsh", ["-zsh"])), { state: "ready" });
+const ready = (pid) => ({ state: "ready", pid });
+const KEY = ["keys", "t7", "ctrl+alt+f12"];
+
+test("a shell just opened is prepared, then the key puts the command in; nothing presses Enter", () => {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: ready(40), prepared: null, fresh: true }), {
+    commands: [["send", "t7", prepareLine(FILE)], KEY],
+    notice: null,
+  });
+});
+
+test("a shell already prepared only gets the key", () => {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: ready(40), prepared: 40, fresh: false }), {
+    commands: [KEY],
+    notice: null,
+  });
+});
+
+test("a shell that is now another zsh is prepared again, its draft pushed aside first", () => {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: ready(41), prepared: 40, fresh: false }), {
+    commands: [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE)], KEY],
+    notice: null,
+  });
+});
+
+test("a busy shell gets nothing, only a notice", () => {
+  const busy = { state: "busy", program: "sleep" };
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, state: busy, prepared: 40, fresh: false }), {
+    commands: [],
+    notice: noticeOf(busy),
+  });
+});
+
+test("a shell waiting at its prompt is ready; zsh is told by its foreground process, whose pid names it", () => {
+  assert.deepEqual(shellState(terminal("zsh", ["/bin/zsh", "-l"])), { state: "ready", pid: 2 });
+  assert.deepEqual(shellState(terminal("-zsh", ["-zsh"])), { state: "ready", pid: 2 });
 });
 
 test("a shell running another program is busy, and the program is named", () => {
@@ -144,6 +187,5 @@ test("a new shell is zsh, split below the viewer and started in the folder", () 
 });
 
 test("a block of several lines stays several lines, without its last newline", () => {
-  assert.equal(sent(insertCommands("t7", "for f in *; do\n  echo \"$f\"\ndone\n")),
-    " print -rz -- 'for f in *; do\n  echo \"$f\"\ndone'");
+  assert.equal(insertText("for f in *; do\n  echo \"$f\"\ndone\n"), "for f in *; do\n  echo \"$f\"\ndone");
 });
