@@ -8,6 +8,7 @@
 //   raw,          whether the markdown or svg view shows the source
 //   status,       what the shown file's edits read, or null without edits (edit-state.js statusOf):
 //                 { kind: "edited" | "failed" | "conflict", message, tip, buttons }
+//   tr,           the viewer's translator for the buttons' words (i18n.js)
 //   onBack, onToggleRaw, onSave, onDiscard, onOverwrite, onNewTab, onOriginal, onFinder: (cx) => void
 // }
 //
@@ -46,19 +47,19 @@ function renderBack(t, { onBack }) {
 // The status and its buttons, drawn only while the shown file has unsaved edits: save, or for
 // a conflict "read again" and "overwrite". A failure or conflict reads in the theme's
 // attention color; hovering the message shows `tip`, the words a narrow header cuts.
-function renderStatus(t, { status, onSave, onDiscard, onOverwrite }) {
+function renderStatus(t, { status, tr, onSave, onDiscard, onOverwrite }) {
   const color = status.kind === "edited" ? (t.accent ?? t.foreground) : (t.blocked ?? t.ansi1 ?? t.foreground);
   // A tiny shrink keeps the message whole while the name and the folder still have room.
   return h_flex().min_w(0).flex_shrink(0.01).gap(6).items_center()
     .child(div().id("side-viewer-status").min_w(0).truncate().text_size(11).text_color(color)
       .tooltip(status.tip).child(status.message))
-    .children(status.buttons.map((button) => STATUS_BUTTONS[button](t, { onSave, onDiscard, onOverwrite })));
+    .children(status.buttons.map((button) => STATUS_BUTTONS[button](t, { tr, onSave, onDiscard, onOverwrite })));
 }
 
 const STATUS_BUTTONS = {
-  save: (t, { onSave }) => renderTextButton(t, "side-viewer-save", "저장", "저장 (⌘S)", onSave),
-  discard: (t, { onDiscard }) => renderTextButton(t, "side-viewer-discard", "다시 읽기", "내 수정 버리고 다시 읽기", onDiscard),
-  overwrite: (t, { onOverwrite }) => renderTextButton(t, "side-viewer-overwrite", "덮어쓰기", "내 것으로 덮어쓰기", onOverwrite),
+  save: (t, { tr, onSave }) => renderTextButton(t, "side-viewer-save", tr("header.save"), tr("header.saveTip"), onSave),
+  discard: (t, { tr, onDiscard }) => renderTextButton(t, "side-viewer-discard", tr("header.discard"), tr("header.discardTip"), onDiscard),
+  overwrite: (t, { tr, onOverwrite }) => renderTextButton(t, "side-viewer-overwrite", tr("header.overwrite"), tr("header.overwriteTip"), onOverwrite),
 };
 
 function renderTextButton(t, id, label, tip, onClick) {
@@ -69,12 +70,12 @@ function renderTextButton(t, id, label, tip, onClick) {
     .child(label);
 }
 
-// "렌더링 | 원문": two cells, the one shown filled. Only the other cell switches.
-function renderSwitch(t, { raw, onToggleRaw }) {
+// "Rendered | Source": two cells, the one shown filled. Only the other cell switches.
+function renderSwitch(t, { raw, tr, onToggleRaw }) {
   return h_flex().id("side-viewer-switch").flex_none().h(24).p(2).gap(2).items_center().rounded(5)
     .border(1).border_color(t.border)
-    .child(renderCell(t, "side-viewer-rendered", "렌더링", !raw, onToggleRaw))
-    .child(renderCell(t, "side-viewer-source", "원문", raw, onToggleRaw));
+    .child(renderCell(t, "side-viewer-rendered", tr("header.rendered"), !raw, onToggleRaw))
+    .child(renderCell(t, "side-viewer-source", tr("header.source"), raw, onToggleRaw));
 }
 
 function renderCell(t, id, label, selected, onToggleRaw) {
@@ -87,11 +88,11 @@ function renderCell(t, id, label, selected, onToggleRaw) {
 
 // "Open in a new tab" (`newTab`: only over drawn content, views.js opensInTab), "Open in the
 // original app" and "Show in Finder".
-function renderActions(t, { onNewTab, onOriginal, onFinder }, newTab) {
+function renderActions(t, { tr, onNewTab, onOriginal, onFinder }, newTab) {
   return h_flex().flex_none().gap(2)
-    .when(newTab, (el) => el.child(renderButton(t, "side-viewer-new-tab", "new-tab", "새 탭으로 열기", (_event, cx) => onNewTab(cx))))
-    .child(renderButton(t, "side-viewer-original", "original", "원래 앱으로 열기", (_event, cx) => onOriginal(cx)))
-    .child(renderButton(t, "side-viewer-finder", "finder", "Finder에서 보기", (_event, cx) => onFinder(cx)));
+    .when(newTab, (el) => el.child(renderButton(t, "side-viewer-new-tab", "new-tab", tr("header.newTab"), (_event, cx) => onNewTab(cx))))
+    .child(renderButton(t, "side-viewer-original", "original", tr("header.original"), (_event, cx) => onOriginal(cx)))
+    .child(renderButton(t, "side-viewer-finder", "finder", tr("header.finder"), (_event, cx) => onFinder(cx)));
 }
 
 function renderButton(t, id, icon, label, onClick) {

@@ -12,7 +12,7 @@
 // markdown-images.js and terminal-insert.js.
 import { View } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
-import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes, notify } from "herdr";
+import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes, notify, shared, setShared } from "herdr";
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
 import { contentOf } from "./document.js";
@@ -34,6 +34,10 @@ import { renderCode } from "./code-view.js";
 import { renderImage } from "./image-view.js";
 import { renderNotice } from "./notice-view.js";
 import { MarkdownImages } from "./markdown-image-loader.js";
+import { LANGS, translator, systemLang, askAgainAfter } from "./i18n.js";
+
+// Where the system's language is remembered in Herdr's shared state ("ko" | "en").
+const LANG_KEY = "side-viewer.lang";
 
 // The folder watch can miss a change, so the shown file is also read again this often.
 const RECHECK_MS = 15000;
@@ -104,6 +108,7 @@ export default class SideViewer extends View {
     if (tab?.handoff) this.receive(tab.handoff, cx);
     this.watch(cx);
     this.listen(cx);
+    this.askLang(cx, 0);
   }
 
   // A new viewer tab taking the unsaved edits its opener handed over (viewer-tab.js). The
@@ -163,7 +168,7 @@ export default class SideViewer extends View {
         return;
       }
       if (handoff) this.handedOff(file, cx);
-      if (place && !(await this.placeTab(before, place, cx))) notify(unplacedNotice(file));
+      if (place && !(await this.placeTab(before, place, cx))) notify(unplacedNotice(file, this.words()));
       cx.notify();
     });
   }
@@ -706,7 +711,7 @@ export default class SideViewer extends View {
   // A shell code block's `>_`: into the shell pane below this viewer, which starts in the
   // conversation's folder, or in the document's folder when the viewer is a tab of its own.
   insertIntoTerminal(command, cx) {
-    this.shellPane.insert(command, { file: this.file, viewerTab: this.viewerTab === true }, cx);
+    this.shellPane.insert(command, { file: this.file, viewerTab: this.viewerTab === true, tr: this.words() }, cx);
   }
 
   revealInFinder(_cx) {
@@ -769,13 +774,14 @@ export default class SideViewer extends View {
   }
 
   // What the header shows, and where its clicks go (header.js).
-  header() {
+  header(tr) {
     return {
       file: this.file,
       canGoBack: canGoBack(this.visits),
       state: this.content.state,
       raw: this.raw,
-      status: statusOf(this.edits, this.file),
+      status: statusOf(this.edits, this.file, tr),
+      tr,
       onBack: (cx) => this.goBack(cx),
       onToggleRaw: (cx) => this.toggleRaw(cx),
       onSave: (cx) => this.save(cx),
@@ -787,8 +793,8 @@ export default class SideViewer extends View {
     };
   }
 
-  // The body, by what this.content holds.
-  renderBody(t) {
+  // The body, by what this.content holds. tr: the viewer's translator (i18n.js).
+  renderBody(t, tr) {
     const content = this.content;
     // The code view and the markdown and svg sources are the same editable editor; sources
     // wrap their lines (views.js, editorOf).
@@ -803,26 +809,54 @@ export default class SideViewer extends View {
         onTerminal: (command, cx) => this.insertIntoTerminal(command, cx),
         onCheckbox: (line, cx) => this.toggleCheckbox(line, cx),
         cache: this.markdownCache,
+        tr,
       });
     }
     if (content.state === "image" || content.state === "svg") {
       // An svg draws its disk copy, or the preview of its unsaved edits (svg-preview.js).
       // With no text yet, the notice says it is empty; the source is a click away.
       const text = content.state === "svg" ? shownText(this.edits, content.file, content.text) : null;
-      if (content.state === "svg" && rendersEmpty(text)) return renderNotice(t, "empty");
+      if (content.state === "svg" && rendersEmpty(text)) return renderNotice(t, "empty", tr);
       const picture = content.state === "svg" ? pictureOf(content, text, this.preview) : content;
-      if (!picture) return renderNotice(t, "loading");
-      if (!picture.path) return renderNotice(t, "unreadable");
+      if (!picture) return renderNotice(t, "loading", tr);
+      if (!picture.path) return renderNotice(t, "unreadable", tr);
       return renderImage(t, { content: picture, room: this.room, onRoom: (width, cx) => this.setRoom(width, cx) });
     }
-    return renderNotice(t, content.state);
+    return renderNotice(t, content.state, tr);
+  }
+
+  // The system's language, read once when the copy starts and remembered in Herdr's shared
+  // state for every copy, viewer tabs and later viewers too. Writing it there redraws every
+  // copy, so a viewer showing another language switches at once. A read that fails leaves the
+  // language as it was (English when nothing was ever read) and asks again (askAgainAfter).
+  askLang(cx, attempt) {
+    cx.spawn(async (cx) => {
+      const read = await exec("defaults", ["read", "-g", "AppleLanguages"], { timeout: 5000 }).catch(() => null);
+      const lang = systemLang(read);
+      if (!lang) {
+        cx.timer.after(askAgainAfter(attempt), (cx) => this.askLang(cx, attempt + 1));
+        return;
+      }
+      if (shared(LANG_KEY) !== lang) setShared(LANG_KEY, lang);
+    });
+  }
+
+  // The viewer's translator (i18n.js): the remembered language, English until one is known.
+  // Asked for at the moment the words are needed, so a notification written after a wait
+  // speaks the language of that moment.
+  words() {
+    const remembered = shared(LANG_KEY);
+    const lang = LANGS.includes(remembered) ? remembered : "en";
+    if (this.tr?.lang !== lang) this.tr = translator(lang);
+    return this.tr;
   }
 
   render(_cx) {
     const t = theme();
+    const tr = this.words();
     return v_flex().id("side-viewer").size_full().min_h(0).bg(t.background).text_color(t.foreground)
       .track_focus(this.focus).on_key_down((event, cx) => this.keyDown(event, cx))
-      .child(renderHeader(t, this.header()))
-      .child(this.renderBody(t));
+      .child(renderHeader(t, this.header(tr)))
+      .child(this.renderBody(t, tr));
   }
 }

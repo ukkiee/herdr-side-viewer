@@ -26,6 +26,7 @@ import { rendersEmpty } from "./views.js";
 import { parseMarkdown, withFootnoteMarks } from "./markdown-blocks.js";
 import { renderCodeCard } from "./code-card.js";
 import { imageBoxOf } from "./markdown-images.js";
+import { wordsOf } from "./i18n.js";
 
 const BODY = 13;
 const HEADING_SIZE = { 1: 24, 2: 19, 3: 16 };
@@ -44,11 +45,12 @@ function documentOf(cache, text) {
   return cache.doc;
 }
 
-export function renderMarkdown(t, { text, generation, file, onLink, codeCards, images, onTerminal, onCheckbox, cache }) {
+// tr: the viewer's translator (i18n.js), for the words the view writes itself.
+export function renderMarkdown(t, { text, generation, file, onLink, codeCards, images, onTerminal, onCheckbox, cache, tr }) {
   const scroll = div().id("side-viewer-scroll").flex_1().min_h(0).overflow_y_scrollbar();
   const doc = documentOf(cache, text);
   const ctx = {
-    t, onLink, footnotes: doc.footnotes,
+    t, tr: wordsOf(tr), onLink, footnotes: doc.footnotes,
     takeCard: codeCards?.drawing() ?? null,
     images,
     onTerminal: onTerminal ?? null,
@@ -62,7 +64,7 @@ export function renderMarkdown(t, { text, generation, file, onLink, codeCards, i
   return scroll.child(v_flex().w_full().min_w(0).overflow_hidden().px(28).py(24).gap(12).text_size(BODY)
     .when(Boolean(file), (el) => el.child(renderTitle(t, file)))
     // A blank document has no blocks: the notice under the title says so.
-    .when(rendersEmpty(text), (el) => el.child(div().text_color(t.dim).child(noticeFor("empty"))))
+    .when(rendersEmpty(text), (el) => el.child(div().text_color(t.dim).child(noticeFor("empty", ctx.tr))))
     .children(renderBlocks(ctx, doc.blocks, "b", 0))
     .when(doc.footnotes.length > 0, (el) => el.child(renderFootnotes(ctx))));
 }
@@ -193,13 +195,13 @@ function renderRule(ctx) {
 // report, so the image waits for the first one. A remote image is left out entirely:
 // TextView could fetch and draw it, and remote images are not drawn.
 function renderImageBlock(ctx, block, key) {
-  const { t, images } = ctx;
+  const { t, tr, images } = ctx;
   const found = images?.of(block.src) ?? { state: "remote" };
   if (found.state === "remote") return div();
   const box = h_flex().id(`side-viewer-md-image-${key}`).w_full().min_w(0).justify_center()
     .on_size_change((size, cx) => images.setRoom(key, size.width, cx));
   if (found.state === "failed") {
-    return box.child(div().min_w(0).text_color(t.muted).child(`그림을 못 읽음: ${block.src}`));
+    return box.child(div().min_w(0).text_color(t.muted).child(tr("body.imageFailed", { src: block.src })));
   }
   const room = images.room(key);
   if (found.state !== "ready" || !(room > 0)) return box;
