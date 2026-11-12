@@ -2,10 +2,10 @@
 // `node --test`; main.js runs the tab commands with what this module works out.
 //
 // "Open in a new tab" makes the tab with `tab.new {name, space, mod: "side-viewer", props}`.
-// Props are saved with the tab, so they carry only the file and, when the file had unsaved
-// edits, the id of a handoff file in the data folder that holds them (as request.js does for
-// open.sh): { file, viewerTab: true, handoff? }. The handoff file is
-// {"id": "...", "file": "/abs/path", "at": <unix seconds>, "edit": {disk, text, bar?}},
+// Props are saved with the tab, so they carry only the file, the opener's space value
+// (machine.js) and, when the file had unsaved edits, the id of a handoff file in the data
+// folder that holds them (as request.js does for open.sh): { file, viewerTab: true, handoff?,
+// space? }. The handoff file is {"id": "...", "file": "/abs/path", "at": <unix seconds>, "edit": {disk, text, bar?}},
 // the entry of edit-state.js's takeEdit.
 
 import { labelOf } from "./document.js";
@@ -50,8 +50,14 @@ export function handoffFrom(text, { id, now }) {
 }
 
 // The props of a new viewer tab. `handoff` is null when there were no edits to hand over.
-export function tabProps({ file, handoff }) {
-  return handoff ? { file, viewerTab: true, handoff } : { file, viewerTab: true };
+// `space` is the opener's space value (machine.js), so the tab reads from the same machine;
+// an opener without one gives the tab none.
+export function tabProps({ file, handoff, space }) {
+  return {
+    file, viewerTab: true,
+    ...(handoff ? { handoff } : {}),
+    ...(typeof space === "string" && space ? { space } : {}),
+  };
 }
 
 // What a copy's props say: { file, handoff } for a viewer tab (handoff null when there is
