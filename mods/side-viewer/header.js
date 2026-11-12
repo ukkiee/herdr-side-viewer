@@ -5,17 +5,18 @@
 //   file,         the shown file, or null
 //   canGoBack,    whether there is a file to go back to
 //   state,        this.content.state of the viewer
-//   raw,          whether the markdown view shows the source
+//   raw,          whether the markdown or svg view shows the source
 //   unsaved,      whether the shown file has edits not yet saved
 //   onBack, onToggleRaw, onSave, onNewTab, onOriginal, onFinder: (cx) => void
 // }
 //
-// Left to right: back, file name, folder, "unsaved" and save, the markdown switch, then the
-// actions (new tab, original app, Finder). Each part is one line of renderHeader.
+// Left to right: back, file name, folder, "unsaved" and save, the "rendering | source" switch,
+// then the actions (new tab, original app, Finder). Each part is one line of renderHeader.
 import { div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { home } from "herdr";
 import { labelOf } from "./document.js";
+import { switchable } from "./views.js";
 
 // The header: back, file name and folder.
 export function renderHeader(t, header) {
@@ -27,8 +28,8 @@ export function renderHeader(t, header) {
     .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(label.folder))
     // The buttons never shrink: a narrow viewer cuts the name and the folder instead.
     .when(Boolean(file && unsaved), (el) => el.child(renderUnsaved(t, header)))
-    // The switch belongs to a drawn markdown document, not to a notice about one.
-    .when(state === "markdown", (el) => el.child(renderSwitch(t, header)))
+    // The switch belongs to a drawn markdown document or svg, not to a notice about one.
+    .when(switchable(state), (el) => el.child(renderSwitch(t, header)))
     .when(Boolean(file), (el) => el.child(renderActions(t, header)));
 }
 
@@ -52,11 +53,20 @@ function renderUnsaved(t, { onSave }) {
       .child("저장"));
 }
 
-// One button that shows the other view: the source while rendered, the rendering while raw.
+// "렌더링 | 원문": two cells, the one shown filled. Only the other cell switches.
 function renderSwitch(t, { raw, onToggleRaw }) {
-  return raw
-    ? renderButton(t, "side-viewer-rendered", "rendered", "렌더링 보기", (_event, cx) => onToggleRaw(cx))
-    : renderButton(t, "side-viewer-source", "source", "원문 보기", (_event, cx) => onToggleRaw(cx));
+  return h_flex().id("side-viewer-switch").flex_none().h(24).p(2).gap(2).items_center().rounded(5)
+    .border(1).border_color(t.border)
+    .child(renderCell(t, "side-viewer-rendered", "렌더링", !raw, onToggleRaw))
+    .child(renderCell(t, "side-viewer-source", "원문", raw, onToggleRaw));
+}
+
+function renderCell(t, id, label, selected, onToggleRaw) {
+  const cell = h_flex().id(id).flex_none().h_full().px(8).items_center().rounded(3).text_size(12);
+  if (selected) return cell.bg(t.hover).text_color(t.foreground).child(label);
+  return cell.text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover))
+    .on_click((_event, cx) => onToggleRaw(cx))
+    .child(label);
 }
 
 // "Open in a new tab", "Open in the original app" and "Show in Finder", for the header and

@@ -4,18 +4,19 @@
 // open.sh and watching. Drawing is in header.js, conflict-bar.js and the views' modules (markdown-view.js,
 // code-view.js, image-view.js, notice-view.js), which get what to show and callbacks from here.
 // The decisions live in modules without Herdr imports, each with its own tests: document.js,
-// views.js, image-copies.js, history.js, request.js, links.js, original.js, edit-state.js and
-// viewer-tab.js.
+// views.js, image-copies.js, svg-preview.js, history.js, request.js, links.js, original.js,
+// edit-state.js and viewer-tab.js.
 import { View } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
 import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes } from "herdr";
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
 import { contentOf } from "./document.js";
-import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState } from "./views.js";
 import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit } from "./edit-state.js";
 import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab } from "./viewer-tab.js";
 import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, COPY, LIST } from "./image-copies.js";
+import { PREVIEW_FOLDER, previewName, pictureOf } from "./svg-preview.js";
 import { start, open, back, canGoBack } from "./history.js";
 import { takeRequest } from "./request.js";
 import { watchedFolder, linkAction, touches } from "./links.js";
@@ -54,8 +55,11 @@ export default class SideViewer extends View {
     this.groups = null;
     // Whether this copy has already deleted the old image copies.
     this.swept = false;
-    // Whether the markdown view shows the source.
+    // Whether the markdown or svg view shows the source.
     this.raw = false;
+    // The last preview of an edited svg (svg-preview.js), and the text being written as one.
+    this.preview = null;
+    this.previewing = null;
     this.rechecking = false;
     // The folder being watched, and a count that stops the loop of an earlier folder.
     this.watched = null;
@@ -101,6 +105,7 @@ export default class SideViewer extends View {
         const shown = shownText(this.edits, content.file, content.text);
         if (content.editor.value() !== shown) content.editor.set_value(shown);
       }
+      this.ensurePreview(cx);
       this.generation++;
       this.probed = null;
       this.load(cx);
@@ -292,11 +297,12 @@ export default class SideViewer extends View {
     const next = content ?? (shown.state === "code" ? { state: "code", text: shown.text, language: shown.language } : null);
     if (!next) return;
     const syntax = this.syntax();
-    if (next.state === "code") next.theme = Object.values(syntax).join(" ");
+    if (next.state === "code" || next.state === "svg") next.theme = Object.values(syntax).join(" ");
     const step = refreshOf(shown, next);
     if (step === "keep") return;
     if (step === "retext") {
       shown.text = next.text;
+      if (next.state === "svg") Object.assign(shown, { path: next.path, size: next.size });
       const text = shownText(this.edits, shown.file, next.text);
       if (shown.editor.value() !== text) shown.editor.set_value(text);
       cx.notify();
@@ -327,6 +333,7 @@ export default class SideViewer extends View {
     this.generation++;
     cx.notify();
     if (content.state === "markdown") this.images.prepare(content.file, shownText(this.edits, content.file, content.text), true, cx);
+    this.ensurePreview(cx);
   }
 
   // What to show for a file, as { content, probe, text }: the view's content or the state of a
@@ -339,10 +346,12 @@ export default class SideViewer extends View {
     if (!found) return { content: { state: "unsupported" }, probe: null };
     const probe = readProbe((await exec("sh", ["-c", PROBE, "sh", file])).stdout);
     // An image goes on: its bytes are not read again anyway, and showing it has to touch
-    // its copy, or the 30-day cleanup would take it.
+    // its copy, or the 30-day cleanup would take it. An svg's text goes with it, for edits.
     if (found.view === "image") {
       const blocker = blockerOf(found, probe);
-      return { content: blocker ? { state: blocker } : await this.readImage(file, probe), probe: null };
+      if (blocker) return { content: { state: blocker }, probe: null, text: blocker === "missing" ? null : undefined };
+      const content = await this.readImage(file, probe);
+      return { content, probe: null, text: content.text };
     }
     if (sameProbe(known, file, probe)) return { content: null, probe: known };
     const remembered = settledProbe(file, probe, Math.floor(Date.now() / 1000));
@@ -376,8 +385,10 @@ export default class SideViewer extends View {
     const path = `${FOLDER}/${copyName(file, probe, kind)}`;
     const copied = await exec("sh", ["-c", COPY, "sh", file, `${appHome()}/${path}`]);
     if (copied.code !== 0) return { state: "unreadable" };
-    // The same copy as the one on screen: its size is known, so the file is not read again.
-    const shown = this.content.state === "image" && this.content.path === path ? this.content : null;
+    // The same copy as the one on screen: its size, and an svg's text, are known, so the
+    // file is not read again. The name holds the size and time, so the bytes are the same.
+    const drawn = this.content.state === "image" || this.content.state === "svg";
+    const shown = drawn && this.content.path === path ? this.content : null;
     let size = shown?.size ?? null;
     if (!shown) {
       try {
@@ -386,25 +397,76 @@ export default class SideViewer extends View {
     }
     this.sweep().catch(() => null);
     if (!shown) this.dropOlder(path).catch(() => null);
-    return { state: "image", path, size };
+    const state = imageState(file, kind, probe.bytes);
+    if (state !== "svg") return { state, path, size };
+    const text = shown?.text ?? await readTextFile(file);
+    // Gone between the probe and the read: the next read says so.
+    if (text === null) return { state: "missing" };
+    return { state, path, size, text };
   }
 
-  // Deleting the earlier copies of the image whose copy is at `path`.
-  async dropOlder(path) {
-    const folder = `${appHome()}/${FOLDER}`;
+  // Deleting the earlier copies of the image whose copy is at `path`, a path under `under`
+  // (the disk copies' folder, or the svg previews').
+  async dropOlder(path, under = FOLDER) {
+    const folder = `${appHome()}/${under}`;
     const listing = await exec("sh", ["-c", LIST, "sh", folder]);
-    const older = olderCopies(listing.stdout, path.slice(FOLDER.length + 1));
+    const older = olderCopies(listing.stdout, path.slice(under.length + 1));
     if (older.length) await exec("rm", ["-f", ...older.map((name) => `${folder}/${name}`)]);
   }
 
-  // Deleting copies not shown for 30 days. Once per viewer is enough.
+  // Deleting copies and svg previews not shown for 30 days. Once per viewer is enough.
   async sweep() {
     if (this.swept) return;
     this.swept = true;
-    const folder = `${appHome()}/${FOLDER}`;
-    const listing = await exec("sh", ["-c", LIST, "sh", folder]);
-    const stale = staleCopies(listing.stdout, Math.floor(Date.now() / 1000));
-    if (stale.length) await exec("rm", ["-f", ...stale.map((name) => `${folder}/${name}`)]);
+    for (const under of [FOLDER, PREVIEW_FOLDER]) {
+      const folder = `${appHome()}/${under}`;
+      const listing = await exec("sh", ["-c", LIST, "sh", folder]);
+      const stale = staleCopies(listing.stdout, Math.floor(Date.now() / 1000));
+      if (stale.length) await exec("rm", ["-f", ...stale.map((name) => `${folder}/${name}`)]);
+    }
+  }
+
+  // An svg shown rendered with unsaved edits is drawn from a preview of the edited text in the
+  // data folder, never from the file, which keeps its disk text until a save. The rendering
+  // shows "loading" until the preview of the text on screen is written.
+  ensurePreview(cx) {
+    const content = this.content;
+    if (content.state !== "svg" || this.raw) return;
+    const text = shownText(this.edits, content.file, content.text);
+    if (pictureOf(content, text, this.preview) || this.previewing === text) return;
+    this.previewing = text;
+    const file = content.file;
+    const path = `${PREVIEW_FOLDER}/${previewName(file, text)}`;
+    cx.spawn(async (cx) => {
+      const full = `${appHome()}/${path}`;
+      let preview;
+      try {
+        // Private like the disk copies (image-copies.js, COPY).
+        await exec("sh", ["-c", 'umask 077; mkdir -p "$1"', "sh", `${appHome()}/${PREVIEW_FOLDER}`]);
+        // writeTextFile creates only with null and replaces only the text it is given. The
+        // same name holds the same text, so a preview already there is only touched for the
+        // 30-day cleanup.
+        const there = await readTextFile(full).catch(() => null);
+        if (there === text) await exec("touch", [full]);
+        else await writeTextFile(full, text, there);
+        let size = null;
+        try {
+          size = sizeOf(await fs.readFile(full));
+        } catch {}
+        preview = { file, text, path, size };
+      } catch {
+        // Drawn as a file that cannot be read, until the text changes again.
+        preview = { file, text, path: null, size: null };
+      }
+      if (this.previewing === text) this.previewing = null;
+      this.preview = preview;
+      // A preview written after the text changed again is not on screen: the earlier ones are
+      // deleted only by the preview that is.
+      const current = this.content.file === file && shownText(this.edits, file, this.content.text) === text;
+      if (current && preview.path) this.dropOlder(path, PREVIEW_FOLDER).catch(() => null);
+      this.ensurePreview(cx);
+      cx.notify();
+    });
   }
 
   // The code view's colors under the theme of the moment.
@@ -520,6 +582,8 @@ export default class SideViewer extends View {
     // The source's editor leaves the screen and takes the keyboard with it; the viewer keeps
     // it, so cmd+S still saves from the rendering.
     if (!this.raw) this.focus.focus();
+    // An svg edited in the source is drawn from its edited text.
+    this.ensurePreview(cx);
     cx.notify();
   }
 
@@ -617,20 +681,26 @@ export default class SideViewer extends View {
   // The body, by what this.content holds.
   renderBody(t) {
     const content = this.content;
-    // The code view and the markdown source are the same editable editor; the source wraps
-    // its lines (views.js, editorOf).
+    // The code view and the markdown and svg sources are the same editable editor; sources
+    // wrap their lines (views.js, editorOf).
     if (editable(content.state, this.raw)) return renderCode(t, content);
     if (content.state === "markdown") {
       return renderMarkdown(t, {
-        text: shownText(this.edits, content.file, content.text), raw: this.raw, generation: this.generation,
+        text: shownText(this.edits, content.file, content.text), generation: this.generation,
         onLink: (url, cx) => this.followLink(url, cx),
         file: this.file,
         codeCards: this.codeCards,
         images: this.images.forDocument(content.file),
       });
     }
-    if (content.state === "image") {
-      return renderImage(t, { content, room: this.room, onRoom: (width, cx) => this.setRoom(width, cx) });
+    if (content.state === "image" || content.state === "svg") {
+      // An svg draws its disk copy, or the preview of its unsaved edits (svg-preview.js).
+      const picture = content.state === "svg"
+        ? pictureOf(content, shownText(this.edits, content.file, content.text), this.preview)
+        : content;
+      if (!picture) return renderNotice(t, "loading");
+      if (!picture.path) return renderNotice(t, "unreadable");
+      return renderImage(t, { content: picture, room: this.room, onRoom: (width, cx) => this.setRoom(width, cx) });
     }
     return renderNotice(t, content.state);
   }

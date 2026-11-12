@@ -2,7 +2,7 @@
 // goes back through onRoom.
 //
 // image: {
-//   content,      { path, size } of the image copy
+//   content,      { path, size } of the image copy, or of an edited svg's preview
 //   room,         the body's width, or null until the first size report
 //   onRoom: (width, cx) => void
 // }

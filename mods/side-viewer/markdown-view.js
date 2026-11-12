@@ -1,9 +1,8 @@
-// The markdown view's body. It only draws: the text and the switch come from main.js, and a
-// click on a link goes back through onLink.
+// The markdown view's rendering. It only draws: the text comes from main.js, and a click on a
+// link goes back through onLink. The source is main.js's editor (code-view.js).
 //
 // markdown: {
 //   text,         the file's text
-//   raw,          whether to show the source instead of the rendering
 //   generation,   main.js's count of content replacements
 //   file,         the shown file, for the folder and name at the top
 //   onLink: (url, cx) => void
@@ -19,7 +18,6 @@
 import { div, image } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
 import { home } from "herdr";
-import { rawMarkdown } from "./links.js";
 import { labelOf } from "./document.js";
 import { parseMarkdown, withFootnoteMarks } from "./markdown-blocks.js";
 import { renderCodeCard } from "./code-card.js";
@@ -37,16 +35,8 @@ function documentOf(text) {
   return parsed.doc;
 }
 
-export function renderMarkdown(t, { text, raw, generation, file, onLink, codeCards, images }) {
+export function renderMarkdown(t, { text, generation, file, onLink, codeCards, images }) {
   const scroll = div().id("side-viewer-scroll").flex_1().min_h(0).overflow_y_scrollbar();
-  if (raw) {
-    // The source is drawn by the same element, fenced as one code block.
-    // The element needs a new id to draw new text, so the id carries the generation.
-    return scroll.child(h_flex().w_full().justify_center()
-      .child(v_flex().flex_1().min_w(0).max_w(860).overflow_hidden().px(28).py(24).text_size(14)
-        .child(TextView.markdown(`side-viewer-markdown-${generation}-source`, rawMarkdown(text))
-          .selectable(true).on_link_click((url, cx) => onLink(url, cx)))));
-  }
   const doc = documentOf(text);
   const ctx = {
     t, onLink, footnotes: doc.footnotes,
