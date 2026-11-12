@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, refusalOf, saveFailed, startSave, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, statusOf, discarded, overwritten, refusalOf, saveFailed, startSave, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
 
 const A = "/work/a.md";
 
@@ -99,7 +99,7 @@ test("a file with edits that changed on disk keeps the edits on screen and raise
   assert.equal(read.step, "keep");
   assert.equal(unsaved(read.edits, A), true);
   assert.equal(shownText(read.edits, A, "theirs\n"), "mine\n");
-  assert.deepEqual(barOf(read.edits, A), { kind: "conflict", message: "밖에서 바뀌었습니다" });
+  assert.deepEqual(barOf(read.edits, A), { kind: "conflict", message: "외부에서 바뀌었어요" });
   // A save still expects the text the edit started from, so writeTextFile refuses it.
   assert.deepEqual(saveOf(read.edits, A), { path: A, text: "mine\n", expected: "one\n" });
 });
@@ -117,7 +117,7 @@ test("a file with edits that is deleted keeps the edits and says it is gone", ()
   const read = diskRead(edits, A, null);
   assert.equal(read.step, "keep");
   assert.equal(shownText(read.edits, A, "one\n"), "mine\n");
-  assert.deepEqual(barOf(read.edits, A), { kind: "failed", message: "파일이 지워졌습니다." });
+  assert.deepEqual(barOf(read.edits, A), { kind: "failed", message: "파일이 지워졌어요" });
 });
 
 test("a file whose disk text comes back to what the edit started from drops the bar", () => {
@@ -130,18 +130,18 @@ test("a file whose disk text comes back to what the edit started from drops the 
 
 test("a failed save's bar outlives a read that finds the disk as it was", () => {
   for (const [error, message] of [
-    [new Error("Permission denied (os error 13)"), "이 파일에 쓸 권한이 없습니다."],
-    [new Error("disk full"), "저장하지 못했습니다: disk full"],
+    [new Error("Permission denied (os error 13)"), "쓰기 권한이 없어요"],
+    [new Error("disk full"), "저장하지 못했어요"],
   ]) {
     let edits = typed(noEdits(), A, "one\n", "mine\n");
     edits = saveFailed(edits, A, error);
     const read = diskRead(edits, A, "one\n");
     assert.equal(read.step, "keep");
-    assert.deepEqual(barOf(read.edits, A), { kind: "failed", message });
+    assert.equal(barOf(read.edits, A).message, message);
   }
   let large = typed(noEdits(), A, "one\n", "x".repeat(1024 * 1024 + 1));
   large = startSave(large, A).edits;
-  assert.deepEqual(barOf(diskRead(large, A, "one\n").edits, A), { kind: "failed", message: "저장하기에는 너무 큽니다." });
+  assert.deepEqual(barOf(diskRead(large, A, "one\n").edits, A), { kind: "failed", message: "너무 커서 저장할 수 없어요" });
 });
 
 test("a deleted file's bar goes when the file comes back as it was", () => {
@@ -233,8 +233,8 @@ test("a refused save is read the same when Herdr names the function in front", (
 
 test("the bar for some other failure shows Herdr's wording without the function name", () => {
   const edits = typed(noEdits(), A, "one\n", "mine\n");
-  assert.equal(barOf(saveFailed(edits, A, new Error("`herdr.writeTextFile`: No space left on device (os error 28)")), A).message,
-    "저장하지 못했습니다: No space left on device (os error 28)");
+  assert.equal(barOf(saveFailed(edits, A, new Error("`herdr.writeTextFile`: No space left on device (os error 28)")), A).detail,
+    "No space left on device (os error 28)");
 });
 
 test("a failed save keeps the edits and says why", () => {
@@ -242,10 +242,10 @@ test("a failed save keeps the edits and says why", () => {
   const permission = saveFailed(edits, A, new Error("Permission denied (os error 13)"));
   assert.equal(shownText(permission, A, "one\n"), "mine\n");
   assert.deepEqual(saveOf(permission, A), { path: A, text: "mine\n", expected: "one\n" });
-  assert.deepEqual(barOf(permission, A), { kind: "failed", message: "이 파일에 쓸 권한이 없습니다." });
-  assert.equal(barOf(saveFailed(edits, A, new Error("Text file exceeds 1 MiB")), A).message, "저장하기에는 너무 큽니다.");
-  assert.equal(barOf(saveFailed(edits, A, new Error("No space left on device (os error 28)")), A).message,
-    "저장하지 못했습니다: No space left on device (os error 28)");
+  assert.deepEqual(barOf(permission, A), { kind: "failed", message: "쓰기 권한이 없어요" });
+  assert.equal(barOf(saveFailed(edits, A, new Error("Text file exceeds 1 MiB")), A).message, "너무 커서 저장할 수 없어요");
+  assert.deepEqual(barOf(saveFailed(edits, A, new Error("No space left on device (os error 28)")), A),
+    { kind: "failed", message: "저장하지 못했어요", detail: "No space left on device (os error 28)" });
 });
 
 test("a failure bar goes once the text is typed back to what is on disk, or the save goes through", () => {
@@ -267,7 +267,7 @@ test("a save of up to 1,048,576 UTF-8 bytes goes ahead; a larger one is stopped 
   edits = typed(noEdits(), A, "one\n", at + "b");
   save = startSave(edits, A);
   assert.equal(save.write, null);
-  assert.equal(barOf(save.edits, A).message, "저장하기에는 너무 큽니다.");
+  assert.equal(barOf(save.edits, A).message, "너무 커서 저장할 수 없어요");
   assert.equal(unsaved(save.edits, A), true);
 
   // Bytes, not characters: "가" is three bytes in UTF-8 and "😀" four.
@@ -314,7 +314,7 @@ test("a conflict bar moves with the edits", () => {
   let edits = typed(noEdits(), A, "one\n", "mine\n");
   edits = diskRead(edits, A, "theirs\n").edits;
   const moved = putEdit(noEdits(), A, takeEdit(edits, A).edit);
-  assert.equal(barOf(moved, A).message, "밖에서 바뀌었습니다");
+  assert.equal(barOf(moved, A).message, "외부에서 바뀌었어요");
   assert.deepEqual(saveOf(overwritten(moved, A), A), { path: A, text: "mine\n", expected: "theirs\n" });
 });
 
@@ -329,7 +329,7 @@ test("a deleted file's edits stay even when typed back to the text read before",
   edits = diskRead(edits, A, null).edits;
   edits = typed(edits, A, "one\n", "one\n");
   assert.equal(unsaved(edits, A), true);
-  assert.equal(barOf(edits, A).message, "파일이 지워졌습니다.");
+  assert.equal(barOf(edits, A).message, "파일이 지워졌어요");
 });
 
 test("a checkbox clicked in a file without edits is saved at once, expecting the disk text", () => {
@@ -346,7 +346,7 @@ test("a checkbox save refused because the disk changed keeps the click and raise
   // writeTextFile refused; reading again finds someone else's text.
   const read = diskRead(click.edits, A, "- [ ] a\n- [ ] b\n");
   assert.equal(read.step, "keep");
-  assert.equal(barOf(read.edits, A).message, "밖에서 바뀌었습니다");
+  assert.equal(barOf(read.edits, A).message, "외부에서 바뀌었어요");
   assert.equal(shownText(read.edits, A, "- [ ] a\n- [ ] b\n"), "- [x] a\n");
   // The bar's two buttons work on the click as on any edit.
   assert.deepEqual(saveOf(overwritten(read.edits, A), A), { path: A, text: "- [x] a\n", expected: "- [ ] a\n- [ ] b\n" });
@@ -366,7 +366,7 @@ test("a checkbox clicked while the bar is up joins the edits and the bar stays",
   edits = diskRead(edits, A, "- [ ] a\n- [ ] b\n").edits;
   const click = checkboxToggled(edits, A, "- [ ] a\n- [ ] b\n", "- [x] a!\n");
   assert.equal(click.write, null);
-  assert.equal(barOf(click.edits, A).message, "밖에서 바뀌었습니다");
+  assert.equal(barOf(click.edits, A).message, "외부에서 바뀌었어요");
   assert.equal(shownText(click.edits, A, "- [ ] a\n- [ ] b\n"), "- [x] a!\n");
 });
 
@@ -382,6 +382,44 @@ test("a checkbox click in a file too large to save raises the bar instead of wri
   const big = "- [ ] a\n" + "a".repeat(1024 * 1024);
   const click = checkboxToggled(noEdits(), A, big, big.replace("[ ]", "[x]"));
   assert.equal(click.write, null);
-  assert.equal(barOf(click.edits, A).message, "저장하기에는 너무 큽니다.");
+  assert.equal(barOf(click.edits, A).message, "너무 커서 저장할 수 없어요");
   assert.equal(unsaved(click.edits, A), true);
+});
+
+test("the header shows no status for a file without edits", () => {
+  assert.equal(statusOf(noEdits(), A), null);
+  assert.equal(statusOf(typed(noEdits(), A, "one\n", "mine\n"), null), null);
+});
+
+test("a file with edits and nothing wrong reads 편집됨 with the save button", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  assert.deepEqual(statusOf(edits, A), { kind: "edited", message: "편집됨", tip: "편집됨", buttons: ["save"] });
+});
+
+test("a failed save reads why in the header, keeps the save button, and hovers to the same words", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const permission = saveFailed(edits, A, new Error("`herdr.writeTextFile`: Permission denied (os error 13)"));
+  assert.deepEqual(statusOf(permission, A),
+    { kind: "failed", message: "쓰기 권한이 없어요", tip: "쓰기 권한이 없어요", buttons: ["save"] });
+  assert.deepEqual(statusOf(diskRead(edits, A, null).edits, A),
+    { kind: "failed", message: "파일이 지워졌어요", tip: "파일이 지워졌어요", buttons: ["save"] });
+  const large = startSave(typed(noEdits(), A, "one\n", "x".repeat(1024 * 1024 + 1)), A).edits;
+  assert.deepEqual(statusOf(large, A),
+    { kind: "failed", message: "너무 커서 저장할 수 없어요", tip: "너무 커서 저장할 수 없어요", buttons: ["save"] });
+});
+
+test("some other failed save reads 저장하지 못했어요 and hovers to Herdr's wording without the function name", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const other = saveFailed(edits, A, new Error("`herdr.writeTextFile`: No space left on device (os error 28)"));
+  assert.deepEqual(statusOf(other, A),
+    { kind: "failed", message: "저장하지 못했어요", tip: "No space left on device (os error 28)", buttons: ["save"] });
+});
+
+test("a file changed outside reads 외부에서 바뀌었어요 with read again and overwrite instead of save", () => {
+  const edits = diskRead(typed(noEdits(), A, "one\n", "mine\n"), A, "theirs\n").edits;
+  assert.deepEqual(statusOf(edits, A),
+    { kind: "conflict", message: "외부에서 바뀌었어요", tip: "외부에서 바뀌었어요", buttons: ["discard", "overwrite"] });
+  // Overwrite turns the conflict back into plain edits, saved against the disk text found.
+  assert.equal(statusOf(overwritten(edits, A), A).kind, "edited");
+  assert.equal(statusOf(discarded(edits, A), A), null);
 });

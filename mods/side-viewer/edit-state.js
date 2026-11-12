@@ -3,9 +3,11 @@
 //
 // Only a file with unsaved edits has an entry: { disk, text }, where `disk` is the file's
 // text as last read before the edit (the `expected` of its save) and `text` the edited text.
-// A file without an entry shows what is on disk. An entry may also carry `bar`, what the bar
-// above the content shows: { kind: "conflict", disk } when the disk now holds `disk` instead,
-// or { kind: "failed", reason, detail? } when a save failed or the file was deleted (barOf).
+// A file without an entry shows what is on disk. An entry may also carry `bar`, what is wrong
+// with the edits, which the header's status shows in place of 편집됨 (statusOf):
+// { kind: "conflict", disk } when the disk now holds `disk` instead, or
+// { kind: "failed", reason, detail? } when a save failed or the file was deleted. The name
+// `bar` stays because entries travel to new viewer tabs in the handoff file (takeEdit).
 
 export function noEdits() {
   return {};
@@ -63,12 +65,12 @@ export function diskRead(edits, file, text) {
   return { edits: withBar(edits, file, bar), step: "keep" };
 }
 
-// The bar's "discard my edits and read again": the file shows what is on disk.
+// The conflict's "read again", which discards the edits: the file shows what is on disk.
 export function discarded(edits, file) {
   return without(edits, file);
 }
 
-// The bar's "overwrite with mine": the edit now stands against the disk text the bar found,
+// The conflict's "overwrite": the edit now stands against the disk text the conflict found,
 // so the save that follows (saveOf) expects that text and replaces it. Without a conflict
 // the edits are left as they are.
 export function overwritten(edits, file) {
@@ -128,19 +130,35 @@ export function putEdit(edits, file, edit) {
 }
 
 const MESSAGES = {
-  conflict: "밖에서 바뀌었습니다",
-  deleted: "파일이 지워졌습니다.",
-  permission: "이 파일에 쓸 권한이 없습니다.",
-  large: "저장하기에는 너무 큽니다.",
+  conflict: "외부에서 바뀌었어요",
+  deleted: "파일이 지워졌어요",
+  permission: "쓰기 권한이 없어요",
+  large: "너무 커서 저장할 수 없어요",
+  other: "저장하지 못했어요",
 };
 
-// What the bar above the content says for `file`, as { kind, message }, or null for no bar.
-// "conflict" carries the two buttons (discard and overwrite); "failed" only says why.
+// What is wrong with `file`'s edits, as { kind, message, detail? }, or null when nothing is.
+// "conflict": the disk changed; "failed": a save failed or the file is gone, with Herdr's
+// own wording as `detail` when the reason is none of the known ones.
 export function barOf(edits, file) {
   const bar = file ? edits[file]?.bar : null;
   if (!bar) return null;
   if (bar.kind === "conflict") return { kind: bar.kind, message: MESSAGES.conflict };
-  return { kind: bar.kind, message: MESSAGES[bar.reason] ?? `저장하지 못했습니다: ${bar.detail}` };
+  if (MESSAGES[bar.reason] && bar.reason !== "other") return { kind: bar.kind, message: MESSAGES[bar.reason] };
+  return { kind: bar.kind, message: MESSAGES.other, detail: bar.detail };
+}
+
+// What the header shows for `file` beside its name, as { kind, message, tip, buttons }, or
+// null when the file has no edits. `tip` is what hovering the message shows: the whole
+// message, which a narrow header may cut, or Herdr's wording for an unknown failure.
+// `buttons`: ["save"], or ["discard", "overwrite"] for a conflict, where saving would only
+// be refused again.
+export function statusOf(edits, file) {
+  if (!unsaved(edits, file)) return null;
+  const problem = barOf(edits, file);
+  if (!problem) return { kind: "edited", message: "편집됨", tip: "편집됨", buttons: ["save"] };
+  const buttons = problem.kind === "conflict" ? ["discard", "overwrite"] : ["save"];
+  return { kind: problem.kind, message: problem.message, tip: problem.detail || problem.message, buttons };
 }
 
 // A checkbox in the rendering of `file` was clicked: `text` is the shown text with that box
@@ -156,7 +174,7 @@ export function checkboxToggled(edits, file, disk, text) {
 }
 
 // Herdr's own wording, without the "`herdr.writeTextFile`: " Herdr puts in front of every
-// API error: refusalOf anchors on the start of that wording, and the bar shows it.
+// API error: refusalOf anchors on the start of that wording, and hovering the status shows it.
 function messageOf(error) {
   return String(error?.message ?? error ?? "").replace(/^`herdr\.[\w.]+`: /, "");
 }
