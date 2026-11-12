@@ -1,19 +1,22 @@
 // What the side viewer shows for a file and the text read from it. No Herdr imports, so it
 // runs under `node --test`. Which view a file gets is decided in views.js.
+import { wordsOf } from "./i18n.js";
 
+// Message keys (messages-body.js).
 const NOTICES = {
-  large: "뷰어에서 열기에는 너무 큽니다.",
-  none: "열 파일이 없습니다.",
-  loading: "불러오는 중…",
-  empty: "이 파일은 비어 있습니다.",
-  missing: "이 파일은 더 이상 없습니다.",
-  unreadable: "이 파일을 읽을 수 없습니다.",
-  unsupported: "이 종류의 파일은 뷰어에서 열 수 없습니다.",
+  large: "body.large",
+  none: "body.none",
+  loading: "body.loading",
+  empty: "body.empty",
+  missing: "body.missing",
+  unreadable: "body.unreadable",
+  unsupported: "body.unsupported",
 };
 
-// The text shown in place of the content, or null for a state that draws the content.
-export function noticeFor(state) {
-  return NOTICES[state] ?? null;
+// The text shown in place of the content in tr's language (i18n.js), or null for a state
+// that draws the content.
+export function noticeFor(state, tr) {
+  return typeof NOTICES[state] === "string" ? wordsOf(tr)(NOTICES[state]) : null;
 }
 
 // `text` is what reading the file gave: a string, or null when the file is not there.
