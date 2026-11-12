@@ -2,13 +2,14 @@
 // the image view copies a whole image (main.js readImage): TextView does not draw a local
 // image, and Herdr draws images only from real folders under the app home. Only a file whose
 // first bytes are an image's is copied, so nothing else can be pulled into the app home
-// through a document. Which file an image points at and its drawn size are decided in
-// markdown-images.js.
-import { exec, appHome } from "herdr";
+// through a document. The images are the files on the document's machine: their first bytes
+// are read there and their bytes copied from there (file-access.js). Which file an image
+// points at and its drawn size are decided in markdown-images.js.
+import { appHome } from "herdr";
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
 import { readProbe, PROBE, blockerOf } from "./views.js";
-import { kindOf, copyName, sizeOf, FOLDER, COPY } from "./image-copies.js";
+import { kindOf, copyName, sizeOf, FOLDER } from "./image-copies.js";
 import { parseMarkdown } from "./markdown-blocks.js";
 import { imageFileOf, imagesOf } from "./markdown-images.js";
 
@@ -19,10 +20,12 @@ const same = (a, b) => a?.failed === b?.failed && a?.path === b?.path
 
 export class MarkdownImages {
   // `sweep()` and `dropOlder(path)` are main.js's cleanup of the copies folder, shared with
-  // the image view so both follow one 30-day rule.
-  constructor({ sweep, dropOlder }) {
+  // the image view so both follow one 30-day rule. `access()` is the file access of the
+  // viewer's machine (file-access.js), asked at each copy.
+  constructor({ sweep, dropOlder, access }) {
     this.sweep = sweep;
     this.dropOlder = dropOlder;
+    this.access = access;
     // Image file -> { path, size } of its copy, or FAILED.
     this.found = new Map();
     this.pending = new Set();
@@ -67,12 +70,13 @@ export class MarkdownImages {
 
   // The copy of one image file as { path, size }, or FAILED.
   async copy(image) {
-    const probe = readProbe((await exec("sh", ["-c", PROBE, "sh", image])).stdout);
+    const access = this.access();
+    const probe = readProbe((await access.run("sh", ["-c", PROBE, "sh", image])).stdout);
     if (blockerOf({ view: "image" }, probe)) return FAILED;
     const kind = kindOf(image, probe.head);
     if (!kind) return FAILED;
-    const path = `${FOLDER}/${copyName(image, probe, kind)}`;
-    const copied = await exec("sh", ["-c", COPY, "sh", image, `${appHome()}/${path}`]);
+    const path = `${FOLDER}/${copyName(access.key(image), probe, kind)}`;
+    const copied = await access.copy(image, `${appHome()}/${path}`);
     if (copied.code !== 0) return FAILED;
     // The same copy as before: its size is known, so the file is not read again.
     const known = this.found.get(image);
