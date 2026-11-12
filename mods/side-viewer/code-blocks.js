@@ -55,6 +55,30 @@ export function codeLanguageOf(lang) {
   return { label: known.label, language: colorsOf(known.extension), shell: false };
 }
 
+// "#rgb", "#rrggbb" or "#rrggbbaa" as [r, g, b], or null. Alpha is left out.
+function channelsOf(color) {
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(String(color ?? ""))?.[1];
+  if (!hex) return null;
+  const full = hex.length === 3 ? [...hex].map((digit) => digit + digit).join("") : hex;
+  return [0, 2, 4].map((at) => parseInt(full.slice(at, at + 2), 16));
+}
+
+const hexOf = (channels) => `#${channels.map((value) => Math.round(value).toString(16).padStart(2, "0")).join("")}`;
+
+// A theme counts as light when its background is.
+function isLight(channels) {
+  const [r, g, b] = channels.map((value) => value / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5;
+}
+
+// A card's background under theme colors `t`: { top, bottom } for a gradient from top to
+// bottom on a dark theme, { solid } on a light one, where a dark fade would look dirty.
+export function cardFill(t) {
+  const background = channelsOf(t.background);
+  if (!background || !channelsOf(t.surface) || isLight(background)) return { solid: t.surface };
+  return { top: t.surface, bottom: hexOf(background.map((value) => value * 0.75)) };
+}
+
 // A code font's glyph is about this share of the font size wide.
 const GLYPH = 0.6;
 const TAB = 4;
