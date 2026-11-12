@@ -491,12 +491,22 @@ test("a remote save refused for permission or otherwise shows as a save here doe
   assert.equal(shownText(other, A, "one\n"), "mine\n");
 });
 
-test("a failed remote save's reason outlives typing and a read of the disk as it was, and goes with a save", () => {
+test("a save that could not reach the machine reads 편집됨 again once a read reaches it", () => {
   let edits = writeFailed(typed(noEdits(), A, "one\n", "mine\n"), A, { reason: "unreachable" }, "linux-box");
   edits = typed(edits, A, "one\n", "mine!\n");
-  edits = diskRead(edits, A, "one\n").edits;
+  // While the machine is still out of reach, its reads fail and the status stays.
+  edits = diskRead(edits, A, undefined).edits;
   assert.equal(statusOf(edits, A).message, "linux-box 기계에 연결할 수 없어요");
-  assert.equal(statusOf(saved(edits, A, "mine!\n"), A), null);
+  // Back in reach: the read finds the disk as it was, and the edits are plain edits again.
+  const read = diskRead(edits, A, "one\n");
+  assert.equal(read.step, "keep");
+  assert.deepEqual(statusIn(read.edits, A, ko, null), { kind: "edited", message: "편집됨", tip: "편집됨", buttons: ["save"] });
+  assert.equal(shownText(read.edits, A, "one\n"), "mine!\n");
+});
+
+test("a remote save refused for permission keeps its reason through a read of the disk as it was", () => {
+  const edits = writeFailed(typed(noEdits(), A, "one\n", "mine\n"), A, { reason: "permission" }, "linux-box");
+  assert.equal(statusIn(diskRead(edits, A, "one\n").edits, A, ko, null).message, "쓰기 권한이 없어요");
 });
 
 // This Mac's saves go through the file access as remote ones do: its refusals become the
