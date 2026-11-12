@@ -1,7 +1,7 @@
 // Side viewer: shows one file in a pane beside the conversation. open.sh opens it with
 // `pane.split {direction: "right", mod: "side-viewer", props: {file}}`.
 // This file holds the viewer's state and talks to Herdr: reading, taking requests from
-// open.sh and watching. Drawing is in header.js and the views' modules (markdown-view.js,
+// open.sh and watching. Drawing is in header.js, conflict-bar.js and the views' modules (markdown-view.js,
 // code-view.js, image-view.js, notice-view.js), which get what to show and callbacks from here.
 // The decisions live in modules without Herdr imports, each with its own tests: document.js,
 // views.js, image-copies.js, history.js, request.js, links.js, original.js and edit-state.js.
@@ -12,13 +12,14 @@ import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, 
 import * as fs from "fs/promises";
 import { contentOf } from "./document.js";
 import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf } from "./views.js";
-import { noEdits, typed, unsaved, shownText, saveOf, saved } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, startSave, refusalOf, saveFailed } from "./edit-state.js";
 import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, COPY, LIST } from "./image-copies.js";
 import { start, open, back, canGoBack } from "./history.js";
 import { takeRequest } from "./request.js";
 import { watchedFolder, linkAction, touches } from "./links.js";
 import { openOriginalCommands } from "./original.js";
 import { renderHeader } from "./header.js";
+import { renderBar } from "./conflict-bar.js";
 import { renderMarkdown } from "./markdown-view.js";
 import { renderCode } from "./code-view.js";
 import { renderImage } from "./image-view.js";
@@ -153,7 +154,13 @@ export default class SideViewer extends View {
       if (turn !== this.reads) return;
       this.reading = null;
       this.probed = result.probe;
-      this.apply(file, result.content, cx);
+      // A file with unsaved edits is not read again over them: a changed or deleted file
+      // raises the bar instead (edit-state.js). Only a screen without its editor takes the read.
+      const read = diskRead(this.edits, file, result.text);
+      this.edits = read.edits;
+      const shown = this.content.file === file && this.content.editor;
+      if (result.content === null || read.step === "show" || !shown) this.apply(file, result.content, cx);
+      else cx.notify();
       if (this.again) this.load(cx);
     });
   }
@@ -194,10 +201,11 @@ export default class SideViewer extends View {
     if (content.state === "markdown") this.images.prepare(content.file, shownText(this.edits, content.file, content.text), true, cx);
   }
 
-  // What to show for a file, as { content, probe }: the view's content or the state of a
-  // notice, and what to remember of the file's size and time for the next read. The size is
-  // asked first, so a file too large to draw is never read. `known` is what the last read
-  // remembered: text that still has that size and time is not read again (content: null).
+  // What to show for a file, as { content, probe, text }: the view's content or the state of a
+  // notice, what to remember of the file's size and time for the next read, and the text found
+  // on disk (null: the file is gone; undefined: not read). The size is asked first, so a file
+  // too large to draw is never read. `known` is what the last read remembered: text that still
+  // has that size and time is not read again (content: null).
   async read(file, known) {
     const found = viewOf(file, await this.listed());
     if (!found) return { content: { state: "unsupported" }, probe: null };
@@ -211,8 +219,12 @@ export default class SideViewer extends View {
     if (sameProbe(known, file, probe)) return { content: null, probe: known };
     const remembered = settledProbe(file, probe, Math.floor(Date.now() / 1000));
     const blocker = blockerOf(found, probe);
-    if (blocker) return { content: { state: blocker }, probe: remembered };
-    return { content: contentOf(file, await readTextFile(file), found), probe: remembered };
+    if (blocker) {
+      const text = blocker === "missing" ? null : blocker === "empty" ? "" : undefined;
+      return { content: { state: blocker }, probe: remembered, text };
+    }
+    const text = await readTextFile(file);
+    return { content: contentOf(file, text, found), probe: remembered, text };
   }
 
   // The listed extensions by group (extensions.json). The installed mod's own list is the
@@ -305,25 +317,68 @@ export default class SideViewer extends View {
   }
 
   // Writes the shown file's unsaved edits. Returns false when there is nothing to save.
-  // writeTextFile refuses when the file no longer matches the text read before the edit;
-  // a refused or failed save keeps the edits as they are.
+  // writeTextFile refuses when the file no longer matches the text read before the edit, and
+  // says the same when the file is gone, so the file is read again to tell the two apart.
+  // A refused or failed save keeps the edits, and the bar says why (edit-state.js).
   save(cx) {
-    const request = saveOf(this.edits, this.file);
-    if (!request || this.saving) return false;
+    if (!saveOf(this.edits, this.file) || this.saving) return false;
+    const start = startSave(this.edits, this.file);
+    this.edits = start.edits;
+    const request = start.write;
+    if (!request) {
+      cx.notify();
+      return true;
+    }
     this.saving = true;
     cx.spawn(async (cx) => {
       try {
         await writeTextFile(request.path, request.text, request.expected);
         this.edits = saved(this.edits, request.path, request.text);
         if (this.content.file === request.path) this.content.text = request.text;
-      } catch {
-        // Kept as unsaved; nothing on screen says why yet.
+      } catch (error) {
+        if (refusalOf(error) !== "changed") {
+          this.edits = saveFailed(this.edits, request.path, error);
+        } else {
+          try {
+            this.edits = diskRead(this.edits, request.path, await readTextFile(request.path)).edits;
+          } catch (readError) {
+            this.edits = saveFailed(this.edits, request.path, readError);
+          }
+        }
       } finally {
         this.saving = false;
         cx.notify();
       }
     });
     return true;
+  }
+
+  // The bar's "discard my edits and read again". The editor goes back to the last read at
+  // once, and the read that follows puts the disk's text on screen.
+  discard(cx) {
+    const file = this.file;
+    this.edits = discarded(this.edits, file);
+    const content = this.content;
+    if (content.file === file && content.editor && content.editor.value() !== content.text) {
+      content.editor.set_value(content.text);
+    }
+    if (content.state === "markdown") this.generation++;
+    this.probed = null;
+    this.load(cx);
+    cx.notify();
+  }
+
+  // The bar's "overwrite with mine": a save that expects the disk text the bar found.
+  overwrite(cx) {
+    this.edits = overwritten(this.edits, this.file);
+    // My text was already what the disk holds: nothing to write, only the screen to catch up.
+    if (!saveOf(this.edits, this.file)) {
+      this.probed = null;
+      this.load(cx);
+    } else {
+      this.save(cx);
+    }
+    cx.notify();
   }
 
   // Keys reach here while the viewer or the editor inside it holds the keyboard.
@@ -448,11 +503,20 @@ export default class SideViewer extends View {
     return renderNotice(t, content.state);
   }
 
+  // What the bar between the header and the content shows (conflict-bar.js), or null for none.
+  bar() {
+    const bar = barOf(this.edits, this.file);
+    if (!bar) return null;
+    return { ...bar, onDiscard: (cx) => this.discard(cx), onOverwrite: (cx) => this.overwrite(cx) };
+  }
+
   render(_cx) {
     const t = theme();
+    const bar = this.bar();
     return v_flex().id("side-viewer").size_full().min_h(0).bg(t.background).text_color(t.foreground)
       .track_focus(this.focus).on_key_down((event, cx) => this.keyDown(event, cx))
       .child(renderHeader(t, this.header()))
+      .when(Boolean(bar), (el) => el.child(renderBar(t, bar)))
       .child(this.renderBody(t));
   }
 }
