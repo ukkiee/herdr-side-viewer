@@ -42,8 +42,10 @@ everything back.
 
 - **Where.** The markdown source, the svg source and the code view take typing. The
   markdown rendering, images (an svg's picture too), the code block cards inside a
-  document and the notices do not. An empty (or blank) markdown or code file is no notice:
-  it opens in its view, ready to type. An empty picture still gets `이 파일은 비어 있습니다.`.
+  document and the notices do not. An empty (or blank) markdown or svg file shows
+  `이 파일은 비어 있습니다.` on its rendering side, and its `렌더링 | 원문` source is ready
+  to type; back on the rendering, what was typed is drawn. An empty (or blank) code file
+  opens as an empty code view. An empty `svgz` or picture still gets only the notice.
   An `svgz` has no source view. The sources wrap long
   lines to the pane; the code view does not. All three have line numbers.
 - **Unsaved.** Once you change something, the header shows `저장 안 됨` and a `저장`

@@ -75,8 +75,10 @@ Top to bottom:
     whose size can't be read fills the width as a square. An svg with unsaved edits is drawn
     from them.
   - **Notice**: one line at 13px in `dim`, 20px padding. `열 파일이 없습니다.` (no file),
-    `불러오는 중…` (loading), `이 파일은 비어 있습니다.` (an empty picture; an empty or
-    blank markdown or code file opens in its view instead, ready to type: v2 AC-22),
+    `불러오는 중…` (loading), `이 파일은 비어 있습니다.` (an empty `svgz` or picture; an
+    empty or blank markdown or svg shows it on its rendering side, under the folder and
+    name for markdown, with the `렌더링 | 원문` switch to a source ready to type, and an
+    empty or blank code file opens as an empty code view: v2 AC-22),
     `이 파일은 더 이상 없습니다.` (gone), `이 파일을 읽을 수 없습니다.` (unreadable),
     `뷰어에서 열기에는 너무 큽니다.` (too large),
     `이 종류의 파일은 뷰어에서 열 수 없습니다.` (no view for this file).
@@ -117,11 +119,11 @@ The mod shows files, not agents, so it has no agent statuses.
   its editor and only gets the new text. A deleted file turns into the "gone" notice, and
   its content comes back when the file does. "Loading" shows only for a newly opened file.
   A file with unsaved edits is never read over them: see "Changed outside". Nor is it
-  replaced by a notice: coming back to one that is now gone, too large or unreadable, an
-  svg now empty, or an svg now past 1 MiB (a picture alone) or no longer svg, shows its
-  editor with the edits (views.js, `editedContentOf`), and the bar says what it can. A
-  markdown or code file emptied outside is no notice at all: it is a changed file, so the
-  edits stay and the bar says `밖에서 바뀌었습니다`.
+  replaced by a notice: coming back to one that is now gone, too large or unreadable, or
+  an svg now past 1 MiB (a picture alone) or no longer svg, shows its editor with the edits
+  (views.js, `editedContentOf`), and the bar says what it can. A markdown, code or svg file
+  emptied outside is no notice at all: it is a changed file, so the edits stay and the bar
+  says `밖에서 바뀌었습니다`.
 - **Theme.** The code view's colors are fixed when its editor is made, so each check also
   compares them with the theme: after a theme change the open code is redrawn with the new
   colors within 15 seconds. Code block cards take the new colors at the same check.
@@ -491,7 +493,7 @@ and a path in code formatting.
     `이 파일은 비어 있습니다.`, `이 파일을 읽을 수 없습니다.`,
     `이 종류의 파일은 뷰어에서 열 수 없습니다.`) with `원래 앱으로 열기` and `Finder에서 보기`
     working and no `새 탭으로 열기`, and `herdr-app status` reports no mod error. An empty
-    markdown or code file gets no notice; v2 step 5 checks it. (AC-9; v2 AC-22)
+    markdown, svg or code file opens in its view instead; v2 step 5 checks it. (AC-9; v2 AC-22)
 14. `herdr-app do pane.split --direction right --mod side-viewer --props '{"file":"/etc/hosts"}'`
     shows `이 종류의 파일은 뷰어에서 열 수 없습니다.` with `원래 앱으로 열기` and
     `Finder에서 보기`. (AC-9)
@@ -549,10 +551,14 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
    numbers. Save with cmd+S. (AC-1, AC-7, AC-2)
 5. Try to type into the markdown rendering, a `.png` picture, a code block card and a notice
    (an empty picture, made with `: > ~/sv2-check/empty.png`): nothing changes and no
-   `저장 안 됨` appears. Then make `: > ~/sv2-check/empty.md` and `: > ~/sv2-check/empty.js`
-   and open each: no notice. The markdown shows only its folder and name at the top and the
-   `렌더링 | 원문` switch; in `원문` type a line and press cmd+S, and `cat` shows it in the
-   file. The `.js` opens as an empty code view; type and save the same way. (AC-1, AC-22)
+   `저장 안 됨` appears. Then make `: > ~/sv2-check/empty.md`, `: > ~/sv2-check/empty.svg`
+   and `: > ~/sv2-check/empty.js` and open each. The markdown shows its folder and name at
+   the top, `이 파일은 비어 있습니다.` under them, and the `렌더링 | 원문` switch; in `원문`
+   type a heading, switch back to `렌더링` to see it drawn, press cmd+S, and `cat` shows it
+   in the file. The svg shows the same notice and switch; in `원문` (xml colors) type
+   `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="18" fill="tomato"/></svg>`,
+   switch to `렌더링` to see the circle, and save with cmd+S. The `.js` opens as an empty
+   code view with no notice; type and save the same way. (AC-1, AC-22)
 6. Edit `~/sv2-check/main.js` without saving. Cmd-click `~/sv2-check/markdown-sample.md`,
    then `←`: the edit and `저장 안 됨` are back. Do it again through a link in the markdown
    rendering instead of a cmd-click. Then close the pane: nothing asks. Cmd-click
