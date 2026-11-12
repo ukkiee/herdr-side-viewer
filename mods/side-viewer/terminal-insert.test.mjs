@@ -29,6 +29,17 @@ test("the command goes in through push-line, then print -rz, and nothing presses
   ]);
 });
 
+test("a shell just opened has no draft, so nothing is pushed aside before zsh reads its keys", () => {
+  assert.deepEqual(insertCommands("t7", "ls -la", { fresh: true }), [["send", "t7", " print -rz -- 'ls -la'"]]);
+});
+
+test("a shell still starting is neither ready nor busy", () => {
+  const live = terminal("zsh");
+  assert.deepEqual(shellState({ ...live, foreground: undefined }), { state: "starting" });
+  assert.deepEqual(shellState(terminal("zsh", ["/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec /bin/zsh -l", "zsh", "/w"])),
+    { state: "starting" });
+});
+
 test("single quotes, Korean, symbols and backslashes are quoted for zsh", () => {
   assert.equal(sent(insertCommands("t7", "echo 'q' \"a b\" | wc -c > /dev/null; ls $HOME ~ 한글 & `pwd` a\\nb")),
     " print -rz -- 'echo '\\''q'\\'' \"a b\" | wc -c > /dev/null; ls $HOME ~ 한글 & `pwd` a\\nb'");

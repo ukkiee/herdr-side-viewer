@@ -11,12 +11,12 @@
 // the inserted command has run or been dropped.
 
 // The hc argument lists that put `command` into terminal `terminal`'s input line, in order.
-export function insertCommands(terminal, command) {
+// `fresh`: the shell was just opened, so it has no draft, and an alt+q sent before zsh reads
+// its keys would only show up on screen as "^[q".
+export function insertCommands(terminal, command, { fresh = false } = {}) {
   const text = command.replace(/\n+$/, "");
-  return [
-    ["keys", terminal, "alt+q"],
-    ["send", terminal, ` print -rz -- ${quoted(text)}`],
-  ];
+  const send = ["send", terminal, ` print -rz -- ${quoted(text)}`];
+  return fresh ? [send] : [["keys", terminal, "alt+q"], send];
 }
 
 // Inside single quotes zsh takes everything as it is except the quote itself.
@@ -26,10 +26,14 @@ const quoted = (text) => `'${text.replaceAll("'", "'\\''")}'`;
 // zsh reports no hc status, so the foreground process tells: the shell itself while it waits
 // at its prompt, anything else while a program runs. Another shell counts as busy too, since
 // only zsh has print -z.
-//   { state: "ready" } | { state: "busy", program } | { state: "gone" }
+// A shell from splitOf is "starting" until its short zsh has become the login shell, and so
+// is a terminal hc has no foreground for yet.
+//   { state: "ready" } | { state: "busy", program } | { state: "starting" } | { state: "gone" }
 export function shellState(info) {
-  if (info?.state !== "live" || !info.foreground) return { state: "gone" };
-  const program = String(info.foreground.name ?? "").split("/").pop();
+  if (info?.state !== "live") return { state: "gone" };
+  const foreground = info.foreground;
+  if (!foreground || foreground.argv?.[1] === "-c") return { state: "starting" };
+  const program = String(foreground.name ?? "").split("/").pop();
   return /^-?zsh$/.test(program) ? { state: "ready" } : { state: "busy", program };
 }
 
