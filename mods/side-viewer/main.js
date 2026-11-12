@@ -12,7 +12,7 @@ import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, 
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
 import { contentOf } from "./document.js";
-import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, editedContentOf } from "./views.js";
 import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
 import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab } from "./viewer-tab.js";
 import { toggleCheckbox } from "./checkbox.js";
@@ -281,11 +281,15 @@ export default class SideViewer extends View {
       this.reading = null;
       this.probed = result.probe;
       // A file with unsaved edits is not read again over them: a changed or deleted file
-      // raises the bar instead (edit-state.js). Only a screen without its editor takes the read.
+      // raises the bar instead (edit-state.js). Only a screen without its editor takes the read,
+      // and a notice there gives way to the editor of the edits (views.js, editedContentOf).
       const read = diskRead(this.edits, file, result.text);
       this.edits = read.edits;
       const shown = this.content.file === file && this.content.editor;
-      if (result.content === null || read.step === "show" || !shown) this.apply(file, result.content, cx);
+      const content = read.step === "keep"
+        ? editedContentOf(file, result.content, viewOf(file, this.groups), this.edits[file]?.disk)
+        : result.content;
+      if (result.content === null || read.step === "show" || !shown) this.apply(file, content, cx);
       else cx.notify();
       if (this.again) this.load(cx);
     });

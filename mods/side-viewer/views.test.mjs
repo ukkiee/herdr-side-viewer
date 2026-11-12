@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, switchable } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, switchable, editedContentOf } from "./views.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const probe = (bytes) => ({ found: true, readable: true, bytes, modified: 1, head: [] });
@@ -249,4 +249,25 @@ test("a changed svg keeps its source editor and only gets the new text", () => {
   assert.equal(refreshOf(shown, { ...next, theme: "#2" }), "replace");
   assert.equal(refreshOf(shown, { ...shown, editor: undefined }), "keep");
   assert.equal(refreshOf(shown, { ...next, state: "image" }), "replace");
+});
+
+test("a file with unsaved edits that is now gone, empty or too large comes back as its view, not a notice", () => {
+  const md = viewOf("/work/plan.md", groups);
+  for (const state of ["missing", "empty", "large", "unreadable"]) {
+    assert.deepEqual(editedContentOf("/work/plan.md", { state }, md, "# plan\n"), { state: "markdown", text: "# plan\n" }, state);
+  }
+  assert.deepEqual(editedContentOf("/work/main.py", { state: "missing" }, viewOf("/work/main.py", groups), "x = 1\n"),
+    { state: "code", text: "x = 1\n", language: "python" });
+  assert.deepEqual(editedContentOf("/work/logo.svg", { state: "missing" }, viewOf("/work/logo.svg", groups), "<svg/>"),
+    { state: "svg", text: "<svg/>", path: null, size: null });
+});
+
+test("a read that can be drawn, or a file without edits, keeps the read's own content", () => {
+  const md = viewOf("/work/plan.md", groups);
+  const read = { state: "markdown", text: "# new\n" };
+  assert.equal(editedContentOf("/work/plan.md", read, md, "# plan\n"), read);
+  assert.equal(editedContentOf("/work/plan.md", null, md, "# plan\n"), null);
+  assert.deepEqual(editedContentOf("/work/plan.md", { state: "missing" }, md, undefined), { state: "missing" });
+  assert.deepEqual(editedContentOf("/work/plan.md", { state: "unsupported" }, null, "# plan\n"), { state: "unsupported" });
+  assert.deepEqual(editedContentOf("/work/shot.png", { state: "missing" }, viewOf("/work/shot.png", groups), "x"), { state: "missing" });
 });
