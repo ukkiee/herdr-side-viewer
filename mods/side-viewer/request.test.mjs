@@ -72,7 +72,7 @@ test("a request without a time is ignored", () => {
   assert.equal(requestFrom(text({ id: "a1", file: "/a.md", at: "soon" }), fresh), null);
 });
 
-// Spaces as spaces() gives them (ids observed 2026-11-13): two of this Mac's, bare, and a
+// Spaces as spaces() gives them: two of this Mac's, bare, and a
 // remote one with its `<machine>/` prefix. A viewer's space value is the id without it.
 const HERE = "spfcbfd8b278fa8d8e02972c005e05b6ea";
 const OTHER_HERE = "sp9f0a3f5d62c03718f911c1c8acd35d53";
@@ -80,7 +80,7 @@ const REMOTE = "spa386c8aedeec27b60120366586cddf4b";
 const SPACES = [
   { id: HERE, machine: null, name: "work", tabs: [] },
   { id: OTHER_HERE, machine: null, name: "home", tabs: [] },
-  { id: `imac-i7/${REMOTE}`, machine: "imac-i7", name: "imac", tabs: [] },
+  { id: `mac-box/${REMOTE}`, machine: "mac-box", name: "imac", tabs: [] },
 ];
 const asked = (space) => text({ id: "a1", file: "/a.md", at: AT, ...(space === undefined ? {} : { space }) });
 const viewerIn = (space) => ({ ...fresh, space, spaces: SPACES });

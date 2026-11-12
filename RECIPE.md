@@ -157,24 +157,30 @@ The mod shows files, not agents, so it has no agent statuses.
   there. No answer: it takes the answer's name itself and splits as above. A failed request
   write splits too.
 - **Remote files.** The viewer's machine is its space's: the props' `space` value is
-  looked up in `spaces()` at every read (machine.js `machineOf`), and a viewer without one,
-  or whose space is not listed, is on this Mac. On another machine every read goes through
-  file-access.js with Herdr's `on`: the probe (`sh` with `stat -c` on Linux, `stat -f` on
-  macOS), `readTextFile(path, {on})` for text, and for an image the bytes from
-  `hc exec --on <machine> cat <file>`, run by this Mac's `sh` into `<copy>.part`, then moved
-  to the copy under `images/`, named by a hash of `<machine>:<path>`. The size limits, the
-  first-bytes check and the notices are this Mac's. A machine that `machines()` lists as
-  `unavailable`, or a refusal whose words hold `unreachable`, gives
-  `<machine> 기계에 연결할 수 없어요.`; `cannot start sh: program not found` gives the
-  Windows notice; any other refusal `이 파일을 읽을 수 없습니다.`
-- **Remote changes.** No folder is watched on another machine. Every 3 seconds the viewer
-  runs `cksum <file>` there (10-second limit; a check still running skips its turn) and
+  looked up in `spaces()` at every read (machine.js `machineOf`), and a viewer without one is
+  on this Mac. A viewer whose space is not listed yet (just after the app starts) shows
+  `불러오는 중…` and reads and saves nothing; within 3 seconds of Herdr listing the space, or
+  of the space's machine changing, it reads the file again. On another machine every read
+  goes through file-access.js with Herdr's `on`: the probe (`sh` with `stat -c` on Linux,
+  `stat -f` on macOS), `readTextFile(path, {on})` for text, and for an image the bytes in
+  pieces of 4 MiB from `hc exec --on <machine> sh -c 'tail -c +<from> | head -c <n>'` (20
+  seconds each, 120 for the whole copy), run by this Mac's `sh` into `<copy>.<pid>.part`, then
+  moved to the copy under `images/`, named by a hash of `<machine>:<path>`, only when its size
+  is the probe's. The size limits (20 MiB for an image), the first-bytes check and the
+  notices are this Mac's. A machine that `machines()` lists as `unavailable`, or a refusal
+  whose words hold `unreachable` or `timed out`, gives `<machine> 기계에 연결할 수 없어요.`;
+  `cannot start sh: program not found` gives the Windows notice; any other refusal
+  `이 파일을 읽을 수 없습니다.`
+- **Remote changes.** No folder is watched on another machine. Every 3 seconds, only while
+  its file is on another machine or its space is not listed yet, the viewer runs
+  `cksum <file>` there (10-second limit; a check still running skips its turn) and
   reads the file again only when the mark (`<sum> <size>`, `missing`, `unreadable`, or the
   failure kind) differs from the last one. The first mark of a file is only noted. Losing
   the machine is a mark too, so the viewer turns to the "can't reach" notice and reads the
   file again when it is back. The 15-second recheck runs as on this Mac. A file with unsaved
   edits is never read over them, so a lost machine leaves the editor and its edits on
-  screen.
+  screen, and the header's status says `<machine> 기계에 연결할 수 없어요` (red, the save
+  button stays, the whole line on hover) until the machine is back.
 - **View by extension.** `md markdown mdx` → markdown view. `png jpg jpeg jpe gif webp svg
   svgz` → image view, and only when the file's first bytes are an image's (PNG, JPEG, GIF,
   WebP, SVG, or gzip for `.svgz`); otherwise the "no view" notice. A `.svg` whose bytes are
@@ -237,14 +243,16 @@ The mod shows files, not agents, so it has no agent statuses.
 - **Saving on another machine.** `writeTextFile` writes on this Mac only, so a remote file
   goes through file-access.js `write`: `readTextFile(path, {on})` again, and when that is
   not `disk`, nothing is written and the text read goes to the same handling as a refused
-  save's read (`외부에서 바뀌었어요`, or `파일이 지워졌어요` when gone). Otherwise the text
-  is written to `data/side-viewer/remote-saves/<ms>-<random>.txt` (folder made with
+  save's read (`외부에서 바뀌었어요`, or `파일이 지워졌어요` when gone). A file there the
+  user can't write (`test -e && ! test -w`) is not written and says `쓰기 권한이 없어요`.
+  Otherwise the text is written to `data/side-viewer/remote-saves/<ms>-<random>.txt` (folder made with
   `umask 077`, mode 700; files there older than 10 minutes are deleted first), handed on
   stdin to `hc file write --on <machine> <path>` by this Mac's `sh`, and the copy is deleted
   whatever happened. `hc file write` replaces the file and keeps its mode, and writes
   through a symbolic link to its target. Failures (remote-results.js `saveFailureOf`):
-  `unreachable` in the error, or a machine `machines()` lists as `unavailable` before the
-  save, says `<machine> 기계에 연결할 수 없어요.`; `os error 13`, `1` or `30` says
+  `unreachable` or `timed out` in the error, or a machine `machines()` lists as
+  `unavailable` before the save, says `<machine> 기계에 연결할 수 없어요`; `os error 13`, `1`
+  or `30` says
   `쓰기 권한이 없어요`; anything else `저장하지 못했어요`, with the error on hover. Checkbox
   clicks save the same way.
 - **Rendering edits.** Switching an edited source to `렌더링` draws the edited text: the
@@ -376,8 +384,8 @@ The mod shows files, not agents, so it has no agent statuses.
   `>_`, `picker-view.js` is the path picker (`PathPicker`: its state, the reads behind it,
   keys and drawing), and `file-access.js` is every touch of the shown files: `accessOf(machine)`
   gives one access per machine with `read`, `run`, `exists`, `home`, `mark` (`cksum`),
-  `copy` (picture bytes), `key` (copy names) and, on another machine, `write`; `runHc` runs
-  this Mac's `hc`. The decisions sit in modules without `herdr` imports, so `node --test` runs them:
+  `copy` (picture bytes), `key` (copy names) and `write` (saves, this Mac's and another
+  machine's). The decisions sit in modules without `herdr` imports, so `node --test` runs them:
   `views.js` (extension → view and language, size limits, the probe script, which views
   switch and take typing, the editor options), `document.js` (notices, header label),
   `history.js`, `request.js` (the handoff from `open.sh`), `links.js` (link clicks, watch
@@ -456,7 +464,8 @@ The mod shows files, not agents, so it has no agent statuses.
   (`{"id","file","at","space"}`, from `open.sh` or the picker), `answer-<id>`,
   `images/<path hash>-<bytes>-<modified>.<kind>` (copies of images and of
   pictures in markdown, mode 600; for another machine the hash is of `<machine>:<path>`, and
-  `<copy>.part` holds the bytes while they arrive), `previews/` (edited svg sources, same names, folder mode
+  `<copy>.<pid>.part` holds the bytes while they arrive; one a killed copy left is swept
+  with the copies), `previews/` (edited svg sources, same names, folder mode
   700), `handoff-<id>.json` (`{"id","file","at","edit"}`, deleted by the tab that reads
   it), `shell/<terminal>.txt` (the command for `>_`, folder mode 700, deleted by the
   shell's widget as it reads it), and `remote-saves/<ms>-<random>.txt` (the text of a save
@@ -536,8 +545,8 @@ Platform:
 - A focused editor always draws its cursor, and a mod can't turn it off. A clear layer over
   each card swallows clicks, so a card never takes the keyboard; Tab could still reach it.
 - `TextView` draws no local picture given as a `data:` address, hence copies under the app
-  home, as for the image view. A remote address might be fetched by it, so remote pictures
-  are dropped instead of handed to it.
+  home, as for the image view. A web address might be fetched by it, so web pictures
+  (a web address, `data:`, another scheme) are dropped instead of handed to it.
 - A mod has no per-character style: text inside a block is a `TextView`. Whether a
   wrapping `div`'s size, weight and color reach the `TextView` (headings, quotes, footnotes)
   is not documented; step 32 of Done when checks it on screen.
@@ -624,28 +633,33 @@ Remote machines and the path picker:
   calls the router. Hence the picker. A mod also can't learn its own pane id, and `panes()`
   doesn't give a mod pane's props, so the opener puts the space value in the props and the
   viewer finds its machine in `spaces()` (ADR 0002). Herdr may not list a remote space yet
-  just after the app starts; until it does, the viewer reads this Mac's file of the same path.
+  just after the app starts; until it does, the viewer reads and saves nothing, since this
+  Mac's file of the same path is another file.
 - Herdr's `writeTextFile` and `watchFolder` work on this Mac only. A remote save reads the
   file again and then writes it, two steps, so a change that lands between them (well under
   a second) is overwritten. Its text can't go as an `exec` argument (a long one is refused)
   and `exec` has no stdin, hence the copy in `remote-saves/` piped to `hc file write --on`.
 - `hc file write` replaces a file even when it is read-only: mode 444 in a writable folder is
-  written and stays 444. Only a folder without write permission gives `Permission denied
-  (os error 13)`. A path that is a folder gives `Is a directory (os error 21)`, shown as
+  written and stays 444. Hence the `test -w` before a remote save. A folder without write
+  permission gives `Permission denied (os error 13)`. A path that is a folder gives `Is a directory (os error 21)`, shown as
   `저장하지 못했어요`. It also makes missing folders, but the read before it finds no file and
   says `파일이 지워졌어요` instead.
 - `cksum` answers `<sum> <size> <path>` the same on Linux and macOS; the path is left out of
   the mark, so a file opened through a link keeps its mark. No file:
   `No such file or directory`; no permission or a folder: any other refusal.
-- `hc exec --on … cat` passes a picture's bytes through unchanged. It has `hc exec`'s
-  60-second limit; a copy that fails is removed, but a `.part` left by a killed process is
-  not swept by the 30-day cleanup.
+- `hc exec --on …` passes a picture's bytes through unchanged, but keeps only the first 8 MB
+  of what a command prints, says so only on stderr (`[hc] output cut: kept the first 8 MB`)
+  and exits 0. Hence the 4 MiB pieces and the size check against the probe: a cut or changed
+  file gives no copy, and the picture says `이 파일을 읽을 수 없습니다.` A `.part` left by a
+  killed copy goes with the 30-day cleanup.
 - The mod's `exec` may not have `~/.local/bin` on its `PATH` (an app opened from Finder runs
   with `/usr/bin:/bin:/usr/sbin:/sbin`), so `hc` is looked for there too. Without it a remote
   save fails with `저장하지 못했어요` and a remote picture with `이 파일을 읽을 수 없습니다.`
 - Herdr's words for a machine it can't reach (`the machine is unreachable`) and for a
   Windows machine (`cannot start sh: program not found`, the line Herdr's Files mod uses)
   come from its documentation and mods, not from a cut connection or a Windows machine here.
+  A command that runs past its time gives hc's `[hc] timed out after <n> ms: ended` (exit
+  124), counted as out of reach; the words of Herdr's own `exec` timeout are not known.
 - The picker reads the terminal with `hc read --lines 1000`. Whether it joins a line the
   screen wrapped is not known: if not, a path longer than the terminal is wide is missed.
   Outside backticks a path ends at a space or one of `'"()[]{}<>|,;*=`.
@@ -654,8 +668,8 @@ Remote machines and the path picker:
 - The popup is 640px wide and 0.8 of the window's height; how it fits a window narrower than
   that is Herdr's.
 - `focused()` is read once as the popup opens, before it could take the focus.
-- A remote viewer's header writes the folder with this Mac's home as `~`, so a folder under
-  the same path on the other machine (another Mac with the same user name) shows as `~/…`.
+- A remote viewer's header writes the folder with that machine's home as `~` once the
+  machine has told its home; until then the folder shows whole.
 
 Limits and assumptions:
 
@@ -666,7 +680,7 @@ Limits and assumptions:
   `>_` into a shell on another machine, no folder watch there (a 3-second check instead). A
   viewer shows only the files of its own space's machine.
 - Not drawn: `mermaid` as a diagram, math, GitHub alert boxes, HTML tags, definition lists,
-  `html` as a page, remote pictures, pictures inside a paragraph. Code in a card can't be
+  `html` as a page, web pictures, pictures inside a paragraph. Code in a card can't be
   selected or edited.
 - No autosave and no prompt on close: unsaved edits die with the pane. The checkbox click is
   the one save without cmd+S.
@@ -978,7 +992,7 @@ covered by `node --test` only.
     `cmd-o` shows `이 대화에 열 수 있는 파일 경로가 없어요`. Narrow the Herdr window below the
     popup's width and `cmd-o`: the popup stays inside the window, long folders cut with an
     ellipsis.
-53. A viewer with no space value, as one opened before this version: from a terminal in the
+53. A viewer with no space value in its props: from a terminal in the
     conversation's tab run
     `herdr-app do pane.split --direction right --mod side-viewer --props "{\"file\":\"$HOME/side-viewer-check/markdown-sample.md\"}"`:
     the document shows. Cmd-click `~/side-viewer-check/main.js` in the conversation: it
@@ -1062,8 +1076,10 @@ echo 'docs/samples/code-sample.md:12 and `box.svg`'
     넣으세요.`, and no pane opens and nothing is typed. The copy button still copies.
 65. Out of reach, only with a way to cut that machine off that you choose (its network off,
     say); otherwise note it as not checked. Edit `main.js` without saving and cut it: the
-    editor and the edit stay; cmd+S makes the status `<machine> 기계에 연결할 수 없어요.`, and
-    `cmd-o` in that space shows the same line. Reconnect: cmd+S saves. Show
+    editor and the edit stay, and within a few seconds the status says
+    `<machine> 기계에 연결할 수 없어요` in red with the save button; cmd+S keeps it, and
+    `cmd-o` in that space shows `<machine> 기계에 연결할 수 없어요.` Reconnect: within a few
+    seconds the status is `편집됨` again, and cmd+S saves. Show
     `markdown-sample.md` with nothing unsaved and cut it again: within a few seconds the
     viewer shows `<machine> 기계에 연결할 수 없어요.` Reconnect: the document comes back by
     itself within a few seconds.

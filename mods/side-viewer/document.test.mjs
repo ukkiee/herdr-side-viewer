@@ -69,10 +69,10 @@ test("the notices in English", () => {
 });
 
 test("a read the machine refused because it cannot be reached says which machine, not that the file is gone", () => {
-  const content = failedContentOf("unreachable", "nuc-pro");
-  assert.deepEqual(content, { state: "unreachable", machine: "nuc-pro" });
-  assert.equal(noticeFor(content, ko), "nuc-pro 기계에 연결할 수 없어요.");
-  assert.equal(noticeFor(content, en), "Can't reach the machine nuc-pro.");
+  const content = failedContentOf("unreachable", "linux-box");
+  assert.deepEqual(content, { state: "unreachable", machine: "linux-box" });
+  assert.equal(noticeFor(content, ko), "linux-box 기계에 연결할 수 없어요.");
+  assert.equal(noticeFor(content, en), "Can't reach the machine linux-box.");
 });
 
 test("a read on a Windows machine says its files can't be shown yet", () => {
@@ -83,8 +83,8 @@ test("a read on a Windows machine says its files can't be shown yet", () => {
 });
 
 test("any other refused read is a file that cannot be read, as before", () => {
-  assert.deepEqual(failedContentOf("other", "nuc-pro"), { state: "unreadable" });
-  assert.deepEqual(failedContentOf("missing", "nuc-pro"), { state: "unreadable" });
+  assert.deepEqual(failedContentOf("other", "linux-box"), { state: "unreadable" });
+  assert.deepEqual(failedContentOf("missing", "linux-box"), { state: "unreadable" });
 });
 
 test("a state that draws content has no notice, in either language", () => {

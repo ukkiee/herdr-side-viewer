@@ -39,7 +39,7 @@ test("a keys.json readable by others stays so", () => {
   }
 });
 
-// The binding from the spec (AC-5): cmd-o in global opens the path picker.
+// The binding the mod expects: cmd-o in global opens the path picker.
 const wanted = { global: { "cmd-o": "mod.open:side-viewer" } };
 
 test("without a keys.json nothing is written and the line to add by hand is given", () => {
@@ -93,7 +93,7 @@ test("merging twice leaves one line and the second time writes nothing", () => {
   assert.equal(once.text.split('"cmd-o"').length - 1, 1);
 });
 
-// AC-5: cmd-o bound to another action in any section stays the person's, and they are told.
+// cmd-o bound to another action in any section stays the person's, and they are told.
 for (const [section, action] of [
   ["global", "app.palette"],
   ["terminal", "terminal"],

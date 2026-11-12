@@ -76,7 +76,7 @@ test("a part that words a sentence, called without a translator, throws instead 
 
 test("the path picker's status lines are the spec's sentences in Korean and are English otherwise", () => {
   const ko = translator("ko"), en = translator("en");
-  // spec AC-4: searching, no candidates, the focus not on a conversation.
+  // Searching, no candidates, the focus not on a conversation.
   assert.equal(ko("picker.finding"), "찾는 중");
   assert.equal(ko("picker.none"), "이 대화에 열 수 있는 파일 경로가 없어요");
   assert.equal(ko("picker.elsewhere"), "대화 터미널을 누른 뒤 다시 눌러 주세요");

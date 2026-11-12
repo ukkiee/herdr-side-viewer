@@ -99,9 +99,12 @@ then stay on that machine. Linux and macOS machines are supported.
   machine's home. Web and mail links open on this Mac.
 - **Out of reach.** When the machine can't be reached, the viewer shows
   `Can't reach the machine <name>.` instead of `This file no longer exists.`, and the
-  picker says the same. Unsaved edits stay in the editor, and a save meanwhile fails with
-  that line as its status. Once the machine is back, the viewer reads the file again at
-  its next check.
+  picker says the same. Unsaved edits stay in the editor, the status beside the file name
+  says `Can't reach <name>` with the save button still there, and a save meanwhile fails
+  the same way. Once the machine is back, the status goes and the viewer reads the file
+  again at its next check.
+- **Just after Herdr starts**, a remote viewer whose space Herdr hasn't listed yet shows
+  `Loading…` and reads and saves nothing; it reads the file once the space is listed.
 - **Windows machines are not supported.** The viewer and the picker show
   `Files on Windows machines can't be shown yet.`
 - **The router stays out of remote spaces.** A file that reaches the router while a remote
@@ -435,10 +438,6 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
 - **A remote save has a gap of under a second.** The viewer reads the file there again just
   before writing it, so a change that lands in between is overwritten without
   `Changed on disk`.
-- **A read-only file on another machine is saved anyway** when its folder is writable: a
-  file with mode 444 is replaced and keeps 444. `No write permission` shows only for a
-  folder without write permission. (On this Mac, Herdr's own save probably does the same:
-  see RECIPE.md, Watch out.)
 - **The path picker misses some paths.** A path with a space or one of `,;=*` in it is
   found only inside backticks. Whether a path longer than the terminal is wide, wrapped
   onto two lines on screen, is found has not been checked.

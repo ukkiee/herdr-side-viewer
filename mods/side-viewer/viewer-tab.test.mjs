@@ -46,11 +46,11 @@ test("a viewer tab's props name its file and its handoff, and say it is a viewer
 });
 
 test("a viewer tab opened from a remote space's viewer reads from the same machine", () => {
-  const spaces = [{ id: "sp1", machine: null, tabs: [] }, { id: "nuc-pro/sp2", machine: "nuc-pro", tabs: [] }];
+  const spaces = [{ id: "sp1", machine: null, tabs: [] }, { id: "linux-box/sp2", machine: "linux-box", tabs: [] }];
   for (const handoff of ["a1", null]) {
-    const props = tabProps({ file: "/home/ukyi/a.md", handoff, space: "sp2" });
+    const props = tabProps({ file: "/home/me/a.md", handoff, space: "sp2" });
     assert.equal(props.space, "sp2");
-    assert.deepEqual(machineOf(props, spaces), { machine: "nuc-pro", remote: true });
+    assert.deepEqual(machineOf(props, spaces), { machine: "linux-box", remote: true });
   }
 });
 

@@ -483,8 +483,8 @@ test("being out of reach comes before a conflict or a failure the edits carry", 
 
 test("a remote save refused for permission or otherwise shows as a save here does", () => {
   const edits = typed(noEdits(), A, "one\n", "mine\n");
-  const denied = writeFailed(edits, A, { reason: "permission" }, "nuc-pro");
-  const other = writeFailed(edits, A, { reason: "other", detail: "/w/a.md: Is a directory (os error 21)" }, "nuc-pro");
+  const denied = writeFailed(edits, A, { reason: "permission" }, "linux-box");
+  const other = writeFailed(edits, A, { reason: "other", detail: "/w/a.md: Is a directory (os error 21)" }, "linux-box");
   assert.equal(statusOf(denied, A).message, "쓰기 권한이 없어요");
   assert.deepEqual(statusOf(other, A),
     { kind: "failed", message: "저장하지 못했어요", tip: "/w/a.md: Is a directory (os error 21)", buttons: ["save"] });
@@ -516,5 +516,5 @@ test("a refusal on this Mac is a failure a write shows as v2 did", () => {
 
 test("a remote save's failure on a file without edits changes nothing", () => {
   const edits = noEdits();
-  assert.equal(writeFailed(edits, A, { reason: "unreachable" }, "nuc-pro"), edits);
+  assert.equal(writeFailed(edits, A, { reason: "unreachable" }, "linux-box"), edits);
 });

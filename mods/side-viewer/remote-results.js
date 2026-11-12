@@ -1,7 +1,7 @@
 // What the viewer makes of a remote machine's answers and refusals. No Herdr imports, so it
 // runs under `node --test`; main.js and file-access.js run the commands.
 //
-// The shapes other parts rely on (later tickets add kinds, never change these):
+// The shapes other parts rely on (new kinds may join; these stay as they are):
 //   changeMark({ code, stdout, stderr }) -> string
 //     `cksum <path>`'s answer as a mark that changes when the file does:
 //     "<sum> <size>" for a file, "missing" (not there, or a link to nothing),

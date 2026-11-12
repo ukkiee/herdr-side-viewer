@@ -7,39 +7,39 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spaceValue, machineOf, headerActions, EXISTS, existingOf, homeOf, NOT_WRITABLE } from "./machine.js";
 
-// Space ids as `herdr-app status` and spaces() give them (observed 2026-11-13): this Mac's
+// Space ids as `herdr-app status` and spaces() give them: this Mac's
 // bare, another machine's with its `<machine>/` prefix.
 const HERE = "sp8b57a2baf6b934a06fdeccc6b38ed439";
 const NUC = "sp05ca7f2f0e0d351c8ed546645cf8c425";
 
 test("the space value is the space id without its machine prefix", () => {
-  assert.equal(spaceValue(`nuc-pro/${NUC}`), NUC);
+  assert.equal(spaceValue(`linux-box/${NUC}`), NUC);
   assert.equal(spaceValue(HERE), HERE);
 });
 
 test("no space id gives no space value", () => {
-  for (const id of [null, undefined, "", "nuc-pro/"]) assert.equal(spaceValue(id), null, String(id));
+  for (const id of [null, undefined, "", "linux-box/"]) assert.equal(spaceValue(id), null, String(id));
 });
 
 const space = (id, machine) => ({ id, machine, name: "work", tabs: [] });
-const SPACES = [space(HERE, null), space(`nuc-pro/${NUC}`, "nuc-pro"), space("imac-i7/sp77", "imac-i7")];
+const SPACES = [space(HERE, null), space(`linux-box/${NUC}`, "linux-box"), space("mac-box/sp77", "mac-box")];
 const THIS_MAC = { machine: null, remote: false };
 
 test("a viewer in a remote space reads from that space's machine", () => {
-  assert.deepEqual(machineOf({ file: "/home/ukyi/a.md", space: NUC }, SPACES), { machine: "nuc-pro", remote: true });
-  assert.deepEqual(machineOf({ space: "sp77" }, SPACES), { machine: "imac-i7", remote: true });
+  assert.deepEqual(machineOf({ file: "/home/me/a.md", space: NUC }, SPACES), { machine: "linux-box", remote: true });
+  assert.deepEqual(machineOf({ space: "sp77" }, SPACES), { machine: "mac-box", remote: true });
 });
 
 test("a viewer in a space on this Mac reads from this Mac", () => {
-  assert.deepEqual(machineOf({ file: "/Users/ukyi/a.md", space: HERE }, SPACES), THIS_MAC);
+  assert.deepEqual(machineOf({ file: "/Users/me/a.md", space: HERE }, SPACES), THIS_MAC);
 });
 
 test("the space value opened with the space id spaces() gives, prefix and all, still finds it", () => {
-  assert.deepEqual(machineOf({ space: `nuc-pro/${NUC}` }, SPACES), { machine: "nuc-pro", remote: true });
+  assert.deepEqual(machineOf({ space: `linux-box/${NUC}` }, SPACES), { machine: "linux-box", remote: true });
 });
 
 test("a viewer whose props have no space value reads from this Mac", () => {
-  for (const props of [null, undefined, {}, { file: "/Users/ukyi/a.md" }, { space: 7 }, { space: "" }]) {
+  for (const props of [null, undefined, {}, { file: "/Users/me/a.md" }, { space: 7 }, { space: "" }]) {
     assert.deepEqual(machineOf(props, SPACES), THIS_MAC, JSON.stringify(props));
   }
 });
@@ -63,11 +63,10 @@ test("a remote file's header has no original app and no Finder, only the new tab
   assert.deepEqual(headerActions({ remote: true, newTab: false }), []);
 });
 
-// Output of `hc exec --on nuc-pro sh -c EXISTS sh <a file> <its folder> /nope <the file again>`
-// (observed 2026-11-13).
+// Output of `hc exec --on <machine> sh -c EXISTS sh <a file> <its folder> /nope <the file again>`.
 test("the existence check's answer names the paths that are files, in the order asked", () => {
-  const file = "/home/ukyi/homelab/README.md";
-  assert.deepEqual(existingOf([file, "/home/ukyi/homelab", "/nope", file], "1\n4\n"), [file, file]);
+  const file = "/home/me/homelab/README.md";
+  assert.deepEqual(existingOf([file, "/home/me/homelab", "/nope", file], "1\n4\n"), [file, file]);
   assert.deepEqual(existingOf(["/nope"], ""), []);
   assert.deepEqual(existingOf([], ""), []);
 });
@@ -90,14 +89,14 @@ test("the existence check run by sh finds files, not folders or missing paths, w
   }
 });
 
-// Output of `hc exec --on nuc-pro sh -c HOME sh` and `--on mac-m1-max` (observed 2026-11-13).
+// Output of `hc exec --on <machine> sh -c HOME_FOLDER sh` on a Linux machine and on a Mac.
 test("a machine's home is the folder its shell answers with", () => {
-  assert.equal(homeOf("/home/ukyi\n"), "/home/ukyi");
-  assert.equal(homeOf("/Users/ukyi\n"), "/Users/ukyi");
+  assert.equal(homeOf("/home/me\n"), "/home/me");
+  assert.equal(homeOf("/Users/me\n"), "/Users/me");
 });
 
 test("an answer that is no absolute folder gives no home", () => {
-  for (const stdout of ["", "\n", "ukyi\n", null]) assert.equal(homeOf(stdout), null, JSON.stringify(stdout));
+  for (const stdout of ["", "\n", "me\n", null]) assert.equal(homeOf(stdout), null, JSON.stringify(stdout));
 });
 
 // NOT_WRITABLE exits 0 for a file there that cannot be written, so the save stops before

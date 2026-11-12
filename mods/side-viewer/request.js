@@ -8,8 +8,8 @@
 // that are showing. The path picker sends the same request.
 //
 // The space value (machine.js) says whose file it is: only a viewer of that space takes it.
-// A side without one, a request from before spaces were sent or a viewer opened before
-// then, is on this Mac, so it matches the other side only while that is on this Mac too.
+// A side without one is on this Mac, so it matches the other side only while that is on
+// this Mac too.
 
 import { machineOf } from "./machine.js";
 

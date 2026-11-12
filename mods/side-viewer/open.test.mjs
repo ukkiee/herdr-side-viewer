@@ -12,11 +12,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const HERDR_FRONT = "/Users/someone/Applications/Herdr.app";
 
 // The space of this Mac that has focus in the scenes, and a remote one on the machine
-// imac-i7, as `herdr-app ls` showed them on 2026-11-13.
+// mac-box, in the shape `herdr-app ls` shows them.
 const SPACE = "spfcbfd8b278fa8d8e02972c005e05b6ea";
-const REMOTE_SPACE = "imac-i7/spa386c8aedeec27b60120366586cddf4b";
+const REMOTE_SPACE = "mac-box/spa386c8aedeec27b60120366586cddf4b";
 
-// What `herdr-app status` printed on 2026-11-13, with the focused space put in.
+// What `herdr-app status` prints, with the focused space put in.
 const status = (space) => `{
   "zoom": 1.0,
   "font_size": 12.0,

@@ -1,5 +1,5 @@
 // node --test: what the viewer makes of a remote machine's answers and refusals, without Herdr.
-// The answers are the words nuc-pro (Linux) gave on 2026-11-13 through `hc exec --on nuc-pro`.
+// The answers are the words a Linux machine gave through `hc exec --on <machine>`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { changeMark, failureOf, unavailable, saveFailureOf } from "./remote-results.js";
@@ -58,7 +58,7 @@ test("hc's not_found error is a gone file", () => {
 });
 
 test("any other refusal is neither the machine nor a gone file", () => {
-  // Observed on nuc-pro: a program the machine does not have.
+  // Observed on a Linux machine: a program the machine does not have.
   assert.equal(failureOf(new Error("cannot start nosuchprog-sv: No such file or directory (os error 2)")), "other");
   assert.equal(failureOf({ error: { hint: "", kind: "io", message: `${DIR}/noread.md: Permission denied (os error 13)` } }), "other");
   assert.equal(failureOf({ error: { hint: "", kind: "machine_unknown", message: 'unknown machine "nosuch-machine"' } }), "other");
@@ -68,15 +68,15 @@ test("any other refusal is neither the machine nor a gone file", () => {
 test("a machine Herdr lists as unavailable cannot be reached; loading or ready ones can", () => {
   const listed = [
     { name: null, layout: "ready" },
-    { name: "nuc-pro", layout: "unavailable" },
-    { name: "imac-i7", layout: "loading" },
-    { name: "mac-m1-max", layout: "ready" },
+    { name: "linux-box", layout: "unavailable" },
+    { name: "mac-box", layout: "loading" },
+    { name: "mac-two", layout: "ready" },
   ];
-  assert.equal(unavailable(listed, "nuc-pro"), true);
-  assert.equal(unavailable(listed, "imac-i7"), false);
-  assert.equal(unavailable(listed, "mac-m1-max"), false);
+  assert.equal(unavailable(listed, "linux-box"), true);
+  assert.equal(unavailable(listed, "mac-box"), false);
+  assert.equal(unavailable(listed, "mac-two"), false);
   assert.equal(unavailable(listed, "gone"), false);
-  assert.equal(unavailable(undefined, "nuc-pro"), false);
+  assert.equal(unavailable(undefined, "linux-box"), false);
 });
 
 test("a file that cannot be read is marked apart from a gone one and from any sum", () => {
@@ -86,7 +86,7 @@ test("a file that cannot be read is marked apart from a gone one and from any su
   assert.equal(folder, "unreadable");
 });
 
-// `hc file write --on nuc-pro <path> < <file>` from this Mac's sh, 2026-11-13: it puts its error
+// `hc file write --on <machine> <path> < <file>` from this Mac's sh: it puts its error
 // as JSON on stderr. A read-only file in a writable folder is replaced (no error); a folder
 // that cannot be written is what refuses.
 const SAVE_DIR = "/tmp/side-viewer-t07";
@@ -109,7 +109,7 @@ test("any other refusal of a remote save fails with hc's own words as its detail
   const unknown = {
     code: 4,
     stdout: "",
-    stderr: '{"error":{"hint":"machines: nuc-pro, mac-m1-max, imac-i7","kind":"machine_unknown","message":"unknown machine \\"nosuch-machine\\""}}\n',
+    stderr: '{"error":{"hint":"machines: linux-box, mac-two, mac-box","kind":"machine_unknown","message":"unknown machine \\"nosuch-machine\\""}}\n',
   };
   assert.deepEqual(saveFailureOf(folder), { reason: "other", detail: `${SAVE_DIR}/dir: Is a directory (os error 21)` });
   assert.deepEqual(saveFailureOf(unknown), { reason: "other", detail: 'unknown machine "nosuch-machine"' });
@@ -117,18 +117,18 @@ test("any other refusal of a remote save fails with hc's own words as its detail
 
 test("a remote save whose hc cannot run fails with the shell's words as its detail", () => {
   // Ticket 01: an hc found neither on PATH nor in ~/.local/bin.
-  const answer = { code: 126, stdout: "", stderr: "sh: /Users/ukyi/.local/bin/hc: cannot execute: No such file or directory\n" };
-  assert.deepEqual(saveFailureOf(answer), { reason: "other", detail: "sh: /Users/ukyi/.local/bin/hc: cannot execute: No such file or directory" });
+  const answer = { code: 126, stdout: "", stderr: "sh: /Users/me/.local/bin/hc: cannot execute: No such file or directory\n" };
+  assert.deepEqual(saveFailureOf(answer), { reason: "other", detail: "sh: /Users/me/.local/bin/hc: cannot execute: No such file or directory" });
 });
 
 test("a remote save that cannot reach the machine fails as unreachable", () => {
   // Not observed: Herdr's words for exec (herdr.d.ts) and the git-tools mod's tests.
   assert.deepEqual(saveFailureOf(new Error("the machine is unreachable")), { reason: "unreachable" });
-  assert.deepEqual(saveFailureOf({ code: 1, stdout: "", stderr: '{"error":{"hint":"","kind":"io","message":"machine nuc-pro is unreachable"}}\n' }), { reason: "unreachable" });
+  assert.deepEqual(saveFailureOf({ code: 1, stdout: "", stderr: '{"error":{"hint":"","kind":"io","message":"machine linux-box is unreachable"}}\n' }), { reason: "unreachable" });
 });
 
 test("the re-read before a remote save, refused for permission, fails the save the same way", () => {
-  // `hc file read` on nuc-pro for a file it may not read (ticket 05).
+  // `hc file read` on a Linux machine for a file it may not read.
   assert.deepEqual(saveFailureOf(new Error(`${SAVE_DIR}/noread.md: Permission denied (os error 13)`)), { reason: "permission" });
   assert.deepEqual(saveFailureOf(new Error("something else")), { reason: "other", detail: "something else" });
   // Herdr puts its function's name in front of every API error (edit-state.js messageOf).
