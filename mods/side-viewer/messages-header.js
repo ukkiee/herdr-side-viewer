@@ -21,6 +21,7 @@ export const en = {
   "header.permission": "No write permission",
   "header.large": "Too large to save",
   "header.failed": "Couldn't save",
+  "header.unreachable": "Can't reach {machine}",
 };
 
 export const ko = {
@@ -41,4 +42,5 @@ export const ko = {
   "header.permission": "쓰기 권한이 없어요",
   "header.large": "너무 커서 저장할 수 없어요",
   "header.failed": "저장하지 못했어요",
+  "header.unreachable": "{machine} 기계에 연결할 수 없어요",
 };

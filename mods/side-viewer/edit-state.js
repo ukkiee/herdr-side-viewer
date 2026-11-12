@@ -115,15 +115,23 @@ export function saveFailed(edits, file, error) {
   return withBar(edits, file, bar);
 }
 
-// A save of `file` to the machine `machine` failed: `failure` is remote-results.js
-// saveFailureOf's { reason, detail? }. The edits stay, and the header's status says why, the
-// machine being out of reach among the reasons. A remote file that changed or went away is
-// not a failure: its read goes to diskRead, as here.
-export function remoteSaveFailed(edits, file, failure, machine) {
+// A refusal of writeTextFile other than "changed" as the failure of a write (writeFailed):
+// { reason: "permission" | "large" } or { reason: "other", detail } with Herdr's own wording.
+export function refusalFailureOf(error) {
+  const reason = refusalOf(error);
+  return reason === "permission" || reason === "large" ? { reason } : { reason: "other", detail: messageOf(error) };
+}
+
+// A save of `file` to the machine `machine` (null: this Mac) failed: `failure` is
+// { reason, detail? }, from remote-results.js saveFailureOf on another machine or
+// refusalFailureOf here. The edits stay, and the header's status says why, the machine being
+// out of reach among the reasons. A file that changed or went away is not a failure: its read
+// goes to diskRead.
+export function writeFailed(edits, file, failure, machine) {
   if (!file || !edits[file]) return edits;
   const reason = failure?.reason;
   if (reason === "unreachable") return withBar(edits, file, { kind: "failed", reason, machine });
-  if (reason === "permission") return withBar(edits, file, { kind: "failed", reason });
+  if (reason === "permission" || reason === "large") return withBar(edits, file, { kind: "failed", reason });
   return withBar(edits, file, { kind: "failed", reason: "other", detail: failure?.detail });
 }
 
@@ -162,8 +170,7 @@ export function barOf(edits, file, tr) {
   if (!bar) return null;
   const words = wordsOf(tr);
   if (bar.kind === "conflict") return { kind: bar.kind, message: words(MESSAGES.conflict) };
-  // The sentence the viewer's body shows for a machine it cannot reach.
-  if (bar.reason === "unreachable") return { kind: bar.kind, message: words("body.unreachable", { machine: bar.machine }) };
+  if (bar.reason === "unreachable") return { kind: bar.kind, message: words("header.unreachable", { machine: bar.machine }) };
   if (typeof MESSAGES[bar.reason] === "string" && bar.reason !== "other") return { kind: bar.kind, message: words(MESSAGES[bar.reason]) };
   return { kind: bar.kind, message: words(MESSAGES.other), detail: bar.detail };
 }
@@ -173,8 +180,15 @@ export function barOf(edits, file, tr) {
 // message, which a narrow header may cut, or Herdr's wording for an unknown failure.
 // `buttons`: ["save"], or ["discard", "overwrite"] for a conflict, where saving would only
 // be refused again. Words in tr's language (i18n.js).
-export function statusOf(edits, file, tr) {
+// `away`: the name of the file's machine while it cannot be reached, else null. The edits
+// stay, and the status says so over anything else, with the save button, until the machine
+// is back.
+export function statusOf(edits, file, tr, away = null) {
   if (!unsaved(edits, file)) return null;
+  if (away) {
+    const message = wordsOf(tr)("header.unreachable", { machine: away });
+    return { kind: "failed", message, tip: message, buttons: ["save"] };
+  }
   const problem = barOf(edits, file, tr);
   if (!problem) {
     const edited = wordsOf(tr)("header.edited");

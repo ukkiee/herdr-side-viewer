@@ -13,19 +13,19 @@
 // markdown-images.js, terminal-insert.js, machine.js and remote-results.js.
 import { View } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
-import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes, notify, shared, setShared, machines } from "herdr";
+import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes, notify, shared, setShared, machines, closeOverlay } from "herdr";
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
 import { contentOf, failedContentOf } from "./document.js";
 import { failureOf, unavailable } from "./remote-results.js";
 import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, editedContentOf, blankSvg, sourceOnlySvg, rendersEmpty } from "./views.js";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, statusOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit, checkboxToggled, remoteSaveFailed } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, statusOf, discarded, overwritten, startSave, takeEdit, putEdit, checkboxToggled, writeFailed } from "./edit-state.js";
 import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab, unplacedNotice } from "./viewer-tab.js";
 import { toggleCheckbox } from "./checkbox.js";
 import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, LIST } from "./image-copies.js";
 import { PREVIEW_FOLDER, previewName, pictureOf } from "./svg-preview.js";
 import { start, open, back, canGoBack } from "./history.js";
-import { takeRequest } from "./request.js";
+import { takeRequest, REQUEST_FILE, answerFile } from "./request.js";
 import { watchedFolder, linkAction, touches, unshownNotice } from "./links.js";
 import { openOriginalCommands } from "./original.js";
 import { renderHeader } from "./header.js";
@@ -39,8 +39,6 @@ import { MarkdownImages } from "./markdown-image-loader.js";
 import { LANGS, translator, systemLang, askAgainAfter } from "./i18n.js";
 import { machineOf } from "./machine.js";
 import { accessOf } from "./file-access.js";
-import { closeOverlay } from "herdr";
-import { REQUEST_FILE, answerFile } from "./request.js";
 import { openTargetOf } from "./path-picker.js";
 import { PathPicker } from "./picker-view.js";
 
@@ -50,9 +48,11 @@ const LANG_KEY = "side-viewer.lang";
 // The folder watch can miss a change, so the shown file is also read again this often.
 const RECHECK_MS = 15000;
 // Another machine's file has no folder watch: its checksum is asked for this often, and a
-// check that takes longer than the timeout counts as an answer that changed.
+// check that takes longer than the timeout counts as the machine out of reach.
 const REMOTE_CHECK_MS = 3000;
 const REMOTE_CHECK_TIMEOUT_MS = 10000;
+// What a read was on (readOn) when the viewer's space was not listed: no access.
+const UNLISTED = "unlisted";
 // How long a new viewer tab is looked for in spaces(), and how often.
 const PLACE_WAIT_MS = 3000;
 const PLACE_STEP_MS = 50;
@@ -100,6 +100,12 @@ export default class SideViewer extends View {
     this.checking = false;
     this.marking = false;
     this.marked = null;
+    // What the last read was on: its file access, or UNLISTED (checkPlace).
+    this.readOn = null;
+    // Another machine's home folder once it answered, as { access, folder } (headerHome), and
+    // the access being asked.
+    this.homeFor = null;
+    this.learning = null;
     // The body's width, from its size report. Null until the first one.
     this.room = null;
     // Unsaved edits by file (edit-state.js). They live as long as this copy does.
@@ -361,6 +367,14 @@ export default class SideViewer extends View {
     // The watch reads the shown file again every few seconds: only a newly opened file
     // shows "loading", and a read that finds nothing new leaves the screen alone.
     if (opened) this.setContent({ state: "loading" }, cx);
+    // A space not listed yet may be another machine's, so nothing is read until it is listed
+    // (checkPlace reads then); a read under way is left behind.
+    if (this.place().unlisted) {
+      this.reads++;
+      this.reading = null;
+      this.readOn = UNLISTED;
+      return;
+    }
     // The same file is being read: let that read finish, then read once more.
     if (waitsForRead(this.reading, file)) {
       this.again = true;
@@ -369,6 +383,8 @@ export default class SideViewer extends View {
     const turn = ++this.reads;
     this.reading = file;
     this.again = false;
+    this.readOn = this.access();
+    this.learnHome(this.readOn, cx);
     cx.spawn(async (cx) => {
       let result;
       try {
@@ -486,10 +502,44 @@ export default class SideViewer extends View {
     return { content: contentOf(file, text, found), probe: remembered, text };
   }
 
-  // The file access of this viewer's machine (file-access.js). Asked again at each read: a
-  // viewer that starts before Herdr lists its space is on this Mac until it does.
+  // This viewer's machine (machine.js), asked again at each use: a viewer that starts before
+  // Herdr lists its space is `unlisted`, on no machine, until it does.
+  place() {
+    return machineOf({ space: this.space }, spaces());
+  }
+
+  // The file access of this viewer's machine (file-access.js).
   access() {
-    return accessOf(machineOf({ space: this.space }, spaces()).machine);
+    return accessOf(this.place().machine);
+  }
+
+  // The home folder the header shortens to `~`: this Mac's, or another machine's once it has
+  // answered (learnHome); until then a remote folder is shown whole.
+  headerHome(access) {
+    if (!access.remote) return home();
+    return this.homeFor?.access === access ? this.homeFor.folder : null;
+  }
+
+  learnHome(access, cx) {
+    if (!access.remote || this.homeFor?.access === access || this.learning === access) return;
+    this.learning = access;
+    cx.spawn(async (cx) => {
+      const folder = await access.home().catch(() => null);
+      if (this.learning === access) this.learning = null;
+      if (!folder) return;
+      this.homeFor = { access, folder };
+      cx.notify();
+    });
+  }
+
+  // The name of the shown file's machine while it cannot be reached, for the header's status
+  // over unsaved edits; null on this Mac or while it can.
+  away(access) {
+    if (!access.remote) return null;
+    const marked = this.marked;
+    const lost = unavailable(machines(), access.machine)
+      || (marked?.file === this.file && marked.access === access && marked.mark === "unreachable");
+    return lost ? access.machine : null;
   }
 
   // The listed extensions by group (extensions.json). The installed mod's own list is the
@@ -639,13 +689,16 @@ export default class SideViewer extends View {
     if (unsaved(this.edits, content.file) !== was) cx.notify();
   }
 
-  // Writes the shown file's unsaved edits. Returns false when there is nothing to save.
-  // writeTextFile refuses when the file no longer matches the text read before the edit, and
-  // says the same when the file is gone, so the file is read again to tell the two apart.
-  // A refused or failed save keeps the edits, and the header's status says why (edit-state.js).
-  // Asked during another save, it waits for that one to end (takeSaves).
+  // Writes the shown file's unsaved edits through the file access of the viewer's machine.
+  // Returns false when there is nothing to save. A file that no longer holds the text the edit
+  // started from is not written, and its text goes to diskRead (changed or deleted); a refused
+  // or failed save keeps the edits, and the header's status says why (edit-state.js), a machine
+  // out of reach among the reasons. Asked during another save, it waits for that one to end
+  // (takeSaves). A viewer whose space is not listed yet writes nothing: the file may be
+  // another machine's.
   save(cx, file = this.file) {
     if (!saveOf(this.edits, file)) return false;
+    if (this.place().unlisted) return true;
     if (this.saving) {
       if (!this.saves.has(file)) this.saves.set(file, false);
       return true;
@@ -660,23 +713,17 @@ export default class SideViewer extends View {
     this.saving = true;
     cx.spawn(async (cx) => {
       try {
-        // writeTextFile writes on this Mac only, so a file on another machine is saved through
-        // its file access instead of landing on this Mac's file of the same path.
         const access = this.access();
-        const wrote = access.remote ? await this.saveThere(access, request) : (await writeTextFile(request.path, request.text, request.expected), true);
-        if (wrote) {
+        const outcome = access.remote && unavailable(machines(), access.machine)
+          ? { saved: false, failure: { reason: "unreachable" } }
+          : await access.write(request.path, request.text, request.expected);
+        if (outcome.saved) {
           this.edits = saved(this.edits, request.path, request.text);
           if (this.content.file === request.path) this.content.text = request.text;
-        }
-      } catch (error) {
-        if (refusalOf(error) !== "changed") {
-          this.edits = saveFailed(this.edits, request.path, error);
         } else {
-          try {
-            this.edits = diskRead(this.edits, request.path, await readTextFile(request.path)).edits;
-          } catch (readError) {
-            this.edits = saveFailed(this.edits, request.path, readError);
-          }
+          this.edits = outcome.failure
+            ? writeFailed(this.edits, request.path, outcome.failure, access.machine)
+            : diskRead(this.edits, request.path, outcome.disk).edits;
         }
       } finally {
         this.saving = false;
@@ -686,21 +733,6 @@ export default class SideViewer extends View {
       }
     });
     return true;
-  }
-
-  // A save to another machine (file-access.js write). Returns whether it wrote. A file there
-  // that no longer holds the text the edit started from is not written, and its text goes to
-  // diskRead as a refused save's read does here (changed or deleted); a failed write keeps the
-  // edits with its reason, a machine out of reach among them.
-  async saveThere(access, request) {
-    const outcome = unavailable(machines(), access.machine)
-      ? { saved: false, failure: { reason: "unreachable" } }
-      : await access.write(request.path, request.text, request.expected);
-    if (outcome.saved) return true;
-    this.edits = outcome.failure
-      ? remoteSaveFailed(this.edits, request.path, outcome.failure, access.machine)
-      : diskRead(this.edits, request.path, outcome.disk).edits;
-    return false;
   }
 
   // The saves asked for during a save, in order. One that starts a save makes the rest wait
@@ -854,9 +886,8 @@ export default class SideViewer extends View {
   // Keeps the folder watch on the shown file's folder, and starts the slow recheck and the
   // remote check once. Call it again whenever this.file may have changed: it does nothing if
   // the folder is the same. A file in the home folder or the root is not watched, only
-  // rechecked (links.js). Another machine's file has no folder here to watch: the remote
-  // check follows it instead, and the recheck stops a watch that started before Herdr listed
-  // the viewer's space.
+  // rechecked (links.js). Another machine's file, or one whose machine is not known yet, has no
+  // folder here to watch: the remote check follows it instead.
   watch(cx) {
     if (!this.rechecking) {
       this.rechecking = true;
@@ -865,11 +896,9 @@ export default class SideViewer extends View {
         if (this.file) this.load(cx);
       });
     }
-    if (!this.checking) {
-      this.checking = true;
-      cx.timer.every(REMOTE_CHECK_MS, (cx) => this.checkRemote(cx));
-    }
-    const folder = this.access().remote ? null : watchedFolder(this.file, home());
+    this.remoteTimer(cx);
+    const place = this.place();
+    const folder = place.remote || place.unlisted ? null : watchedFolder(this.file, home());
     if (folder === this.watched) return;
     this.watched = folder;
     // A loop for an earlier folder sees a newer turn and stops.
@@ -889,6 +918,32 @@ export default class SideViewer extends View {
         if (touches(paths, this.file)) this.load(cx);
       }
     });
+  }
+
+  // The remote check's timer: it runs only while the viewer is on another machine or on one not
+  // known yet, and the 15-second recheck (watch) starts it again when that begins.
+  remoteTimer(cx) {
+    if (this.checking) return;
+    const place = this.place();
+    if (!place.remote && !place.unlisted) return;
+    this.checking = true;
+    cx.timer.after(REMOTE_CHECK_MS, (cx) => {
+      this.checking = false;
+      this.checkPlace(cx);
+      this.checkRemote(cx);
+      this.remoteTimer(cx);
+    });
+  }
+
+  // The shown file is read again at once when its machine is not the one its last read was
+  // on: Herdr has listed the viewer's space since, or lists it on another machine.
+  checkPlace(cx) {
+    if (!this.file) return;
+    const now = this.place().unlisted ? UNLISTED : this.access();
+    if (now === this.readOn) return;
+    this.probed = null;
+    this.watch(cx);
+    this.load(cx);
   }
 
   // The remote check: another machine's shown file is read again only when its mark changes
@@ -929,14 +984,18 @@ export default class SideViewer extends View {
   }
 
   // What the header shows, and where its clicks go (header.js).
+  // A file whose machine is not known yet has no actions of this Mac either.
   header(tr) {
+    const place = this.place();
+    const access = accessOf(place.machine);
     return {
       file: this.file,
+      home: this.headerHome(access),
       canGoBack: canGoBack(this.visits),
       state: this.content.state,
       raw: this.raw,
-      remote: this.access().remote,
-      status: statusOf(this.edits, this.file, tr),
+      remote: access.remote || Boolean(place.unlisted),
+      status: statusOf(this.edits, this.file, tr, this.away(access)),
       tr,
       onBack: (cx) => this.goBack(cx),
       onToggleRaw: (cx) => this.toggleRaw(cx),

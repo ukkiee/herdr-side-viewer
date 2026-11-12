@@ -1,7 +1,8 @@
-// The viewer's way to the files it shows: everything it reads of them goes through an access
-// bound to one machine, the machine of its space (machine.js). On this Mac an access does what
-// the viewer did before it existed, Herdr's calls without `on`; on another machine it passes
-// `on`. The commands it runs and the reading of their answers are in machine.js.
+// The viewer's way to the files it shows: everything it reads and writes of them goes through
+// an access bound to one machine, the machine of its space (machine.js). On this Mac an access
+// makes Herdr's calls without `on`; on another machine it passes `on`. The commands it runs and
+// the reading of their answers are in machine.js. Watching a folder is left out: Herdr's
+// watchFolder watches this Mac only.
 //
 // accessOf(machine) -> access, the same object for the same machine (null: this Mac):
 //   access.machine            the machine's name, or null for this Mac
@@ -32,28 +33,25 @@
 //   access.key(path)          a name for the file `path` there that no file of the same path on
 //                             another machine shares, for naming its copies.
 //   access.write(path, text, expected)
-//                             Another machine only (this Mac's saves are writeTextFile's, which
-//                             compares and writes in one step). Promise, never rejecting, of
-//                             { saved: true }; { saved: false, disk } when the file there no
-//                             longer holds `expected` (disk: its text now, null when gone),
-//                             nothing written; or { saved: false, failure } (remote-results.js
-//                             saveFailureOf). The file is read just before it is written, so a
-//                             change in between, under a second, is not seen.
-// runHc(args, { timeout })    Promise<{ code, stdout, stderr }>: `hc <args>` on this Mac, the one
-//                             on PATH or else ~/.local/bin/hc (machine.js FIND_HC). Rejects as
-//                             exec does; an hc found nowhere exits nonzero.
-//
-// Other tickets' functions join the access; these keep their names, arguments and results.
+//                             Promise, never rejecting, of { saved: true }; { saved: false, disk }
+//                             when the file there no longer holds `expected` (disk: its text
+//                             now, null when gone), nothing written; or { saved: false, failure },
+//                             failure being { reason, detail? } (edit-state.js writeFailed).
+//                             This Mac's is writeTextFile, which compares and writes in one step.
+//                             Another machine's reads the file just before it writes it, so a
+//                             change in between, under a second, is not seen; a file there the
+//                             user cannot write fails for permission, nothing written.
 import { exec, readTextFile, writeTextFile, home, appHome } from "herdr";
-import { EXISTS, existingOf, HOME_FOLDER, homeOf, hcCommand, FIND_HC } from "./machine.js";
+import { EXISTS, existingOf, HOME_FOLDER, homeOf, NOT_WRITABLE, FIND_HC } from "./machine.js";
 import { COPY, REMOTE_COPY, REMOTE_COPY_TIMEOUT_MS } from "./image-copies.js";
 import { changeMark, saveFailureOf } from "./remote-results.js";
+import { refusalOf, refusalFailureOf } from "./edit-state.js";
 
 // A remote save hands its text to `hc file write --on`, which takes it on stdin, from a copy in
 // this folder of the data folder; exec has no stdin, and an argument that long is refused. The
 // copy is removed once the write ends, whatever its end. `hc file write` replaces the file with
-// a new one and keeps its mode, and writes through a symbolic link to its target (nuc-pro,
-// 2026-11-13).
+// a new one and keeps its mode, writes through a symbolic link to its target, and writes over
+// a file whose mode forbids writing, hence NOT_WRITABLE first.
 const SAVES = "data/side-viewer/remote-saves";
 
 // Run on this Mac as `sh -c SAVES_FOLDER sh <folder>`: the folder, readable by the user alone,
@@ -73,11 +71,6 @@ export function accessOf(machine) {
   return accesses.get(key);
 }
 
-export function runHc(args, options) {
-  const [command, argv] = hcCommand(args);
-  return exec(command, argv, options);
-}
-
 function localAccess() {
   const run = (command, args, options) => exec(command, args, options);
   return {
@@ -90,7 +83,24 @@ function localAccess() {
     mark: (path, options) => markWith(run, path, options),
     copy: (path, copy) => exec("sh", ["-c", COPY, "sh", path, copy]),
     key: (path) => path,
+    write: writeHere,
   };
+}
+
+// writeTextFile refuses when the file no longer holds `expected`, and says the same when the
+// file is gone, so the file is read again to tell the two apart.
+async function writeHere(path, text, expected) {
+  try {
+    await writeTextFile(path, text, expected);
+    return { saved: true };
+  } catch (error) {
+    if (refusalOf(error) !== "changed") return { saved: false, failure: refusalFailureOf(error) };
+  }
+  try {
+    return { saved: false, disk: await readTextFile(path) };
+  } catch (error) {
+    return { saved: false, failure: refusalFailureOf(error) };
+  }
 }
 
 function remoteAccess(machine) {
@@ -125,6 +135,12 @@ async function writeThere(machine, path, text, expected) {
     return { saved: false, failure: saveFailureOf(error) };
   }
   if (disk !== expected) return { saved: false, disk };
+  try {
+    const locked = await exec("sh", ["-c", NOT_WRITABLE, "sh", path], { on: machine });
+    if (locked.code === 0) return { saved: false, failure: { reason: "permission" } };
+  } catch (error) {
+    return { saved: false, failure: saveFailureOf(error) };
+  }
   const folder = `${appHome()}/${SAVES}`;
   const copy = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.txt`;
   try {

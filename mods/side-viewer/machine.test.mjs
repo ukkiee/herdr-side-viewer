@@ -1,11 +1,11 @@
 // node --test: which machine a viewer reads from, and what it asks that machine, without Herdr.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spaceValue, machineOf, headerActions, EXISTS, existingOf, homeOf, hcCommand } from "./machine.js";
+import { spaceValue, machineOf, headerActions, EXISTS, existingOf, homeOf, NOT_WRITABLE } from "./machine.js";
 
 // Space ids as `herdr-app status` and spaces() give them (observed 2026-11-13): this Mac's
 // bare, another machine's with its `<machine>/` prefix.
@@ -44,14 +44,18 @@ test("a viewer whose props have no space value reads from this Mac", () => {
   }
 });
 
-test("a viewer whose space is not listed reads from this Mac", () => {
-  assert.deepEqual(machineOf({ space: "sp-gone" }, SPACES), THIS_MAC);
-  assert.deepEqual(machineOf({ space: NUC }, []), THIS_MAC);
-  assert.deepEqual(machineOf({ space: NUC }, null), THIS_MAC);
+// A space Herdr does not list yet, as after a restart, may be another machine's: the viewer
+// waits for it instead of reading this Mac's file of the same path.
+const UNLISTED = { machine: null, remote: false, unlisted: true };
+
+test("a viewer whose space value is not listed is on no machine yet", () => {
+  assert.deepEqual(machineOf({ space: "sp-gone" }, SPACES), UNLISTED);
+  assert.deepEqual(machineOf({ space: NUC }, []), UNLISTED);
+  assert.deepEqual(machineOf({ space: NUC }, null), UNLISTED);
 });
 
 test("a space value is matched whole, not as the end of a longer id", () => {
-  assert.deepEqual(machineOf({ space: NUC.slice(4) }, SPACES), THIS_MAC);
+  assert.deepEqual(machineOf({ space: NUC.slice(4) }, SPACES), UNLISTED);
 });
 
 test("a remote file's header has no original app and no Finder, only the new tab", () => {
@@ -96,37 +100,19 @@ test("an answer that is no absolute folder gives no home", () => {
   for (const stdout of ["", "\n", "ukyi\n", null]) assert.equal(homeOf(stdout), null, JSON.stringify(stdout));
 });
 
-// A fake hc that prints where it was found and the arguments it got, one per line.
-function fakeHc(dir) {
-  mkdirSync(dir, { recursive: true });
-  const path = join(dir, "hc");
-  writeFileSync(path, `#!/bin/sh\necho "${path}"\nfor a; do echo "$a"; done\n`, { mode: 0o755 });
-  return path;
-}
+// NOT_WRITABLE exits 0 for a file there that cannot be written, so the save stops before
+// replacing it; anything else (writable, not there) lets the save go on.
+const notWritable = (path) => spawnSync("sh", ["-c", NOT_WRITABLE, "sh", path]).status === 0;
 
-function runHc(args, env) {
-  const [command, argv] = hcCommand(args);
-  return execFileSync(command, argv, { encoding: "utf8", env });
-}
-
-test("hc is run from PATH when it is there", () => {
-  const dir = mkdtempSync(join(tmpdir(), "side-viewer-hc-"));
+test("a file the user cannot write is told apart before a save, a writable or new one is not", () => {
+  const dir = mkdtempSync(join(tmpdir(), "side-viewer-machine-"));
   try {
-    const onPath = fakeHc(join(dir, "bin"));
-    fakeHc(join(dir, "home", ".local", "bin"));
-    const out = runHc(["exec", "--on", "nuc-pro", "cat", "/a b.md"], { PATH: `${join(dir, "bin")}:/usr/bin:/bin`, HOME: join(dir, "home") });
-    assert.equal(out, `${onPath}\nexec\n--on\nnuc-pro\ncat\n/a b.md\n`);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("hc is run from ~/.local/bin when PATH lacks it, as an app opened from Finder has", () => {
-  const dir = mkdtempSync(join(tmpdir(), "side-viewer-hc-"));
-  try {
-    const installed = fakeHc(join(dir, "home", ".local", "bin"));
-    const out = runHc(["machine", "ls"], { PATH: "/usr/bin:/bin:/usr/sbin:/sbin", HOME: join(dir, "home") });
-    assert.equal(out, `${installed}\nmachine\nls\n`);
+    const locked = join(dir, "locked .md"), open = join(dir, "open.md");
+    writeFileSync(locked, "# a\n", { mode: 0o444 });
+    writeFileSync(open, "# a\n");
+    assert.equal(notWritable(locked), true);
+    assert.equal(notWritable(open), false);
+    assert.equal(notWritable(join(dir, "new.md")), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

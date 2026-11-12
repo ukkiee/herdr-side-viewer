@@ -3,6 +3,8 @@
 //
 // header: {
 //   file,         the shown file, or null
+//   home,         the home folder of the file's machine, which the folder shows as `~`; null
+//                 shortens nothing
 //   canGoBack,    whether there is a file to go back to
 //   state,        this.content.state of the viewer
 //   raw,          whether the markdown or svg view shows the source
@@ -17,14 +19,13 @@
 // switch, then the actions (new tab, original app, Finder). Each part is one line of renderHeader.
 import { div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { home } from "herdr";
 import { labelOf } from "./document.js";
 import { switchable, opensInTab } from "./views.js";
 import { headerActions } from "./machine.js";
 
 export function renderHeader(t, header) {
   const { file, canGoBack, state, status } = header;
-  const label = file ? labelOf(file, home()) : { name: "Side Viewer", folder: "" };
+  const label = file ? labelOf(file, header.home) : { name: "Side Viewer", folder: "" };
   return h_flex().h(40).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border)
     .when(canGoBack, (el) => el.child(renderBack(t, header)))
     .child(div().min_w(0).truncate().text_size(13).font_semibold().child(label.name))

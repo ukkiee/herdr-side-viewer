@@ -4,7 +4,8 @@
 // Whoever opens a viewer (open.sh, the path picker, "Open in a new tab") puts the space
 // value in its props: the space id without its `<machine>/` prefix. The machine's name is
 // never put there (ADR 0002), so the viewer finds its space in spaces() and takes its
-// `machine`. A viewer without the value, or whose space is not listed, is on this Mac.
+// `machine`. A viewer without the value is on this Mac; one whose space is not listed yet
+// waits for it.
 // It also holds the commands file-access.js asks a machine (which paths are files, its
 // home, how to run `hc`) and reads their answers.
 
@@ -15,14 +16,18 @@ export function spaceValue(id) {
   return value || null;
 }
 
-// The machine of the viewer whose props are `props`, as { machine, remote }: machine is the
-// space's `machine` (null: this Mac). `spaces` is Herdr's spaces(). A remote space's id has
-// the machine prefix the value lacks, so its id ends with `/<value>`.
+// The machine of the viewer whose props are `props`, as { machine, remote, unlisted? }:
+// machine is the space's `machine` (null: this Mac). `spaces` is Herdr's spaces(). A remote
+// space's id has the machine prefix the value lacks, so its id ends with `/<value>`.
+// `unlisted`: the props have a space value that no listed space has, as while Herdr has not
+// listed a remote space yet after a restart. The space may be another machine's, so such a
+// viewer reads and saves nothing until it is listed (machine stays null, remote false).
 export function machineOf(props, spaces) {
   const value = props?.space;
   if (typeof value !== "string" || !value) return { machine: null, remote: false };
   const space = (spaces ?? []).find((s) => s.id === value || s.id.endsWith(`/${value}`));
-  const machine = space?.machine ?? null;
+  if (!space) return { machine: null, remote: false, unlisted: true };
+  const machine = space.machine ?? null;
   return { machine, remote: machine !== null };
 }
 
@@ -46,15 +51,15 @@ export function homeOf(stdout) {
   return home.startsWith("/") && !home.includes("\n") ? home : null;
 }
 
+// Run as `sh -c NOT_WRITABLE sh <path>` on the machine before a save: exits 0 when the file is
+// there and the user cannot write it. `hc file write` replaces a file with a new one, which
+// only the folder's permission governs, so a read-only file would be written over.
+export const NOT_WRITABLE = 'test -e "$1" && ! test -w "$1"';
+
 // A shell fragment that puts the path of this Mac's `hc` in $hc: the one on PATH, else
 // ~/.local/bin/hc, where herdr-core installs it. An app opened from Finder may run commands
 // with a PATH that lacks ~/.local/bin. A command that needs a redirection starts with it.
 export const FIND_HC = 'hc=$(command -v hc) || hc="$HOME/.local/bin/hc"';
-
-// The [command, args] for exec() that run `hc <args>` on this Mac.
-export function hcCommand(args) {
-  return ["sh", ["-c", `${FIND_HC}; exec "$hc" "$@"`, "sh", ...args]];
-}
 
 // The header's actions, left to right (header.js). "Open in the original app" and "Show in
 // Finder" act on this Mac, where a remote file is not, so a remote file has neither.

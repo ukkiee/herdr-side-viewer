@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf as barIn, statusOf as statusIn, discarded, overwritten, refusalOf, saveFailed, startSave, takeEdit, putEdit, checkboxToggled, remoteSaveFailed } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf as barIn, statusOf as statusIn, discarded, overwritten, refusalOf, saveFailed, startSave, takeEdit, putEdit, checkboxToggled, writeFailed, refusalFailureOf } from "./edit-state.js";
 import { translator } from "./i18n.js";
 
 const A = "/work/a.md";
@@ -447,18 +447,44 @@ test("the header's status in English: short states, and Herdr's wording kept as 
 });
 
 // Saves to another machine: remote-results.js saveFailureOf says why one failed.
+// The header's status words: polite Korean, no full stop, as the other statuses.
 test("a remote save that cannot reach the machine keeps the edits and names the machine", () => {
-  const edits = remoteSaveFailed(typed(noEdits(), A, "one\n", "mine\n"), A, { reason: "unreachable" }, "nuc-pro");
+  const edits = writeFailed(typed(noEdits(), A, "one\n", "mine\n"), A, { reason: "unreachable" }, "linux-box");
   assert.equal(shownText(edits, A, "one\n"), "mine\n");
   assert.deepEqual(statusOf(edits, A),
-    { kind: "failed", message: "nuc-pro 기계에 연결할 수 없어요.", tip: "nuc-pro 기계에 연결할 수 없어요.", buttons: ["save"] });
-  assert.equal(statusIn(edits, A, translator("en")).message, "Can't reach the machine nuc-pro.");
+    { kind: "failed", message: "linux-box 기계에 연결할 수 없어요", tip: "linux-box 기계에 연결할 수 없어요", buttons: ["save"] });
+  assert.equal(statusIn(edits, A, translator("en")).message, "Can't reach linux-box");
+});
+
+test("edits shown while their machine is out of reach say so, and the save button stays", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  assert.deepEqual(statusIn(edits, A, ko, "linux-box"),
+    { kind: "failed", message: "linux-box 기계에 연결할 수 없어요", tip: "linux-box 기계에 연결할 수 없어요", buttons: ["save"] });
+  assert.equal(statusIn(edits, A, translator("en"), "linux-box").message, "Can't reach linux-box");
+  // Back in reach: the edits read as edited again, and are still there.
+  assert.equal(statusIn(edits, A, ko, null).message, "편집됨");
+  assert.equal(shownText(edits, A, "one\n"), "mine\n");
+});
+
+test("being out of reach says nothing for a file without edits", () => {
+  assert.equal(statusIn(noEdits(), A, ko, "linux-box"), null);
+});
+
+test("being out of reach comes before a conflict or a failure the edits carry", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const conflict = diskRead(edits, A, "theirs\n").edits;
+  const denied = writeFailed(edits, A, { reason: "permission" }, "linux-box");
+  for (const shown of [conflict, denied]) {
+    assert.deepEqual(statusIn(shown, A, ko, "linux-box"),
+      { kind: "failed", message: "linux-box 기계에 연결할 수 없어요", tip: "linux-box 기계에 연결할 수 없어요", buttons: ["save"] });
+  }
+  assert.equal(statusIn(conflict, A, ko, null).message, "외부에서 바뀌었어요");
 });
 
 test("a remote save refused for permission or otherwise shows as a save here does", () => {
   const edits = typed(noEdits(), A, "one\n", "mine\n");
-  const denied = remoteSaveFailed(edits, A, { reason: "permission" }, "nuc-pro");
-  const other = remoteSaveFailed(edits, A, { reason: "other", detail: "/w/a.md: Is a directory (os error 21)" }, "nuc-pro");
+  const denied = writeFailed(edits, A, { reason: "permission" }, "nuc-pro");
+  const other = writeFailed(edits, A, { reason: "other", detail: "/w/a.md: Is a directory (os error 21)" }, "nuc-pro");
   assert.equal(statusOf(denied, A).message, "쓰기 권한이 없어요");
   assert.deepEqual(statusOf(other, A),
     { kind: "failed", message: "저장하지 못했어요", tip: "/w/a.md: Is a directory (os error 21)", buttons: ["save"] });
@@ -466,14 +492,29 @@ test("a remote save refused for permission or otherwise shows as a save here doe
 });
 
 test("a failed remote save's reason outlives typing and a read of the disk as it was, and goes with a save", () => {
-  let edits = remoteSaveFailed(typed(noEdits(), A, "one\n", "mine\n"), A, { reason: "unreachable" }, "nuc-pro");
+  let edits = writeFailed(typed(noEdits(), A, "one\n", "mine\n"), A, { reason: "unreachable" }, "linux-box");
   edits = typed(edits, A, "one\n", "mine!\n");
   edits = diskRead(edits, A, "one\n").edits;
-  assert.equal(statusOf(edits, A).message, "nuc-pro 기계에 연결할 수 없어요.");
+  assert.equal(statusOf(edits, A).message, "linux-box 기계에 연결할 수 없어요");
   assert.equal(statusOf(saved(edits, A, "mine!\n"), A), null);
+});
+
+// This Mac's saves go through the file access as remote ones do: its refusals become the
+// same failures, and show as v2 showed them.
+test("a refusal on this Mac is a failure a write shows as v2 did", () => {
+  const edits = typed(noEdits(), A, "one\n", "mine\n");
+  const failed = (message) => writeFailed(edits, A, refusalFailureOf(new Error(message)), null);
+  assert.deepEqual(refusalFailureOf(new Error("`herdr.writeTextFile`: Permission denied (os error 13)")), { reason: "permission" });
+  assert.deepEqual(refusalFailureOf(new Error("Text file exceeds 1 MiB")), { reason: "large" });
+  assert.deepEqual(refusalFailureOf(new Error("`herdr.writeTextFile`: No space left on device (os error 28)")),
+    { reason: "other", detail: "No space left on device (os error 28)" });
+  assert.equal(statusOf(failed("Permission denied (os error 13)"), A).message, "쓰기 권한이 없어요");
+  assert.equal(statusOf(failed("Text file exceeds 1 MiB"), A).message, "너무 커서 저장할 수 없어요");
+  assert.deepEqual(statusOf(failed("`herdr.writeTextFile`: No space left on device (os error 28)"), A),
+    { kind: "failed", message: "저장하지 못했어요", tip: "No space left on device (os error 28)", buttons: ["save"] });
 });
 
 test("a remote save's failure on a file without edits changes nothing", () => {
   const edits = noEdits();
-  assert.equal(remoteSaveFailed(edits, A, { reason: "unreachable" }, "nuc-pro"), edits);
+  assert.equal(writeFailed(edits, A, { reason: "unreachable" }, "nuc-pro"), edits);
 });
