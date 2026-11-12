@@ -23,9 +23,16 @@ Top to bottom:
   - **File name**, 13px semibold, cut with an ellipsis when the pane is narrow.
   - **Folder**, 11px `dim`, the home folder written as `~`. It takes the room that is left
     and is cut with an ellipsis.
-  - **Unsaved**, only while the shown file has unsaved edits: `저장 안 됨` at 11px in
-    `accent`, then a `저장` button (24px tall, 8px side padding, radius 4, 1px `border`, 12px
-    text, tooltip `저장 (⌘S)`), 6px apart.
+  - **Status**, only while the shown file has unsaved edits: one line of text at 11px, then
+    its buttons (24px tall, 8px side padding, radius 4, 1px `border`, 12px text), 6px apart
+    (edit-state.js, `statusOf`). `편집됨` in `accent` with `저장` (tooltip `저장 (⌘S)`).
+    A failed save in `blocked` with `저장`: `쓰기 권한이 없어요`, `파일이 지워졌어요`,
+    `너무 커서 저장할 수 없어요`, or `저장하지 못했어요` for any other error. A change on
+    disk, `외부에서 바뀌었어요` in `blocked`, with `다시 읽기` (tooltip `내 수정 버리고 다시
+    읽기`) and `덮어쓰기` (tooltip `내 것으로 덮어쓰기`) instead of `저장`. Hovering the text
+    shows it whole, or for `저장하지 못했어요` Herdr's error without its function name. It
+    is cut with an ellipsis only once the name and folder have given their room; the
+    buttons never shrink.
   - **Switch**, only while a markdown document or an svg with a source is drawn:
     `렌더링 | 원문`, two cells in a 24px tall box with a 1px `border`, radius 5. The cell
     shown is filled with `hover` in `foreground`; the other is `muted` and switches on click.
@@ -35,12 +42,6 @@ Top to bottom:
     `원래 앱으로 열기` (open in the original app) and `Finder에서 보기` (show in Finder). A
     notice has only those two.
   - With no file the name reads `Side Viewer` and there are no buttons.
-- **Bar**, only while the shown file has one, between the header and the body: 12px side and
-  6px vertical padding, a 1px `border` line under it, `chrome` background, the message at
-  12px in `blocked`. `밖에서 바뀌었습니다` comes with two buttons, `내 수정 버리고 다시 읽기`
-  and `내 것으로 덮어쓰기` (24px tall, 1px `border`, 12px text). A save failure is the reason
-  alone: `이 파일에 쓸 권한이 없습니다.`, `파일이 지워졌습니다.`, `저장하기에는 너무 큽니다.`
-  or `저장하지 못했습니다: <error>`.
 - **Body**, one of:
   - **Markdown view**: a scrolling column as wide as the pane, 28px side and 24px vertical
     padding, 13px text, 12px between blocks, selectable. At the top the folder in `muted`
@@ -121,9 +122,9 @@ The mod shows files, not agents, so it has no agent statuses.
   A file with unsaved edits is never read over them: see "Changed outside". Nor is it
   replaced by a notice: coming back to one that is now gone, too large or unreadable, or
   an svg now past 1 MiB (a picture alone) or no longer svg, shows its editor with the edits
-  (views.js, `editedContentOf`), and the bar says what it can. A markdown, code or svg file
-  emptied outside is no notice at all: it is a changed file, so the edits stay and the bar
-  says `밖에서 바뀌었습니다`.
+  (views.js, `editedContentOf`), and the header's status says what it can. A markdown, code
+  or svg file emptied outside is no notice at all: it is a changed file, so the edits stay
+  and the status says `외부에서 바뀌었어요`.
 - **Theme.** The code view's colors are fixed when its editor is made, so each check also
   compares them with the theme: after a theme change the open code is redrawn with the new
   colors within 15 seconds. Code block cards take the new colors at the same check.
@@ -138,22 +139,22 @@ The mod shows files, not agents, so it has no agent statuses.
   them all, without asking.
 - **Saving.** cmd+S (from the editor or anywhere in the viewer) or the `저장` button runs
   `writeTextFile(file, text, disk)`. With no entry cmd+S does nothing. Text over 1 MiB
-  (1,048,576 UTF-8 bytes) is not sent and the bar says `저장하기에는 너무 큽니다.`. Typing
+  (1,048,576 UTF-8 bytes) is not sent and the status says `너무 커서 저장할 수 없어요`. Typing
   that lands while a save is under way stays unsaved. Nothing is ever saved on a timer.
 - **Rendering edits.** Switching an edited source to `렌더링` draws the edited text: the
   markdown blocks are parsed again, and an svg is drawn from a copy of the edited text under
   `previews/`. The file is not written.
 - **Changed outside.** A read that finds the disk no longer holds `disk` keeps the edits on
-  screen and raises the `밖에서 바뀌었습니다` bar; a read that finds the edited text on disk
-  drops the entry; a deleted file raises `파일이 지워졌습니다.`. `내 수정 버리고 다시 읽기`
-  drops the entry and shows the disk; `내 것으로 덮어쓰기` saves the edits against the disk
-  text the bar found. A save that Herdr refuses because the file is not `disk` raises the
-  same bar; a refused save of a file that is gone says `파일이 지워졌습니다.`. Permission
-  errors (`os error 13`, `1`, `30`) say `이 파일에 쓸 권한이 없습니다.`, anything else
-  `저장하지 못했습니다: <error>`. The edits stay in every case.
+  screen and the status says `외부에서 바뀌었어요`; a read that finds the edited text on
+  disk drops the entry; a deleted file says `파일이 지워졌어요`. `다시 읽기` drops the entry
+  and shows the disk; `덮어쓰기` saves the edits against the disk text the read found. A
+  save that Herdr refuses because the file is not `disk` says the same as the read; a
+  refused save of a file that is gone says `파일이 지워졌어요`. Permission errors
+  (`os error 13`, `1`, `30`) say `쓰기 권한이 없어요`, anything else `저장하지 못했어요`
+  with the error on hover. The edits stay in every case.
 - **Checkboxes.** A click on a task box turns over the first `[ ]`, `[x]` or `[X]` on that
   item's source line, in the edited text if there is one, else in the disk text. Without
-  edits the result is saved at once against the disk text (a refusal raises the bar); with
+  edits the result is saved at once against the disk text (a refusal shows in the status); with
   edits it joins them and stays unsaved. A click during a save waits for the save to end.
 - **Pictures in markdown.** A picture alone on its line whose path is relative (to the
   document's folder) or absolute is checked by its first bytes and drawn from a copy under
@@ -237,7 +238,7 @@ The mod shows files, not agents, so it has no agent statuses.
   "side-viewer", props: {file}}`; `props.file` is the absolute path to show. A viewer tab's
   props are `{file, viewerTab: true, handoff?}`.
 - `mods/side-viewer/main.js`: the one `View`: state, reads, requests, the watch, edits and
-  saves, the tab and shell commands' wiring. Drawing is in `header.js`, `conflict-bar.js`,
+  saves, the tab and shell commands' wiring. Drawing is in `header.js`,
   `markdown-view.js`, `code-card.js`, `code-view.js`, `image-view.js`, `notice-view.js`;
   `markdown-image-loader.js` makes the copies of pictures in markdown, `shell-pane.js` runs
   `>_`. The decisions sit in modules without `herdr` imports, so `node --test` runs them:
@@ -246,7 +247,7 @@ The mod shows files, not agents, so it has no agent statuses.
   `history.js`, `request.js` (the handoff from `open.sh`), `links.js` (link clicks, watch
   decisions), `original.js` (which app "open in the original app" names), `image-copies.js`
   (image check by first bytes, copy names, sizes, cleanup), `edit-state.js` (unsaved edits,
-  disk changes, save results, the bar, handing edits to a tab, checkbox clicks),
+  disk changes, save results, the header's status, handing edits to a tab, checkbox clicks),
   `markdown-blocks.js` (markdown → blocks), `code-blocks.js` (fence language → label,
   colors, shell; wrapped rows and editor height; card fill), `markdown-images.js` (picture
   paths and sizes), `svg-preview.js` (edited svg previews), `terminal-insert.js` (`>_`'s
@@ -538,21 +539,21 @@ notices a change. Have the agent's conversation print the absolute paths of all 
 each followed by a space or the end of the line. Keep a terminal open for the shell steps.
 
 1. Open `~/sv2-check/markdown-sample.md`, click `원문`. The source has line numbers and the
-   long paragraph on line 3 wraps to the pane. Type a word: `저장 안 됨` and `저장` appear.
+   long paragraph on line 3 wraps to the pane. Type a word: `편집됨` and `저장` appear.
    Delete the word again: both go. (AC-1, AC-2, AC-7)
 2. Type a word and press cmd+S: both go, and `grep <word> ~/sv2-check/markdown-sample.md`
    finds it. Type another and click `저장`: the same. Press cmd+S with nothing changed:
    nothing happens, and `stat -f %m` on the file prints the same time before and after.
    (AC-2)
 3. In the source change the `## 목록` heading, then click `렌더링`: the rendering shows the
-   new heading, `저장 안 됨` stays, and `grep` finds the old heading in the file. Press
+   new heading, `편집됨` stays, and `grep` finds the old heading in the file. Press
    cmd+S while the rendering shows: the file now has the new heading. (AC-6, AC-2)
-4. Open `~/sv2-check/main.js`. Type in it: it changes and `저장 안 됨` appears. Line 16 is
+4. Open `~/sv2-check/main.js`. Type in it: it changes and `편집됨` appears. Line 16 is
    longer than the pane and does not wrap (scroll sideways to its end); there are line
    numbers. Save with cmd+S. (AC-1, AC-7, AC-2)
 5. Try to type into the markdown rendering, a `.png` picture, a code block card and a notice
    (an empty picture, made with `: > ~/sv2-check/empty.png`): nothing changes and no
-   `저장 안 됨` appears. Then make `: > ~/sv2-check/empty.md`, `: > ~/sv2-check/empty.svg`
+   `편집됨` appears. Then make `: > ~/sv2-check/empty.md`, `: > ~/sv2-check/empty.svg`
    and `: > ~/sv2-check/empty.js` and open each. The markdown shows its folder and name at
    the top, `이 파일은 비어 있습니다.` under them, and the `렌더링 | 원문` switch; in `원문`
    type a heading, switch back to `렌더링` to see it drawn, press cmd+S, and `cat` shows it
@@ -561,38 +562,40 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
    switch to `렌더링` to see the circle, and save with cmd+S. The `.js` opens as an empty
    code view with no notice; type and save the same way. (AC-1, AC-22)
 6. Edit `~/sv2-check/main.js` without saving. Cmd-click `~/sv2-check/markdown-sample.md`,
-   then `←`: the edit and `저장 안 됨` are back. Do it again through a link in the markdown
+   then `←`: the edit and `편집됨` are back. Do it again through a link in the markdown
    rendering instead of a cmd-click. Then close the pane: nothing asks. Cmd-click
-   `~/sv2-check/main.js` again: it shows the disk text, no `저장 안 됨`. (AC-3)
+   `~/sv2-check/main.js` again: it shows the disk text, no `편집됨`. (AC-3)
 7. With nothing unsaved in `~/sv2-check/markdown-sample.md`, run
    `echo '밖에서 더한 줄' >> ~/sv2-check/markdown-sample.md`: the view reloads by itself.
-   Now edit it without saving and run the same `echo` again: the content is not replaced, the
-   bar `밖에서 바뀌었습니다` appears with `내 수정 버리고 다시 읽기` and
-   `내 것으로 덮어쓰기`, and you can keep typing. Click `내 수정 버리고 다시 읽기`: the disk
-   text shows, with the new line, and `저장 안 됨` is gone. (AC-4)
-8. Edit again, `echo` again, and click `내 것으로 덮어쓰기`: the bar and `저장 안 됨` go, and
+   Now edit it without saving and run the same `echo` again: the content is not replaced,
+   the header's `편집됨` turns into `외부에서 바뀌었어요` in red, `저장` gives way to
+   `다시 읽기` and `덮어쓰기`, there is no bar under the header, and you can keep typing.
+   Click `다시 읽기`: the disk text shows, with the new line, and the status is gone. (AC-4)
+8. Edit again, `echo` again, and click `덮어쓰기`: the status and its buttons go, and
    `tail -3 ~/sv2-check/markdown-sample.md` shows your text without the last `echo`'s line.
    (AC-4)
 9. Open `~/sv2-conflict.md`, click `원문`, type a word. Run
    `echo '밖에서 더한 줄' >> ~/sv2-conflict.md` and press cmd+S within a few seconds: the
-   bar `밖에서 바뀌었습니다` appears, and `tail -2 ~/sv2-conflict.md` shows the `echo`'s
-   line and not your word. (If the bar came before cmd+S, the 15-second check got there
+   status says `외부에서 바뀌었어요`, and `tail -2 ~/sv2-conflict.md` shows the `echo`'s
+   line and not your word. (If it said so before cmd+S, the 15-second check got there
    first: discard and try again.) (AC-4)
 10. No permission: edit `~/sv2-check/main.js`, run `chmod 555 ~/sv2-check` (a read-only
-    file alone, `chmod 444`, probably still saves: Watch out), press cmd+S: the bar says
-    `이 파일에 쓸 권한이 없습니다.` and the edit stays. Cmd-click another file's path, then
-    `←`: the bar still says why. `chmod 755 ~/sv2-check`, cmd+S: saved, the bar goes. (AC-5)
+    file alone, `chmod 444`, probably still saves: Watch out), press cmd+S: the status says
+    `쓰기 권한이 없어요` in red, `저장` stays, and the edit stays. Cmd-click another file's
+    path, then `←`: the status still says why. `chmod 755 ~/sv2-check`, cmd+S: saved, the
+    status goes. (AC-5)
 11. Deleted: edit `~/sv2-check/main.js`, then `mv ~/sv2-check/main.js ~/sv2-check/main.js.bak`:
-    the bar says `파일이 지워졌습니다.` and the edit stays; cmd+S says the same and writes
-    nothing. `mv` it back: the bar goes, the edit is still there. Then, with the edit
-    unsaved, cmd-click `~/sv2-check/markdown-sample.md`, run the same `mv` and press `←`:
-    `main.js` comes back in its editor with the edit, `저장 안 됨` and `파일이 지워졌습니다.`,
-    not the `이 파일은 더 이상 없습니다.` notice. `mv` it back. (AC-5, AC-3)
+    the status says `파일이 지워졌어요` and the edit stays; cmd+S says the same and writes
+    nothing. `mv` it back: the status is `편집됨` again, the edit is still there. Then, with
+    the edit unsaved, cmd-click `~/sv2-check/markdown-sample.md`, run the same `mv` and press
+    `←`: `main.js` comes back in its editor with the edit and `파일이 지워졌어요`, not the
+    `이 파일은 더 이상 없습니다.` notice. `mv` it back. (AC-5, AC-3)
 12. Too large: `head -c 1100000 /dev/zero | tr '\0' a | pbcopy`, paste it into the source of
-    `~/sv2-check/markdown-sample.md`, press cmd+S: the bar says `저장하기에는 너무
-    큽니다.`, the file is unchanged, the edit stays. Undo the paste (cmd+Z, or select it and
-    delete): `저장 안 됨` and the bar go. After steps 10–12, `herdr-app status` reports no
-    mod error. (AC-5)
+    `~/sv2-check/markdown-sample.md`, press cmd+S: the status says `너무 커서 저장할 수
+    없어요`, the file is unchanged, the edit stays. Narrow the pane until the name and folder
+    are gone and the status is cut: the buttons stay whole, and hovering the status shows
+    all of it. Undo the paste (cmd+Z, or select it and delete): the status goes. After steps
+    10–12, `herdr-app status` reports no mod error. (AC-5)
 13. svg: open `~/sv2-check/box.svg`: a blue box, and the header has `렌더링 | 원문`. Click
     `원문`: the source in `xml` colors, wrapped. Change `steelblue` to `tomato`, click
     `렌더링`: a red box, while `grep steelblue ~/sv2-check/box.svg` still finds it. cmd+S:
@@ -643,7 +646,7 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
     `같은 폴더의 문서 링크`: the tab is renamed `spec.md`; `←` names it
     `markdown-sample.md` again. (AC-9)
 23. Edit `~/sv2-check/markdown-sample.md` in the side viewer beside the conversation without
-    saving, click `새 탭으로 열기`: the new tab shows the edit and `저장 안 됨`; the viewer
+    saving, click `새 탭으로 열기`: the new tab shows the edit and `편집됨`; the viewer
     left behind shows the disk text without it. `ls ~/.config/herdr-app/data/side-viewer/`
     shows no `handoff-*.json` left. Save or discard in the tab. (AC-10)
 24. In a viewer tab of `docs/features/side-viewer-v2/code-sample.md`, click `>_` on a
@@ -651,13 +654,13 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
     `echo ~/sv2-check/main.js` and cmd-click the printed path: it opens in the viewer tab,
     the tab is renamed `main.js`, and the tab still has two panes. (AC-11, AC-9, AC-16)
 25. Checkboxes in `~/sv2-check/markdown-sample.md`, rendered, with nothing unsaved: click
-    `남은 할 일`: it checks, no `저장 안 됨` stays, and `grep -n '할 일'` shows `- [x] 남은
+    `남은 할 일`: it checks, no `편집됨` stays, and `grep -n '할 일'` shows `- [x] 남은
     할 일`. Click it again: back to `[ ]`. Then edit the source without saving, return to
-    `렌더링` and click the box: `저장 안 됨` stays and the file is unchanged until cmd+S.
+    `렌더링` and click the box: `편집됨` stays and the file is unchanged until cmd+S.
     (AC-21)
 26. Checkbox against an outside change: open `~/sv2-conflict.md` rendered, with nothing
     unsaved (discard what step 9 left). Run `echo '밖에서 더한 줄' >> ~/sv2-conflict.md`
-    and click `남은 할 일` within a few seconds: the bar `밖에서 바뀌었습니다` appears and
+    and click `남은 할 일` within a few seconds: the status says `외부에서 바뀌었어요` and
     `grep -n '할 일' ~/sv2-conflict.md` still shows `- [ ] 남은 할 일`. Both buttons work
     as in steps 7–8. (AC-21, AC-4)
 27. `html`, only after you chose to take over the code group (v1 step 5): `router

@@ -48,32 +48,34 @@ everything back.
   opens as an empty code view. An empty `svgz` or picture still gets only the notice.
   An `svgz` has no source view. The sources wrap long
   lines to the pane; the code view does not. All three have line numbers.
-- **Unsaved.** Once you change something, the header shows `저장 안 됨` and a `저장`
+- **Edited.** Once you change something, the header shows `편집됨` and a `저장`
   button. cmd+S or the button writes the file and both go away; so does undoing your
-  change by hand. cmd+S with nothing changed does nothing.
+  change by hand. cmd+S with nothing changed does nothing. That spot in the header is the
+  file's status: a failed save or a change on disk shows there too, in red, in place of
+  `편집됨`. In a narrow pane the file name and folder are cut first, then the status;
+  hover it to read all of it.
 - **Kept per file, until the pane closes.** Edits not yet saved stay with that viewer, for
   each file: follow a link, go back, or cmd-click another file, and when you return to the
-  file your edits and `저장 안 됨` are back. Closing the pane or quitting Herdr drops them,
+  file your edits and their status are back. Closing the pane or quitting Herdr drops them,
   and nothing asks first.
 - **Preview before saving.** Switch an edited source to `렌더링` and you see the document,
   or the svg's picture, drawn from your edits. The file is not written.
 - **Changed outside.** If the file changes on disk while you have edits (an agent wrote
-  it, say), the viewer does not read it over them. A bar above the content says
-  `밖에서 바뀌었습니다` with two buttons: `내 수정 버리고 다시 읽기` (drop your edits and
-  show the disk) and `내 것으로 덮어쓰기` (save yours over it). A save that finds the file
-  changed since the viewer last read it writes nothing and brings up the same bar. You can
-  keep typing while the bar is there. Without edits the viewer reloads by itself, as
-  before.
-- **Save failures.** When a save fails, the same place says why and your edits stay:
-  `이 파일에 쓸 권한이 없습니다.` (no permission), `파일이 지워졌습니다.` (the file was
-  deleted; this also shows as soon as an edited file disappears), `저장하기에는 너무
-  큽니다.` (over 1 MiB, 1,048,576 bytes), or `저장하지 못했습니다: <error>` for anything
-  else.
+  it, say), the viewer does not read it over them. The status says `외부에서 바뀌었어요`,
+  and two buttons take the place of `저장`: `다시 읽기` (drop your edits and show the
+  disk) and `덮어쓰기` (save yours over it). A save that finds the file changed since the
+  viewer last read it writes nothing and shows the same. You can keep typing meanwhile.
+  Without edits the viewer reloads by itself, as before.
+- **Save failures.** When a save fails, the status says why, `저장` stays, and your
+  edits stay: `쓰기 권한이 없어요` (no permission), `파일이 지워졌어요` (the file was
+  deleted; this also shows as soon as an edited file disappears), `너무 커서 저장할 수
+  없어요` (over 1 MiB, 1,048,576 bytes), or `저장하지 못했어요` for anything else, where
+  hovering it shows the error.
 - **Checkboxes.** Clicking a task box (`- [ ]`) in the rendering flips it and turns that
   source line's `[ ]` into `[x]` or back. With no edits in the file it is saved at once,
   the one exception to "never on their own"; if the file changed on disk meanwhile, nothing
-  is written and the `밖에서 바뀌었습니다` bar comes up. With edits, the click joins them and
-  stays `저장 안 됨`.
+  is written and the status says `외부에서 바뀌었어요`. With edits, the click joins them and
+  stays `편집됨`.
 
 ### Open in a new tab
 
@@ -82,7 +84,7 @@ while a file is drawn, not on a notice such as "too large" or "gone") opens a
 **viewer tab**: a tab right after the current one, in the same space, holding only a side
 viewer of this file, and switches to it. The tab is named after the file and follows it
 through links, `←` and new files. It starts with an empty history. The same file opens a new
-tab every time. Unsaved edits move with the file: the new tab shows them with `저장 안 됨`,
+tab every time. Unsaved edits move with the file: the new tab shows them with their status,
 and the viewer you left shows the disk text. While a viewer tab is on screen, a cmd-clicked
 file opens in it, not in a new pane.
 
