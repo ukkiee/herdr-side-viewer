@@ -103,7 +103,7 @@ export function openedShell(before, panes, viewer) {
 
 // The pane.split arguments for a shell below the viewer. pane.split takes no folder, so a
 // short zsh moves there first and becomes the login shell; a folder that is gone leaves the
-// shell where Herdr started it. Always zsh: the line goes in with zsh's print -z.
+// shell where Herdr started it. Always zsh: the line goes in through a zle widget.
 export function splitOf(viewer, folder) {
   return {
     direction: "down",

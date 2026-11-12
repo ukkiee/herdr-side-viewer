@@ -98,7 +98,7 @@ test("a shell running another program is busy, and the program is named", () => 
   assert.deepEqual(shellState(terminal("vim")), { state: "busy", program: "vim" });
 });
 
-test("a shell that is not zsh is not used: print -z is zsh's", () => {
+test("a shell that is not zsh is not used: the insert widget is zsh's", () => {
   assert.deepEqual(shellState(terminal("bash")), { state: "busy", program: "bash" });
   assert.deepEqual(shellState(terminal("fish")), { state: "busy", program: "fish" });
 });
