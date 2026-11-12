@@ -8,13 +8,13 @@
 // edit-state.js, viewer-tab.js and checkbox.js.
 import { View } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
-import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes } from "herdr";
+import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes, notify } from "herdr";
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
 import { contentOf } from "./document.js";
 import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, editedContentOf } from "./views.js";
 import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
-import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab } from "./viewer-tab.js";
+import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab, unplacedNotice } from "./viewer-tab.js";
 import { toggleCheckbox } from "./checkbox.js";
 import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, COPY, LIST } from "./image-copies.js";
 import { PREVIEW_FOLDER, previewName, pictureOf } from "./svg-preview.js";
@@ -34,6 +34,9 @@ import { MarkdownImages } from "./markdown-image-loader.js";
 
 // The folder watch can miss a change, so the shown file is also read again this often.
 const RECHECK_MS = 15000;
+// How long a new viewer tab is looked for in spaces(), and how often.
+const PLACE_WAIT_MS = 3000;
+const PLACE_STEP_MS = 50;
 
 export default class SideViewer extends View {
   init(given, cx) {
@@ -152,26 +155,28 @@ export default class SideViewer extends View {
         return;
       }
       if (handoff) this.handedOff(file, cx);
-      if (place) await this.placeTab(before, place);
+      if (place && !(await this.placeTab(before, place, cx))) notify(unplacedNotice(file));
       cx.notify();
     });
   }
 
   // tab.new returns nothing and puts the tab where Herdr puts new tabs, so the new tab is
   // found by comparing the space's tabs, then moved after this viewer's tab and shown.
-  // spaces() may lag the command a little, so it is asked a few times.
-  async placeTab(before, place) {
-    for (let tries = 0; tries < 20; tries++) {
+  // spaces() may lag the command, so it is asked again for a while. Returns whether the tab
+  // was found.
+  async placeTab(before, place, cx) {
+    for (let waited = 0; waited <= PLACE_WAIT_MS; waited += PLACE_STEP_MS) {
       const id = newTabOf(before, spaces(), place.space);
       if (id) {
         try {
           run("tab.move", { id, index: place.index });
           run("tab.select", { id });
         } catch {}
-        return;
+        return true;
       }
-      await exec("sleep", ["0.05"]).catch(() => null);
+      await cx.sleep(PLACE_STEP_MS);
     }
+    return false;
   }
 
   // The edits of `file` went to a viewer tab: this viewer shows the disk text again.

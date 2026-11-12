@@ -1,7 +1,7 @@
 // node --test: what a viewer tab is given when it opens, and where it goes, without Herdr.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab } from "./viewer-tab.js";
+import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab, unplacedNotice } from "./viewer-tab.js";
 
 const NOW = 1_800_000_000_000;
 const FILE = "/work/notes/plan.md";
@@ -86,6 +86,13 @@ test("no new tab yet, or one only in another space, is not taken for it", () => 
   assert.equal(newTabOf(BEFORE, BEFORE, "s1"), null);
   const elsewhere = [BEFORE[0], space("s2", [tab("u1", 1), tab("u2", 2)])];
   assert.equal(newTabOf(BEFORE, elsewhere, "s1"), null);
+});
+
+test("a new tab that never shows up in spaces() is announced by its name, not left silent", () => {
+  const notice = unplacedNotice(FILE);
+  assert.equal(notice.level, "warning");
+  assert.match(notice.title, /새 탭/);
+  assert.match(notice.body, /plan\.md/);
 });
 
 test("a viewer tab renames the shown tab only when a side viewer is in it", () => {

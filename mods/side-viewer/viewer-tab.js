@@ -87,6 +87,16 @@ export function ownTab(focus, panes) {
   return (panes ?? []).some((p) => p.tab === tab && p.mod === "side-viewer") ? tab : null;
 }
 
+// The notify() that says the new tab of `file` was made but could not be moved after this
+// viewer's tab and shown, because spaces() never listed it.
+export function unplacedNotice(file) {
+  return {
+    title: "새 탭으로 넘어가지 못했습니다",
+    body: `'${tabName(file)}' 탭을 열었지만 찾지 못해 옮기거나 보이지 못했습니다. 탭 막대에서 고르세요.`,
+    level: "warning",
+  };
+}
+
 // The tab's name: the file name, as the header shows it.
 export function tabName(file) {
   return labelOf(file, "").name;
