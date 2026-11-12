@@ -76,14 +76,40 @@ export function editorOf(state) {
   return null;
 }
 
+// Whether a rendering has nothing to draw, so it shows the empty notice in place of a
+// document or picture. `text` is the text on screen, unsaved edits included: written text
+// is drawn as soon as there is any.
+export function rendersEmpty(text) {
+  return !/\S/.test(text ?? "");
+}
+
+// Bytes of ASCII whitespace: tab, line feed, vertical tab, form feed, carriage return, space.
+const isBlankByte = (byte) => byte === 0x20 || (byte >= 0x09 && byte <= 0x0d);
+
+// Whether `file` is an svg with nothing written in it yet: named .svg, and empty or only
+// whitespace. Its bytes are not an svg's (kindOf), but it still opens to its source, ready
+// to be written in. Only a file that fits in the probe's first bytes can be known blank.
+export function blankSvg(file, probe) {
+  if (extensionOf(file ?? "") !== "svg" || !probe?.found || !probe.readable) return false;
+  const head = probe.head ?? [];
+  return probe.bytes === head.length && head.every(isBlankByte);
+}
+
+// An svg's content with source `text` and no picture of its own: a blank svg, or an edited
+// one whose disk copy cannot be drawn. Its rendering draws the edits' preview, if any.
+export function sourceOnlySvg(text) {
+  return { state: "svg", text, path: null, size: null };
+}
+
 // Why a file is not drawn, as a notice state, or null when it can be read and drawn.
-// `found` is what viewOf gave, `probe` what readProbe gave. Only a picture is stopped for
-// being empty: an empty markdown or code file opens in its view, ready to be written in.
-export function blockerOf(found, probe) {
+// `found` is what viewOf gave, `probe` what readProbe gave. Only a picture without a
+// source is stopped for being empty: an empty markdown, code or svg file opens in its
+// view, ready to be written in.
+export function blockerOf(found, probe, file) {
   if (!found) return "unsupported";
   if (!probe.found) return "missing";
   if (!probe.readable) return "unreadable";
-  if (probe.bytes === 0 && found.view === "image") return "empty";
+  if (probe.bytes === 0 && found.view === "image" && !blankSvg(file, probe)) return "empty";
   if (probe.bytes > (found.view === "image" ? IMAGE_LIMIT : TEXT_LIMIT)) return "large";
   return null;
 }
@@ -107,7 +133,7 @@ export function editedContentOf(file, content, found, disk) {
   if (found.view === "markdown") return { state: "markdown", text: disk };
   if (found.view === "code") return { state: "code", text: disk, language: found.language };
   // Only an svg's source can be edited. With no disk copy, it draws from the edits' preview.
-  if (extensionOf(file) === "svg") return { state: "svg", text: disk, path: null, size: null };
+  if (extensionOf(file) === "svg") return sourceOnlySvg(disk);
   return content;
 }
 

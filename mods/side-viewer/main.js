@@ -16,7 +16,7 @@ import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, 
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
 import { contentOf } from "./document.js";
-import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, editedContentOf } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, editedContentOf, blankSvg, sourceOnlySvg, rendersEmpty } from "./views.js";
 import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
 import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab, unplacedNotice } from "./viewer-tab.js";
 import { toggleCheckbox } from "./checkbox.js";
@@ -384,14 +384,19 @@ export default class SideViewer extends View {
     // An image goes on: its bytes are not read again anyway, and showing it has to touch
     // its copy, or the 30-day cleanup would take it. An svg's text goes with it, for edits.
     if (found.view === "image") {
-      const blocker = blockerOf(found, probe);
+      const blocker = blockerOf(found, probe, file);
       if (blocker) return { content: { state: blocker }, probe: null, text: blocker === "missing" ? null : undefined };
+      // An svg with nothing in it yet has no picture to copy, only its source to write in.
+      if (blankSvg(file, probe)) {
+        const text = await readTextFile(file);
+        return { content: text === null ? { state: "missing" } : sourceOnlySvg(text), probe: null, text };
+      }
       const content = await this.readImage(file, probe);
       return { content, probe: null, text: content.text };
     }
     if (sameProbe(known, file, probe)) return { content: null, probe: known };
     const remembered = settledProbe(file, probe, Math.floor(Date.now() / 1000));
-    const blocker = blockerOf(found, probe);
+    const blocker = blockerOf(found, probe, file);
     if (blocker) {
       return { content: { state: blocker }, probe: remembered, text: blocker === "missing" ? null : undefined };
     }
@@ -468,6 +473,8 @@ export default class SideViewer extends View {
     const content = this.content;
     if (content.state !== "svg" || this.raw) return;
     const text = shownText(this.edits, content.file, content.text);
+    // Blank text has nothing to draw: its rendering is the empty notice.
+    if (rendersEmpty(text)) return;
     if (pictureOf(content, text, this.preview) || this.previewing === text) return;
     this.previewing = text;
     const file = content.file;
@@ -799,9 +806,10 @@ export default class SideViewer extends View {
     }
     if (content.state === "image" || content.state === "svg") {
       // An svg draws its disk copy, or the preview of its unsaved edits (svg-preview.js).
-      const picture = content.state === "svg"
-        ? pictureOf(content, shownText(this.edits, content.file, content.text), this.preview)
-        : content;
+      // With no text yet, the notice says it is empty; the source is a click away.
+      const text = content.state === "svg" ? shownText(this.edits, content.file, content.text) : null;
+      if (content.state === "svg" && rendersEmpty(text)) return renderNotice(t, "empty");
+      const picture = content.state === "svg" ? pictureOf(content, text, this.preview) : content;
       if (!picture) return renderNotice(t, "loading");
       if (!picture.path) return renderNotice(t, "unreadable");
       return renderImage(t, { content: picture, room: this.room, onRoom: (width, cx) => this.setRoom(width, cx) });

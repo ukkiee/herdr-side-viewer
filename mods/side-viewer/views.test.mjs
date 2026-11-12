@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, switchable, editedContentOf, opensInTab } from "./views.js";
+import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, switchable, editedContentOf, opensInTab, blankSvg, sourceOnlySvg, rendersEmpty } from "./views.js";
 
 import { contentOf } from "./document.js";
 import { noEdits, typed, diskRead, shownText, barOf } from "./edit-state.js";
@@ -97,12 +97,12 @@ test("a file that is gone, unreadable or of no view is stopped with its reason",
   assert.equal(blockerOf(found, { found: true, readable: false }), "unreadable");
 });
 
-test("an empty markdown or code file is read into its editable view; an empty picture gets the empty notice", () => {
-  for (const name of ["plan.md", "app.ts", "server.log"]) {
-    assert.equal(blockerOf(viewOf(`/work/${name}`, groups), probe(0)), null, name);
+test("an empty markdown, code or svg file is read into its view; an empty svgz or picture gets the empty notice", () => {
+  for (const name of ["plan.md", "app.ts", "server.log", "logo.svg", "LOGO.SVG"]) {
+    assert.equal(blockerOf(viewOf(`/work/${name}`, groups), probe(0), `/work/${name}`), null, name);
   }
-  for (const name of ["logo.svg", "shot.png", "logo.svgz"]) {
-    assert.equal(blockerOf(viewOf(`/work/${name}`, groups), probe(0)), "empty", name);
+  for (const name of ["shot.png", "logo.svgz"]) {
+    assert.equal(blockerOf(viewOf(`/work/${name}`, groups), probe(0), `/work/${name}`), "empty", name);
   }
   assert.equal(editable("code", false), true);
   assert.equal(editable("markdown", true), true);
@@ -135,6 +135,76 @@ test("the probe tells a missing file from one that cannot be read", () => {
   chmodSync(locked, 0o000);
   assert.deepEqual(run(locked), { found: true, readable: false });
   assert.deepEqual(readProbe(""), { found: true, readable: false });
+});
+
+test("an svg with nothing written in it yet is blank: named .svg, empty or only whitespace", () => {
+  const dir = mkdtempSync(join(tmpdir(), "side-viewer-blank-"));
+  const at = (name, text) => {
+    const file = join(dir, name);
+    writeFileSync(file, text);
+    return file;
+  };
+  for (const [name, text] of [["empty.svg", ""], ["blank.svg", " \n\t\r\n"], ["BLANK.SVG", "\n"]]) {
+    const file = at(name, text);
+    assert.equal(blankSvg(file, run(file)), true, name);
+  }
+  for (const [name, text] of [["logo.svg", "<svg/>"], ["spaced.svg", "\n<svg/>\n"], ["blank.svgz", " \n"], ["blank.png", " \n"], ["blank.md", ""]]) {
+    const file = at(name, text);
+    assert.equal(blankSvg(file, run(file)), false, name);
+  }
+  // Whitespace past the probe's first bytes could hide a picture after it: not known blank.
+  const long = at("long.svg", " ".repeat(5000));
+  assert.equal(blankSvg(long, run(long)), false);
+  assert.equal(blankSvg(join(dir, "none.svg"), run(join(dir, "none.svg"))), false);
+  assert.equal(blankSvg("/work/a.svg", { found: true, readable: false }), false);
+});
+
+test("a blank svg is read into its source with no picture, and its rendering shows the empty notice", () => {
+  const svg = viewOf("/work/new.svg", groups);
+  const empty = { found: true, readable: true, bytes: 0, modified: 1, head: [] };
+  assert.equal(blockerOf(svg, empty, "/work/new.svg"), null);
+  const content = sourceOnlySvg(" \n");
+  assert.deepEqual(content, { state: "svg", text: " \n", path: null, size: null });
+  assert.equal(switchable(content.state), true);
+  assert.deepEqual(editorOf(content.state), { soft_wrap: true, language: "xml" });
+  assert.equal(rendersEmpty(shownText(noEdits(), "/work/new.svg", content.text)), true);
+});
+
+test("a rendering with no text to draw shows the empty notice; any written text is drawn", () => {
+  for (const text of ["", " ", "\n\n", " \t\r\n"]) assert.equal(rendersEmpty(text), true, JSON.stringify(text));
+  for (const text of ["#", "x", " <svg/>\n", "\n- [ ] a\n"]) assert.equal(rendersEmpty(text), false, JSON.stringify(text));
+});
+
+test("an empty markdown or svg written in from its source renders the written text", () => {
+  for (const [file, written] of [["/work/new.md", "# new\n"], ["/work/new.svg", "<svg/>"]]) {
+    const edits = typed(noEdits(), file, "", written);
+    assert.equal(rendersEmpty(shownText(edits, file, "")), false, file);
+    // Emptied again in the source, the rendering says so again.
+    assert.equal(rendersEmpty(shownText(typed(edits, file, "", " "), file, "")), true, file);
+  }
+});
+
+test("an edited svg emptied outside keeps the edits on screen and raises the changed-outside bar", () => {
+  const file = "/work/logo.svg";
+  const found = viewOf(file, groups);
+  const blank = { found: true, readable: true, bytes: 0, modified: 1, head: [] };
+  // The viewer's read of the emptied file, as main.js does it: no blocker, a blank svg's source.
+  assert.equal(blockerOf(found, blank, file), null);
+  assert.equal(blankSvg(file, blank), true);
+  const read = sourceOnlySvg("");
+  const edits = typed(noEdits(), file, "<svg/>", "<svg><g/></svg>");
+  const step = diskRead(edits, file, "");
+  assert.equal(step.step, "keep");
+  const content = editedContentOf(file, read, found, step.edits[file].disk);
+  assert.equal(content.state, "svg");
+  assert.equal(shownText(step.edits, file, content.text), "<svg><g/></svg>");
+  assert.equal(rendersEmpty(shownText(step.edits, file, content.text)), false);
+  assert.deepEqual(barOf(step.edits, file), { kind: "conflict", message: "밖에서 바뀌었습니다" });
+  // The disk comes back to the text the edits started from: the bar goes, the edits stay.
+  const back = diskRead(step.edits, file, "<svg/>");
+  assert.equal(back.step, "keep");
+  assert.equal(barOf(back.edits, file), null);
+  assert.equal(shownText(back.edits, file, "<svg/>"), "<svg><g/></svg>");
 });
 
 test("reading the same file again shows no loading notice, opening another file does", () => {

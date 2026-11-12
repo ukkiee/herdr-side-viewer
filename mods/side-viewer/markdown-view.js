@@ -21,7 +21,8 @@
 import { div, image } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
 import { home } from "herdr";
-import { labelOf } from "./document.js";
+import { labelOf, noticeFor } from "./document.js";
+import { rendersEmpty } from "./views.js";
 import { parseMarkdown, withFootnoteMarks } from "./markdown-blocks.js";
 import { renderCodeCard } from "./code-card.js";
 import { imageBoxOf } from "./markdown-images.js";
@@ -60,6 +61,8 @@ export function renderMarkdown(t, { text, generation, file, onLink, codeCards, i
   };
   return scroll.child(v_flex().w_full().min_w(0).overflow_hidden().px(28).py(24).gap(12).text_size(BODY)
     .when(Boolean(file), (el) => el.child(renderTitle(t, file)))
+    // A blank document has no blocks: the notice under the title says so.
+    .when(rendersEmpty(text), (el) => el.child(div().text_color(t.dim).child(noticeFor("empty"))))
     .children(renderBlocks(ctx, doc.blocks, "b", 0))
     .when(doc.footnotes.length > 0, (el) => el.child(renderFootnotes(ctx))));
 }
