@@ -8,6 +8,7 @@
 //   file,         the shown file, for the folder and name at the top
 //   onLink: (url, cx) => void
 //   codeCards,    the viewer's CodeCards (code-card.js), prepared for this text
+//   images,       the document's image copies (markdown-image-loader.js, forDocument)
 //   onTerminal: (command, cx) => void   a shell code block's `>_`
 // }
 //
@@ -16,13 +17,14 @@
 // renderTable, renderRule, renderImageBlock, renderCodeBlock, renderFootnotes. Text inside a
 // block is a TextView: a mod has no way to style single characters, and TextView keeps links,
 // bold, italic, inline code and strikethrough working.
-import { div } from "gpui-kit";
+import { div, image } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
 import { home } from "herdr";
 import { rawMarkdown } from "./links.js";
 import { labelOf } from "./document.js";
 import { parseMarkdown, withFootnoteMarks } from "./markdown-blocks.js";
 import { renderCodeCard } from "./code-card.js";
+import { imageBoxOf } from "./markdown-images.js";
 
 const BODY = 13;
 const HEADING_SIZE = { 1: 24, 2: 19, 3: 16 };
@@ -36,7 +38,7 @@ function documentOf(text) {
   return parsed.doc;
 }
 
-export function renderMarkdown(t, { text, raw, generation, file, onLink, codeCards, onTerminal }) {
+export function renderMarkdown(t, { text, raw, generation, file, onLink, codeCards, images, onTerminal }) {
   const scroll = div().id("side-viewer-scroll").flex_1().min_h(0).overflow_y_scrollbar();
   if (raw) {
     // The source is drawn by the same element, fenced as one code block.
@@ -50,6 +52,7 @@ export function renderMarkdown(t, { text, raw, generation, file, onLink, codeCar
   const ctx = {
     t, onLink, footnotes: doc.footnotes,
     takeCard: codeCards?.drawing() ?? null,
+    images,
     onTerminal: onTerminal ?? null,
     // A TextView sees one block, so reference-style links need the definitions next to them.
     references: doc.references.length ? `\n\n${doc.references.join("\n")}` : "",
@@ -182,9 +185,23 @@ function renderRule(ctx) {
   return div().w_full().h(3).my(4).rounded(2).bg(ctx.t.border);
 }
 
-// An image alone on its line, drawn by TextView like the rest of the document for now.
+// An image alone on its line, drawn from its copy (markdown-image-loader.js) at its own size,
+// shrunk to the block's width and 420 high, centered. The width comes from the block's size
+// report, so the image waits for the first one. A remote image is left out entirely:
+// TextView could fetch and draw it, and remote images are not drawn.
 function renderImageBlock(ctx, block, key) {
-  return div().w_full().min_w(0).child(renderInline(ctx, key, `![${block.alt}](<${block.src}>)`));
+  const { t, images } = ctx;
+  const found = images?.of(block.src) ?? { state: "remote" };
+  if (found.state === "remote") return div();
+  const box = h_flex().id(`side-viewer-md-image-${key}`).w_full().min_w(0).justify_center()
+    .on_size_change((size, cx) => images.setRoom(key, size.width, cx));
+  if (found.state === "failed") {
+    return box.child(div().min_w(0).text_color(t.muted).child(`그림을 못 읽음: ${block.src}`));
+  }
+  const room = images.room(key);
+  if (found.state !== "ready" || !(room > 0)) return box;
+  const { width, height } = imageBoxOf(found.size, room);
+  return box.child(image(found.path).w(width).h(height).flex_none());
 }
 
 // A code block is a card (code-card.js). Inside a list item or a quote it takes the column
