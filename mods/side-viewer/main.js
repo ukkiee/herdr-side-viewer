@@ -244,7 +244,8 @@ export default class SideViewer extends View {
   }
 
   // Taking files from open.sh while this copy is showing: `side-viewer.show` wakes it, and
-  // the request waits in the data folder (request.js).
+  // the request waits in the data folder (request.js). Only a request for this viewer's space
+  // is taken, since a file on another machine than the space's is not one it can show.
   listen(cx) {
     const files = {
       read: (path) => readTextFile(path),
@@ -260,7 +261,7 @@ export default class SideViewer extends View {
         }
         if (command !== "show") continue;
         const folder = `${appHome()}/data/side-viewer`;
-        const request = await takeRequest(files, { folder, answered: this.answered, now: Date.now() });
+        const request = await takeRequest(files, { folder, answered: this.answered, now: Date.now(), space: this.space, spaces: spaces() });
         if (!request) continue;
         this.answered = request.id;
         this.show(request.file, cx);
