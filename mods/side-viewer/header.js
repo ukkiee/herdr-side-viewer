@@ -18,7 +18,6 @@ import { home } from "herdr";
 import { labelOf } from "./document.js";
 import { switchable, opensInTab } from "./views.js";
 
-// The header: back, file name and folder.
 export function renderHeader(t, header) {
   const { file, canGoBack, state, unsaved } = header;
   const label = file ? labelOf(file, home()) : { name: "Side Viewer", folder: "" };

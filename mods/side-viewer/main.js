@@ -1,11 +1,15 @@
 // Side viewer: shows one file in a pane beside the conversation. open.sh opens it with
 // `pane.split {direction: "right", mod: "side-viewer", props: {file}}`.
-// This file holds the viewer's state and talks to Herdr: reading, taking requests from
-// open.sh and watching. Drawing is in header.js, conflict-bar.js and the views' modules (markdown-view.js,
-// code-view.js, image-view.js, notice-view.js), which get what to show and callbacks from here.
+// This file holds the viewer's state and most of its talk with Herdr: reading, saving,
+// taking requests from open.sh, watching and viewer tabs. Two parts that keep their own state
+// and call Herdr themselves sit beside it: shell-pane.js (a shell code block's `>_`) and
+// markdown-image-loader.js (the document's image copies). Drawing is in header.js,
+// conflict-bar.js, code-card.js and the views' modules (markdown-view.js, code-view.js,
+// image-view.js, notice-view.js), which get what to show and callbacks from here.
 // The decisions live in modules without Herdr imports, each with its own tests: document.js,
 // views.js, image-copies.js, svg-preview.js, history.js, request.js, links.js, original.js,
-// edit-state.js, viewer-tab.js and checkbox.js.
+// edit-state.js, viewer-tab.js, checkbox.js, markdown-blocks.js, code-blocks.js,
+// markdown-images.js and terminal-insert.js.
 import { View } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
 import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes, notify } from "herdr";

@@ -47,8 +47,8 @@ export function saved(edits, file, text) {
 }
 
 // A read of `file` found `text` on disk: a string, null when the file is gone, or undefined
-// when it could not be read. Returns { edits, step }. "show": put the read on screen, as v1
-// did. "keep": the file has edits, which stay on screen as they are; a disk that no longer
+// when it could not be read. Returns { edits, step }. "show": put the read on screen.
+// "keep": the file has edits, which stay on screen as they are; a disk that no longer
 // holds the text the edit started from raises the bar instead of replacing them.
 export function diskRead(edits, file, text) {
   const entry = file ? edits[file] : null;

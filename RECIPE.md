@@ -262,8 +262,8 @@ The mod shows files, not agents, so it has no agent statuses.
   other extensions, its parent types), the check behind the sibling extensions in the list.
 - Icons: `new-tab.svg`, `original.svg`, `finder.svg` (header, 14px), `copy.svg`,
   `check.svg`, `terminal.svg` (cards, 16px), 16×16, stroked in `currentColor`, drawn with
-  `svg("mods/side-viewer/<name>.svg")`. `source.svg` and `rendered.svg` are left from the old
-  one-button switch and no longer drawn.
+  `svg("mods/side-viewer/<name>.svg")`. The "rendering | source" switch is two text cells,
+  with no icon.
 - `herdr` functions: `props`, `readTextFile`, `writeTextFile`, `nextCommand`, `home`,
   `appHome`, `theme`, `settings`, `exec`, `watchFolder`, `run`, `spaces`, `focused`,
   `panes`, `hc`, `notify`; `cx.spawn`, `cx.timer.every`, `cx.timer.after`, `cx.notify`,
