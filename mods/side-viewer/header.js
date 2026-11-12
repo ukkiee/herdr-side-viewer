@@ -6,12 +6,13 @@
 //   canGoBack,    whether there is a file to go back to
 //   state,        this.content.state of the viewer
 //   raw,          whether the markdown or svg view shows the source
-//   unsaved,      whether the shown file has edits not yet saved
-//   onBack, onToggleRaw, onSave, onNewTab, onOriginal, onFinder: (cx) => void
+//   status,       what the shown file's edits read, or null without edits (edit-state.js statusOf):
+//                 { kind: "edited" | "failed" | "conflict", message, tip, buttons }
+//   onBack, onToggleRaw, onSave, onDiscard, onOverwrite, onNewTab, onOriginal, onFinder: (cx) => void
 // }
 //
-// Left to right: back, file name, folder, "unsaved" and save, the "rendering | source" switch,
-// then the actions (new tab, original app, Finder). Each part is one line of renderHeader.
+// Left to right: back, file name, folder, the status and its buttons, the "rendering | source"
+// switch, then the actions (new tab, original app, Finder). Each part is one line of renderHeader.
 import { div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { home } from "herdr";
@@ -19,14 +20,15 @@ import { labelOf } from "./document.js";
 import { switchable, opensInTab } from "./views.js";
 
 export function renderHeader(t, header) {
-  const { file, canGoBack, state, unsaved } = header;
+  const { file, canGoBack, state, status } = header;
   const label = file ? labelOf(file, home()) : { name: "Side Viewer", folder: "" };
   return h_flex().h(40).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border)
     .when(canGoBack, (el) => el.child(renderBack(t, header)))
     .child(div().min_w(0).truncate().text_size(13).font_semibold().child(label.name))
     .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(label.folder))
-    // The buttons never shrink: a narrow viewer cuts the name and the folder instead.
-    .when(Boolean(file && unsaved), (el) => el.child(renderUnsaved(t, header)))
+    // The buttons never shrink: a narrow viewer cuts the name and the folder instead, and the
+    // status only once those are gone.
+    .when(Boolean(file && status), (el) => el.child(renderStatus(t, header)))
     // The switch belongs to a drawn markdown document or svg, not to a notice about one.
     .when(switchable(state), (el) => el.child(renderSwitch(t, header)))
     .when(Boolean(file), (el) => el.child(renderActions(t, header, opensInTab(state))));
@@ -41,15 +43,30 @@ function renderBack(t, { onBack }) {
     .child("←");
 }
 
-// "Unsaved" and the save button, drawn only while the shown file has unsaved edits.
-function renderUnsaved(t, { onSave }) {
-  return h_flex().flex_none().gap(6).items_center()
-    .child(div().flex_none().text_size(11).text_color(t.accent ?? t.foreground).child("저장 안 됨"))
-    .child(h_flex().id("side-viewer-save").flex_none().h(24).px(8).items_center().rounded(4)
-      .border(1).border_color(t.border).text_size(12).cursor_pointer()
-      .hover((s) => s.bg(t.hover)).tooltip("저장 (⌘S)")
-      .on_click((_event, cx) => onSave(cx))
-      .child("저장"));
+// The status and its buttons, drawn only while the shown file has unsaved edits: save, or for
+// a conflict "read again" and "overwrite". A failure or conflict reads in the theme's
+// attention color; hovering the message shows `tip`, the words a narrow header cuts.
+function renderStatus(t, { status, onSave, onDiscard, onOverwrite }) {
+  const color = status.kind === "edited" ? (t.accent ?? t.foreground) : (t.blocked ?? t.ansi1 ?? t.foreground);
+  // A tiny shrink keeps the message whole while the name and the folder still have room.
+  return h_flex().min_w(0).flex_shrink(0.01).gap(6).items_center()
+    .child(div().id("side-viewer-status").min_w(0).truncate().text_size(11).text_color(color)
+      .tooltip(status.tip).child(status.message))
+    .children(status.buttons.map((button) => STATUS_BUTTONS[button](t, { onSave, onDiscard, onOverwrite })));
+}
+
+const STATUS_BUTTONS = {
+  save: (t, { onSave }) => renderTextButton(t, "side-viewer-save", "저장", "저장 (⌘S)", onSave),
+  discard: (t, { onDiscard }) => renderTextButton(t, "side-viewer-discard", "다시 읽기", "내 수정 버리고 다시 읽기", onDiscard),
+  overwrite: (t, { onOverwrite }) => renderTextButton(t, "side-viewer-overwrite", "덮어쓰기", "내 것으로 덮어쓰기", onOverwrite),
+};
+
+function renderTextButton(t, id, label, tip, onClick) {
+  return h_flex().id(id).flex_none().h(24).px(8).items_center().rounded(4)
+    .border(1).border_color(t.border).text_size(12).cursor_pointer()
+    .hover((s) => s.bg(t.hover)).tooltip(tip)
+    .on_click((_event, cx) => onClick(cx))
+    .child(label);
 }
 
 // "렌더링 | 원문": two cells, the one shown filled. Only the other cell switches.

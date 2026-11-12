@@ -4,7 +4,7 @@
 // taking requests from open.sh, watching and viewer tabs. Two parts that keep their own state
 // and call Herdr themselves sit beside it: shell-pane.js (a shell code block's `>_`) and
 // markdown-image-loader.js (the document's image copies). Drawing is in header.js,
-// conflict-bar.js, code-card.js and the views' modules (markdown-view.js, code-view.js,
+// code-card.js and the views' modules (markdown-view.js, code-view.js,
 // image-view.js, notice-view.js), which get what to show and callbacks from here.
 // The decisions live in modules without Herdr imports, each with its own tests: document.js,
 // views.js, image-copies.js, svg-preview.js, history.js, request.js, links.js, original.js,
@@ -17,7 +17,7 @@ import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, 
 import * as fs from "fs/promises";
 import { contentOf } from "./document.js";
 import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, editedContentOf, blankSvg, sourceOnlySvg, rendersEmpty } from "./views.js";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, barOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, statusOf, discarded, overwritten, startSave, refusalOf, saveFailed, takeEdit, putEdit, checkboxToggled } from "./edit-state.js";
 import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab, unplacedNotice } from "./viewer-tab.js";
 import { toggleCheckbox } from "./checkbox.js";
 import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, COPY, LIST } from "./image-copies.js";
@@ -27,7 +27,6 @@ import { takeRequest } from "./request.js";
 import { watchedFolder, linkAction, touches } from "./links.js";
 import { openOriginalCommands } from "./original.js";
 import { renderHeader } from "./header.js";
-import { renderBar } from "./conflict-bar.js";
 import { renderMarkdown, markdownCache } from "./markdown-view.js";
 import { CodeCards } from "./code-card.js";
 import { ShellPane } from "./shell-pane.js";
@@ -79,7 +78,7 @@ export default class SideViewer extends View {
     this.edits = noEdits();
     // Whether a save is under way: a second cmd+S waits for it instead of writing twice.
     this.saving = false;
-    // Saves asked for during a save, as file -> whether it is the bar's overwrite, taken
+    // Saves asked for during a save, as file -> whether it is the conflict's overwrite, taken
     // when it ends (takeSaves).
     this.saves = new Map();
     // Checkbox clicks that came during a save, as { file, line }, taken when it ends.
@@ -307,7 +306,7 @@ export default class SideViewer extends View {
       this.reading = null;
       this.probed = result.probe;
       // A file with unsaved edits is not read again over them: a changed or deleted file
-      // raises the bar instead (edit-state.js). Only a screen without its editor takes the read,
+      // shows in the header's status instead (edit-state.js). Only a screen without its editor takes the read,
       // and a notice there gives way to the editor of the edits (views.js, editedContentOf).
       const read = diskRead(this.edits, file, result.text);
       this.edits = read.edits;
@@ -553,7 +552,7 @@ export default class SideViewer extends View {
   // Writes the shown file's unsaved edits. Returns false when there is nothing to save.
   // writeTextFile refuses when the file no longer matches the text read before the edit, and
   // says the same when the file is gone, so the file is read again to tell the two apart.
-  // A refused or failed save keeps the edits, and the bar says why (edit-state.js).
+  // A refused or failed save keeps the edits, and the header's status says why (edit-state.js).
   // Asked during another save, it waits for that one to end (takeSaves).
   save(cx, file = this.file) {
     if (!saveOf(this.edits, file)) return false;
@@ -638,7 +637,7 @@ export default class SideViewer extends View {
     for (const { file, line } of clicks) if (file === this.content.file) this.toggleCheckbox(line, cx);
   }
 
-  // The bar's "discard my edits and read again". The editor goes back to the last read at
+  // The conflict's "read again", which discards the edits. The editor goes back to the last read at
   // once, and the read that follows puts the disk's text on screen.
   discard(cx) {
     const file = this.file;
@@ -654,8 +653,8 @@ export default class SideViewer extends View {
     cx.notify();
   }
 
-  // The bar's "overwrite with mine": a save that expects the disk text the bar found. During
-  // another save it waits, bar and all, since the save under way may change what the bar says.
+  // The conflict's "overwrite": a save that expects the disk text the conflict found. During
+  // another save it waits, since the save under way may change what the status says.
   overwrite(cx, file = this.file) {
     if (this.saving) {
       this.saves.set(file, true);
@@ -776,10 +775,12 @@ export default class SideViewer extends View {
       canGoBack: canGoBack(this.visits),
       state: this.content.state,
       raw: this.raw,
-      unsaved: unsaved(this.edits, this.file),
+      status: statusOf(this.edits, this.file),
       onBack: (cx) => this.goBack(cx),
       onToggleRaw: (cx) => this.toggleRaw(cx),
       onSave: (cx) => this.save(cx),
+      onDiscard: (cx) => this.discard(cx),
+      onOverwrite: (cx) => this.overwrite(cx),
       onNewTab: (cx) => this.openTab(cx),
       onOriginal: (cx) => this.openOriginal(cx),
       onFinder: (cx) => this.revealInFinder(cx),
@@ -817,20 +818,11 @@ export default class SideViewer extends View {
     return renderNotice(t, content.state);
   }
 
-  // What the bar between the header and the content shows (conflict-bar.js), or null for none.
-  bar() {
-    const bar = barOf(this.edits, this.file);
-    if (!bar) return null;
-    return { ...bar, onDiscard: (cx) => this.discard(cx), onOverwrite: (cx) => this.overwrite(cx) };
-  }
-
   render(_cx) {
     const t = theme();
-    const bar = this.bar();
     return v_flex().id("side-viewer").size_full().min_h(0).bg(t.background).text_color(t.foreground)
       .track_focus(this.focus).on_key_down((event, cx) => this.keyDown(event, cx))
       .child(renderHeader(t, this.header()))
-      .when(Boolean(bar), (el) => el.child(renderBar(t, bar)))
       .child(this.renderBody(t));
   }
 }
