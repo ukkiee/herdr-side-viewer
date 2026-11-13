@@ -101,6 +101,22 @@ export function listHeightOf(count) {
   return Math.min(LIST_MAX, count * ROW);
 }
 
+// The picker card's width, logical px: Herdr's own picker width, the room each side of it in a
+// narrower window, and the floor below which the card stops shrinking.
+export const PICKER_WIDTH = 640;
+export const PICKER_SIDE = 16;
+export const PICKER_MIN_WIDTH = 240;
+
+// The card's width in a window `viewportWidth` px wide (gpui viewport_size(), in pixels) at
+// Herdr's `zoom`. The popup itself covers the whole window, so the card is what must fit.
+// An unknown width keeps the full width; an unknown zoom counts as 1.
+export function pickerWidthOf(viewportWidth, zoom) {
+  const scale = zoom > 0 ? zoom : 1;
+  if (!(viewportWidth > 0)) return PICKER_WIDTH;
+  const room = viewportWidth / scale - 2 * PICKER_SIDE;
+  return Math.max(PICKER_MIN_WIDTH, Math.min(PICKER_WIDTH, room));
+}
+
 const MOD = "side-viewer";
 
 // The conversation whose text the picker reads, as { pane, terminal, cwd }, or null when the

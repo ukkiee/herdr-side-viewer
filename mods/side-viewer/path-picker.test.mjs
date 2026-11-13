@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { pathCandidates, existingPaths, filterPaths, listHeightOf, conversationOf, openTargetOf, readFailureOf, pickerFailureOf } from "./path-picker.js";
+import { pathCandidates, existingPaths, filterPaths, listHeightOf, pickerWidthOf, PICKER_MIN_WIDTH, conversationOf, openTargetOf, readFailureOf, pickerFailureOf } from "./path-picker.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const HOME = "/Users/me";
@@ -126,6 +126,26 @@ test("the list is as tall as its rows, up to eleven rows", () => {
   assert.equal(listHeightOf(12), 352);
   assert.equal(listHeightOf(40), 352);
   assert.equal(listHeightOf(0), 0);
+});
+
+// Measured in a real window: a 1800pt window gets the full 640pt card, a 560pt window a 528pt
+// card that leaves 16pt each side. viewport_size() is in pixels, so zoom 2 doubles them.
+test("the card is 640 wide, narrower in a window that has no room for it", () => {
+  assert.equal(pickerWidthOf(1800, 1), 640);
+  assert.equal(pickerWidthOf(560, 1), 528);
+  assert.equal(pickerWidthOf(672, 1), 640);
+  assert.equal(pickerWidthOf(3600, 2), 640);
+  assert.equal(pickerWidthOf(1120, 2), 528);
+});
+
+test("the card keeps 640 when the window size is unknown, and a floor in a tiny window", () => {
+  assert.equal(pickerWidthOf(0, 1), 640);
+  assert.equal(pickerWidthOf(NaN, 1), 640);
+  assert.equal(pickerWidthOf(undefined, 1), 640);
+  assert.equal(pickerWidthOf(560, undefined), 528);
+  assert.equal(pickerWidthOf(560, 0), 528);
+  assert.equal(pickerWidthOf(100, 1), PICKER_MIN_WIDTH);
+  assert.ok(PICKER_MIN_WIDTH < 528);
 });
 
 // Herdr's panes(): a terminal pane, or a mod pane (terminal null).
