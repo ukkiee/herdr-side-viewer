@@ -8,15 +8,11 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, ScrollHandle } from "gpui-base";
 import { hc, focused, panes, spaces, machines, readTextFile, appHome, closeOverlay, props } from "herdr";
-import { conversationOf, pathCandidates, existingPaths, filterPaths, readFailureOf, pickerFailureOf } from "./path-picker.js";
+import { conversationOf, pathCandidates, existingPaths, filterPaths, readFailureOf, pickerFailureOf, listHeightOf, ROW } from "./path-picker.js";
 import { machineOf, spaceValue } from "./machine.js";
 import { accessOf } from "./file-access.js";
 import { unavailable } from "./remote-results.js";
 import { wordsOf } from "./i18n.js";
-
-// How tall the list may grow before it scrolls, and one row's height, px.
-const LIST_MAX = 352;
-const ROW = 32;
 
 export class PathPicker {
   // open({ file, conversation, space }, cx): main.js's openPicked. tr: the viewer's
@@ -155,8 +151,8 @@ export class PathPicker {
             .child("Esc")),
       )
       .child(status === null
-        ? v_flex().id("svp-list").max_h(LIST_MAX).min_h(0).overflow_y_scrollbar().track_scroll(this.scroll)
+        ? v_flex().id("svp-list").flex_none().h(listHeightOf(shown.length)).overflow_y_scrollbar().track_scroll(this.scroll)
           .children(shown.map((path, i) => this.renderRow(t, path, i)))
-        : div().px(10).pb(6).text_color(t.muted).child(status));
+        : div().flex_none().px(10).pb(6).text_color(t.muted).child(status));
   }
 }

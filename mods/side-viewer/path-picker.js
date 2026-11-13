@@ -14,6 +14,8 @@
 //     a failed `hc read` of the terminal as an error, and what the picker shows for an error
 //   filterPaths(paths, typed) -> string[]
 //     the paths containing what was typed, ignoring case
+//   listHeightOf(count) -> px
+//     the list's height for that many rows (ROW each), at most LIST_MAX, then it scrolls
 //   openTargetOf({ conversation, panes }) -> { viewer: pane } | { split: { pane, direction } }
 //     where the pick opens: the side viewer shown in the conversation's tab, else a split
 import { viewOf } from "./views.js";
@@ -87,6 +89,16 @@ export function pickerFailureOf(error) {
 export function filterPaths(paths, typed) {
   const wanted = String(typed ?? "").toLowerCase();
   return paths.filter((path) => path.toLowerCase().includes(wanted));
+}
+
+// One row's height in the picker's list, and how tall the list grows before it scrolls, px.
+export const ROW = 32;
+export const LIST_MAX = 352;
+
+// The list's height for `count` rows. The popup sizes itself by its content, and a scrolling
+// list with no set height gives it none, so the list folds to nothing without this.
+export function listHeightOf(count) {
+  return Math.min(LIST_MAX, count * ROW);
 }
 
 const MOD = "side-viewer";

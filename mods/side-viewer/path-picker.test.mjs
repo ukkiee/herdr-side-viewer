@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { pathCandidates, existingPaths, filterPaths, conversationOf, openTargetOf, readFailureOf, pickerFailureOf } from "./path-picker.js";
+import { pathCandidates, existingPaths, filterPaths, listHeightOf, conversationOf, openTargetOf, readFailureOf, pickerFailureOf } from "./path-picker.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const HOME = "/Users/me";
@@ -115,6 +115,17 @@ test("typing keeps the paths that contain what was typed, in any case", () => {
   assert.deepEqual(filterPaths(shown, "work/app"), ["/Users/me/work/app/docs/plan.md", "/Users/me/work/app/README.md"]);
   assert.deepEqual(filterPaths(shown, ""), shown);
   assert.deepEqual(filterPaths(shown, "없는"), []);
+});
+
+// Rows are 32px, as in Herdr's own picker; the list stops growing at 11 rows (352px) and
+// scrolls inside. A list with no set height folds to nothing in the popup.
+test("the list is as tall as its rows, up to eleven rows", () => {
+  assert.equal(listHeightOf(1), 32);
+  assert.equal(listHeightOf(3), 96);
+  assert.equal(listHeightOf(11), 352);
+  assert.equal(listHeightOf(12), 352);
+  assert.equal(listHeightOf(40), 352);
+  assert.equal(listHeightOf(0), 0);
 });
 
 // Herdr's panes(): a terminal pane, or a mod pane (terminal null).
