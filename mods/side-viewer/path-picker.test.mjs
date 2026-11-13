@@ -148,6 +148,21 @@ test("the card keeps 640 when the window size is unknown, and a floor in a tiny 
   assert.ok(PICKER_MIN_WIDTH < 528);
 });
 
+// The card stays within 0.8 of the window's height, as Herdr's picker popup does. Its frame
+// around the list is 74pt (14 padding, the 36pt filter, a 10pt gap, 14 padding), so a 400pt
+// window leaves the list 0.8 × 400 − 74 = 246pt, and it scrolls inside that.
+test("the list gives up height in a short window, keeping one row", () => {
+  assert.equal(listHeightOf(40, 900, 1), 352);
+  assert.equal(listHeightOf(3, 400, 1), 96);
+  assert.equal(listHeightOf(40, 400, 1), 246);
+  assert.equal(listHeightOf(40, 800, 2), 246);
+  assert.equal(listHeightOf(40, 100, 1), 32);
+  assert.equal(listHeightOf(0, 100, 1), 0);
+  assert.equal(listHeightOf(40, undefined, 1), 352);
+  assert.equal(listHeightOf(40, NaN, 1), 352);
+  assert.equal(listHeightOf(40, 400, undefined), 246);
+});
+
 // Herdr's panes(): a terminal pane, or a mod pane (terminal null).
 const pane = (id, tab, more = {}) => ({
   pane: id, tab, terminal: null, cwd: null, status: null, zoomed: false,

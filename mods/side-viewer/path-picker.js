@@ -14,8 +14,11 @@
 //     a failed `hc read` of the terminal as an error, and what the picker shows for an error
 //   filterPaths(paths, typed) -> string[]
 //     the paths containing what was typed, ignoring case
-//   listHeightOf(count) -> px
-//     the list's height for that many rows (ROW each), at most LIST_MAX, then it scrolls
+//   pickerWidthOf(viewportWidth, zoom) -> px
+//     the card's width: PICKER_WIDTH, less in a window with no room for it
+//   listHeightOf(count, viewportHeight?, zoom?) -> px
+//     the list's height for that many rows (ROW each), at most LIST_MAX and within the
+//     window's height share, then it scrolls
 //   openTargetOf({ conversation, panes }) -> { viewer: pane } | { split: { pane, direction } }
 //     where the pick opens: the side viewer shown in the conversation's tab, else a split
 import { viewOf } from "./views.js";
@@ -95,10 +98,24 @@ export function filterPaths(paths, typed) {
 export const ROW = 32;
 export const LIST_MAX = 352;
 
-// The list's height for `count` rows. The popup sizes itself by its content, and a scrolling
+// The picker card's frame around the list, logical px: its padding, the filter input's height
+// and the gap below the input. picker-view.js draws the card with these.
+export const CARD_PAD = 14;
+export const INPUT_HEIGHT = 36;
+export const CARD_GAP = 10;
+// How much of the window's height the card may take, as Herdr's own picker popup does.
+export const PICKER_HEIGHT_SHARE = 0.8;
+
+// The list's height for `count` rows. The card sizes itself by its content, and a scrolling
 // list with no set height gives it none, so the list folds to nothing without this.
-export function listHeightOf(count) {
-  return Math.min(LIST_MAX, count * ROW);
+// With the window's height (viewport_size(), pixels) and Herdr's zoom, the list also gives up
+// height so the card stays within PICKER_HEIGHT_SHARE of the window, keeping at least one row.
+export function listHeightOf(count, viewportHeight, zoom) {
+  const rows = Math.min(LIST_MAX, count * ROW);
+  if (!(viewportHeight > 0)) return rows;
+  const scale = zoom > 0 ? zoom : 1;
+  const room = viewportHeight / scale * PICKER_HEIGHT_SHARE - (2 * CARD_PAD + INPUT_HEIGHT + CARD_GAP);
+  return Math.min(rows, Math.max(ROW, Math.floor(room)));
 }
 
 // The picker card's width, logical px: Herdr's own picker width, the room each side of it in a
