@@ -2,17 +2,20 @@
 // window. main.js makes a copy that knows it is the popup (props().overlay) into one of these.
 // It reads the focused conversation's terminal, lists the files named there that its machine
 // has (path-picker.js decides which), and hands the pick to main.js's openPicked, which closes
-// the popup. Esc and a click beside the popup close it without opening anything.
+// the popup. Esc and a click beside the card close it without opening anything.
 // Keys follow Herdr's own picker mod: the filter input holds the keyboard, Enter is its
 // submit, and ↑↓ and Esc are heard on the root.
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, ScrollHandle } from "gpui-base";
-import { hc, focused, panes, spaces, machines, readTextFile, appHome, closeOverlay, props } from "herdr";
-import { conversationOf, pathCandidates, existingPaths, filterPaths, readFailureOf, pickerFailureOf, listHeightOf, ROW } from "./path-picker.js";
+import { hc, focused, panes, spaces, machines, readTextFile, appHome, closeOverlay, props, settings } from "herdr";
+import { conversationOf, pathCandidates, existingPaths, filterPaths, readFailureOf, pickerFailureOf, listHeightOf, pickerWidthOf, ROW, CARD_PAD, CARD_GAP, INPUT_HEIGHT } from "./path-picker.js";
 import { machineOf, spaceValue } from "./machine.js";
 import { accessOf } from "./file-access.js";
 import { unavailable } from "./remote-results.js";
 import { wordsOf } from "./i18n.js";
+
+// Room above the card, logical px: where Herdr's own picker popup sits below the window's top.
+const CARD_TOP = 40;
 
 export class PathPicker {
   // open({ file, conversation, space }, cx): main.js's openPicked. tr: the viewer's
@@ -129,12 +132,19 @@ export class PathPicker {
       .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(folder));
   }
 
+  // The popup covers the whole window with no frame of Herdr's (mod.json "overlay"), so a
+  // card no wider than the window fits in it. The clear backdrop around the card closes the
+  // picker on a click, as a click beside a framed popup would; a click on the card stays.
+  // The window's size is read on each render: a picker left open while the window is resized
+  // keeps its card until it is opened again.
   renderPicker(t, tr) {
     const shown = this.shown();
     this.at = Math.max(0, Math.min(this.at, shown.length - 1));
     const status = this.statusLine(shown, tr);
-    return v_flex().id("side-viewer-picker").track_focus(this.handle).w_full().min_h(0).p(14).gap(10)
-      .bg(t.popover).text_size(13).text_color(t.foreground)
+    const viewport = globalThis.window?.viewport_size?.();
+    const zoom = Number(settings()?.zoom) || 1;
+    return v_flex().id("side-viewer-picker").track_focus(this.handle).size_full().items_center().pt(CARD_TOP)
+      .on_click(() => this.close())
       .on_key_down((e, cx) => {
         if (e.key === "escape") return this.close();
         if (e.key === "down") this.move(1, cx);
@@ -142,8 +152,17 @@ export class PathPicker {
         else return;
         cx.stop_propagation();
       })
+      .child(this.renderCard(t, shown, status, viewport, zoom));
+  }
+
+  // The card draws the frame Herdr draws around its own picker popup.
+  renderCard(t, shown, status, viewport, zoom) {
+    return v_flex().id("svp-card").flex_none().w(pickerWidthOf(viewport?.width, zoom)).min_h(0).p(CARD_PAD).gap(CARD_GAP)
+      .bg(t.popover).rounded(12).border_1().border_color(t.border).shadow_lg()
+      .text_size(13).text_color(t.foreground)
+      .on_click((_e, cx) => cx.stop_propagation())
       .child(
-        h_flex().h(36).flex_none().px(10).gap(8).items_center().rounded(9).border_1().border_color(t.accent).bg(t.background)
+        h_flex().h(INPUT_HEIGHT).flex_none().px(10).gap(8).items_center().rounded(9).border_1().border_color(t.accent).bg(t.background)
           .child(Input.new(this.input).flex_1().h_full().text_size(12.8).text_color(t.foreground))
           .child(div().id("svp-esc").flex_none().px(6).py(2).rounded(5).text_size(11).text_color(t.dim).cursor_pointer()
             .hover((s) => s.bg(t.hover).text_color(t.foreground))
@@ -151,7 +170,7 @@ export class PathPicker {
             .child("Esc")),
       )
       .child(status === null
-        ? v_flex().id("svp-list").flex_none().h(listHeightOf(shown.length)).overflow_y_scrollbar().track_scroll(this.scroll)
+        ? v_flex().id("svp-list").flex_none().h(listHeightOf(shown.length, viewport?.height, zoom)).overflow_y_scrollbar().track_scroll(this.scroll)
           .children(shown.map((path, i) => this.renderRow(t, path, i)))
         : div().flex_none().px(10).pb(6).text_color(t.muted).child(status));
   }
