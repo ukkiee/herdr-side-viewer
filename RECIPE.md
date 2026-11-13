@@ -95,9 +95,13 @@ Top to bottom:
     `<machine> 기계에 연결할 수 없어요.` (the machine can't be reached),
     `Windows 기계의 파일은 아직 볼 수 없어요.` (a Windows machine).
 
-The **path picker** is a separate popup over the window, not a pane (mod.json `overlay`:
-`popup` at the top, 40px down, 640px wide, 0.8 of the window's height at most), filled with
-`popover`, 14px padding, 10px between its parts:
+The **path picker** is a separate popup over the window, not a pane (mod.json `overlay`: a
+`popup` as large as the window with no frame of Herdr's, `frame: "none"`). It is clear, so the
+window shows through, and holds one card 40px below the window's top, centered across:
+640px wide, or the window's width less 16px each side when that is narrower (240px at the
+least), and at most 0.8 of the window's height. The card is drawn like Herdr's own popup,
+`popover` with a 1px `border`, radius 12 and a large shadow, 14px padding, 10px between its
+parts:
 
 - **Filter**: a 36px tall row, radius 9, a 1px `accent` border on `background`: the input at
   12.8px with the placeholder `경로 거르기`, then a small `Esc` button (11px `dim`, `hover`
@@ -105,7 +109,7 @@ The **path picker** is a separate popup over the window, not a pane (mod.json `o
 - **List**: rows 32px tall, radius 7, 10px side padding: the file name in `foreground` (at
   most 280px, cut with an ellipsis), then its folder at 11.5px in `dim`, cut with an
   ellipsis. The chosen row and the row under the pointer have `hover`. Taller than 352px,
-  the list scrolls.
+  or than the card's 0.8 of the window leaves it (one row at the least), the list scrolls.
 - **Status line** in place of the list, in `muted`: `찾는 중`,
   `이 대화에 열 수 있는 파일 경로가 없어요`, `맞는 경로가 없어요`,
   `대화 터미널을 누른 뒤 다시 눌러 주세요`, `경로를 찾지 못했어요: <reason>`, or the two
@@ -145,7 +149,7 @@ The mod shows files, not agents, so it has no agent statuses.
   URLs out; only extensions in `extensions.json`; latest first; each once; at most 200), one
   existence check on the machine (`sh -c EXISTS`, links followed), and the first 30 that
   exist. Typing keeps the paths that contain the text, ignoring case; ↑↓ move and wrap;
-  Enter or a click picks; Esc, the `Esc` button or a click beside the popup closes it.
+  Enter or a click picks; Esc, the `Esc` button or a click beside the card closes it.
   A failed `hc read` shows its JSON error's `message` in `경로를 찾지 못했어요: <reason>`;
   `failureOf` sorts out "unreachable" and "windows" first.
 - **Opening a pick** (main.js `openPicked`). With no viewer showing in the conversation's
@@ -369,9 +373,10 @@ The mod shows files, not agents, so it has no agent statuses.
 ## Built from
 
 - `mods/side-viewer/mod.json`: `{ "place": "none", "title": "Side Viewer", "focusable":
-  true, "overlay": { "kind": "popup", "at": "top", "offset": 40, "width": 640, "height":
-  0.8 } }` (focusable for cmd+S; the overlay is the path picker, the same shape as Herdr's
-  own picker mod). Opened with `pane.split {direction: "right", mod: "side-viewer", props:
+  true, "overlay": { "kind": "popup", "at": "top", "offset": 0, "width": 1, "height": 1,
+  "frame": "none" } }` (focusable for cmd+S; the overlay is the path picker, the whole
+  window, with the card drawn by the mod: a popup's `width` in px doesn't shrink with the
+  window). Opened with `pane.split {direction: "right", mod: "side-viewer", props:
   {file, space}}`; `props.file` is the absolute path to show, `props.space` the space id
   without its `<machine>/` prefix (no machine name, ADR 0002). A viewer tab's props are
   `{file, viewerTab: true, handoff?, space?}`.
@@ -660,13 +665,16 @@ Remote machines and the path picker:
   come from its documentation and mods, not from a cut connection or a Windows machine here.
   A command that runs past its time gives hc's `[hc] timed out after <n> ms: ended` (exit
   124), counted as out of reach; the words of Herdr's own `exec` timeout are not known.
-- The picker reads the terminal with `hc read --lines 1000`. Whether it joins a line the
-  screen wrapped is not known: if not, a path longer than the terminal is wide is missed.
-  Outside backticks a path ends at a space or one of `'"()[]{}<>|,;*=`.
+- The picker reads the terminal with `hc read --lines 1000`, which gives a line the screen
+  wrapped back whole, so a path longer than the terminal is wide is found. Outside backticks a path ends at a space or one of `'"()[]{}<>|,;*=`.
 - The picker closes only after the pick is settled (up to about 0.4 s while it waits for a
   viewer's answer): a closed popup's tasks are cancelled, which would end the wait.
-- The popup is 640px wide and 0.8 of the window's height; how it fits a window narrower than
-  that is Herdr's.
+- A popup's `width` in px is a fixed size: Herdr doesn't shrink it to a narrower window, and
+  a popup with no width doesn't follow its content either. Hence the whole-window frameless
+  popup and the mod's own card, sized from `window.viewport_size()` (pixels) over
+  `settings().zoom` on each render. A picker left open while the window is resized keeps its
+  card until it is opened again. With `frame: "none"` a click beside the card lands on the
+  mod, so the clear backdrop closes the picker and the card stops the click.
 - `focused()` is read once as the popup opens, before it could take the focus.
 - A remote viewer's header writes the folder with that machine's home as `~` once the
   machine has told its home; until then the folder shows whole.
@@ -972,7 +980,7 @@ covered by `node --test` only.
     there.`, and the `shasum` is unchanged.
 49. In the conversation that printed the paths for steps 6–8, run
     `echo /tmp/side-viewer-nope.md /etc/hosts.txt` in a terminal of that tab, click into the
-    conversation's terminal and press `cmd-o`: a popup at the top of the window, about
+    conversation's terminal and press `cmd-o`: a card at the top of the window, about
     640px wide, `경로 거르기` in a field that takes typing at once, and `찾는 중` for a moment.
     Then one row per file, name and dimmed folder: the files the conversation printed, the
     one printed last on top, each once, the line-number path without its number, the
@@ -981,7 +989,7 @@ covered by `node --test` only.
     `맞는 경로가 없어요`. Clear it. ↓ and ↑ move the highlight, and ↓ on the last row goes to
     the first. Enter: the popup closes and the file shows in the side viewer beside the
     conversation, with the pane count unchanged. `cmd-o` and a click on a row: the same.
-    `cmd-o` then Esc, `cmd-o` then the `Esc` button, `cmd-o` then a click beside the popup:
+    `cmd-o` then Esc, `cmd-o` then the `Esc` button, `cmd-o` then a click beside the card:
     each closes it and nothing else changes.
 51. Close the side viewer, click the conversation's terminal, `cmd-o`, pick a file: a new
     viewer splits off to the right of the conversation. If the code group is not taken over,
@@ -989,9 +997,9 @@ covered by `node --test` only.
 52. Click the side viewer beside the conversation and press `cmd-o`: the same rows as from
     the terminal. In a viewer tab (step 38), `cmd-o` shows
     `대화 터미널을 누른 뒤 다시 눌러 주세요`. In a terminal whose screen is empty (`clear`),
-    `cmd-o` shows `이 대화에 열 수 있는 파일 경로가 없어요`. Narrow the Herdr window below the
-    popup's width and `cmd-o`: the popup stays inside the window, long folders cut with an
-    ellipsis.
+    `cmd-o` shows `이 대화에 열 수 있는 파일 경로가 없어요`. Narrow the Herdr window below
+    640px and `cmd-o`: the card stays inside the window with `Esc` showing, long folders cut
+    with an ellipsis; a click beside the card closes it. In a wide window the card is 640px.
 53. A viewer with no space value in its props: from a terminal in the
     conversation's tab run
     `herdr-app do pane.split --direction right --mod side-viewer --props "{\"file\":\"$HOME/side-viewer-check/markdown-sample.md\"}"`:
@@ -1027,8 +1035,7 @@ echo 'docs/samples/code-sample.md:12 and `box.svg`'
     extension, `box.svg` and `code-sample.md` (from the relative path, number dropped) on
     top (on a Mac the relative one may show under `/private/tmp`), `link.md` among them, and
     no `missing.md`. Then narrow the pane until the long `aaa…a.md` path wraps on screen, `clear`,
-    run the `find` again and `cmd-o`: note whether the long path is listed (it shows whether
-    `hc read` joins wrapped lines; README states it as unchecked).
+    run the `find` again and `cmd-o`: the long path is listed too.
 55. With that remote space focused in Herdr, in Terminal.app (outside Herdr) run
     `~/.local/bin/herdr-app status`: `"space"` reads `"<machine>/sp…"`. Then
     `sh "$HOME/Applications/Side Viewer Router.app/Contents/Resources/open.sh" "$HOME/side-viewer-check/markdown-sample.md" /Applications/Herdr.app`:
@@ -1069,8 +1076,8 @@ echo 'docs/samples/code-sample.md:12 and `box.svg`'
     and the edit stay, and `cat readonly.md` still prints `read only` (Watch out, `test -w`).
 63. New tab. Edit `markdown-sample.md` without saving, click `새 탭으로 열기`: a tab right
     after the current one, in the same remote space, with the edit and `편집됨`, no
-    `원래 앱으로 열기` or `Finder에서 보기`, and the picture drawn. cmd+S there: `tail` in the
-    terminal shows the edit.
+    `원래 앱으로 열기` or `Finder에서 보기`, and the picture drawn. Click in the tab, then
+    cmd+S: `tail` in the terminal shows the edit.
 64. `>_`. In `code-sample.md`, click `>_` on a `Shell` card: a notification
     `터미널에 넣지 못했습니다` with `다른 기계의 셸에는 넣을 수 없습니다. 복사 버튼으로 붙여
     넣으세요.`, and no pane opens and nothing is typed. The copy button still copies.

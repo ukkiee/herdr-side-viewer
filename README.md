@@ -439,8 +439,10 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
   before writing it, so a change that lands in between is overwritten without
   `Changed on disk`.
 - **The path picker misses some paths.** A path with a space or one of `,;=*` in it is
-  found only inside backticks. Whether a path longer than the terminal is wide, wrapped
-  onto two lines on screen, is found has not been checked.
+  found only inside backticks. A path longer than the terminal is wide, wrapped onto two
+  lines on screen, is still found.
+- **A new viewer tab doesn't take the keyboard until you click in it.** Right after
+  `Open in New Tab`, cmd+S does nothing; click anywhere in the tab, then cmd+S saves.
 - **Web addresses go to the browser**, not the viewer. A web or mail link inside a markdown
   document is handed to macOS; a link to another markdown file opens in the viewer, and a
   link to any other local file only shows it in Finder (in a remote space, see
