@@ -3,7 +3,7 @@
 // shell is too busy to take it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { insertFileOf, insertFolderOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
+import { insertFileOf, insertFolderOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
 import { translator } from "./i18n.js";
 
 // The notices as a Korean system shows them.
@@ -101,12 +101,49 @@ test("a handoff file the last press left behind means the zsh lacks the widget, 
     [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE)]]);
 });
 
-test("a shell on another machine gets nothing: the handoff file is on this one", () => {
-  assert.deepEqual(insertPlan({ terminal: "mini/t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false, tr: ko }), {
+// A zsh at its prompt on nuc-pro, as `hc get` showed one there (`/usr/bin/zsh -l`).
+const readyThere = (pid) => ({ state: "ready", pid, argv: ["/usr/bin/zsh", "-l"] });
+const THERE = "nuc-pro/t1kb";
+const FILE_THERE = "/home/me/.cache/side-viewer/shell/nuc-pro_t1kb.txt";
+
+test("a shell on another machine is prepared like one here, and gets more time to take the handoff file", () => {
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, state: readyThere(40), prepared: null, fresh: true, stale: false, tr: ko }), {
+    commands: [["send", THERE, prepareLine(FILE_THERE)]],
+    notice: null,
+    wait: 5000,
+  });
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, state: readyThere(40), prepared: shellOf(readyThere(40)), fresh: false, stale: false, tr: ko }), {
+    commands: [["keys", THERE, "ctrl+alt+f12"]],
+    notice: null,
+    wait: 1500,
+  });
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, state: readyThere(41), prepared: shellOf(readyThere(40)), fresh: false, stale: false, tr: ko }), {
+    commands: [["keys", THERE, "alt+q"], ["send", THERE, prepareLine(FILE_THERE)]],
+    notice: null,
+    wait: 5000,
+  });
+});
+
+test("a busy shell on another machine gets nothing, only the same notice as here", () => {
+  const busy = { state: "busy", program: "sleep" };
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, state: busy, prepared: null, fresh: false, stale: false, tr: ko }), {
     commands: [],
-    notice: noticeOf({ state: "remote" }, ko),
+    notice: { title: "터미널에 넣지 않았습니다", body: "셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.", level: "warning" },
     wait: 0,
   });
+});
+
+test("the waits: 0.5 s after the key and 3 s after the prepare line here, looking every 50 ms; 1.5 s, 5 s and 100 ms on another machine", () => {
+  assert.deepEqual(waitsOf(null), { key: 500, prepare: 3000, step: 50 });
+  assert.deepEqual(waitsOf("nuc-pro"), { key: 1500, prepare: 5000, step: 100 });
+  assert.equal(KEY_WAIT_MS, 500);
+  assert.equal(PREPARE_WAIT_MS, 3000);
+});
+
+test("the machine of an hc address is its prefix; a bare address is this Mac", () => {
+  assert.equal(machineOfAddress("nuc-pro/t1kb"), "nuc-pro");
+  assert.equal(machineOfAddress("nuc-pro/p3"), "nuc-pro");
+  assert.equal(machineOfAddress("t7"), null);
   assert.equal(isRemote("mini/t7"), true);
   assert.equal(isRemote("t7"), false);
 });
@@ -199,10 +236,11 @@ test("the notices in English, the program's name kept as it is", () => {
   assert.deepEqual(noticeOf({ state: "remote" }, en), { title: failed, body: "Can't insert into a shell on another machine. Use the copy button and paste it.", level: "error" });
   assert.deepEqual(noticeOf({ state: "failed" }, en), { title: failed, body: "Couldn't open or find the shell pane.", level: "error" });
   // The plan and the press word their notices in the language they are given, and throw without one.
-  assert.equal(insertPlan({ terminal: "mini/t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false, tr: en }).notice.body,
-    "Can't insert into a shell on another machine. Use the copy button and paste it.");
+  const busy = { state: "busy", program: "sleep" };
+  assert.equal(insertPlan({ terminal: "t7", file: FILE, state: busy, prepared: null, fresh: false, stale: false, tr: en }).notice.title,
+    "Not inserted into the terminal");
   assert.equal(pressOutcome({ left: true, state: ready(40), keyed: false, tr: en }).notice.title, failed);
-  assert.throws(() => insertPlan({ terminal: "mini/t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false }), /translator/);
+  assert.throws(() => insertPlan({ terminal: "t7", file: FILE, state: busy, prepared: null, fresh: false, stale: false }), /translator/);
   assert.throws(() => pressOutcome({ left: true, state: ready(40), keyed: false }), /translator/);
 });
 

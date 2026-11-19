@@ -50,6 +50,15 @@ export const insertText = (command) => command.replace(/\n+$/, "");
 export const KEY_WAIT_MS = 500;
 export const PREPARE_WAIT_MS = 3000;
 
+// The waits for a shell on machine `machine` (null: this Mac), in ms: after the key, after the
+// prepare line, and between two looks at the handoff file. Another machine's key and file
+// reads each cross the network (a read there took 27 to 151 ms), so it gets three times the
+// key's wait and looks half as often.
+export function waitsOf(machine) {
+  if (machine == null) return { key: KEY_WAIT_MS, prepare: PREPARE_WAIT_MS, step: 50 };
+  return { key: 1500, prepare: 5000, step: 100 };
+}
+
 // The zsh `state` (a ready shellState) as remembered once prepared. `exec zsh` keeps the pid,
 // so its arguments tell it apart too, unless it was started with the same ones.
 export const shellOf = (state) => ({ pid: state.pid, argv: state.argv });
@@ -58,6 +67,11 @@ const sameShell = (prepared, state) =>
 
 // Whether hc address `address` is on another machine ("mini/t7").
 export const isRemote = (address) => address.includes("/");
+
+// The machine of hc address `address` (a terminal's or a pane's): its "<machine>/" prefix, or
+// null for this Mac. A shell split off a viewer opens on the viewer's machine, so the viewer's
+// pane address tells where a new shell will be, whatever space value its props hold.
+export const machineOfAddress = (address) => (isRemote(address) ? address.slice(0, address.lastIndexOf("/")) : null);
 
 // What to do to put the handoff file's text into terminal `terminal`, as
 // { commands: hc argument lists in order, notice: what to tell instead, or null,
@@ -69,16 +83,17 @@ export const isRemote = (address) => address.includes("/");
 // prepared again. Its draft is pushed aside with alt+q first, or `hc send` would run it
 // together with the prepare line; in a vi keymap alt+q is not push-line, so that one case can
 // still run a draft. A fresh shell gets no alt+q: sent before zsh reads its keys it would only
-// show up on screen as "^[q". Another machine's shell would never find the handoff file.
+// show up on screen as "^[q". A shell on another machine (its address's prefix) is treated the
+// same, with that machine's waits (waitsOf); `file` is then the handoff file there.
 // tr: the translator the notice is worded with (i18n.js).
 export function insertPlan({ terminal, file, state, prepared, fresh, stale, tr }) {
-  if (isRemote(terminal)) return { commands: [], notice: noticeOf({ state: "remote" }, tr), wait: 0 };
   if (state.state === "busy") return { commands: [], notice: noticeOf(state, tr), wait: 0 };
+  const waits = waitsOf(machineOfAddress(terminal));
   if (!stale && sameShell(prepared, state)) {
-    return { commands: [["keys", terminal, INSERT_KEY]], notice: null, wait: KEY_WAIT_MS };
+    return { commands: [["keys", terminal, INSERT_KEY]], notice: null, wait: waits.key };
   }
   const prepare = ["send", terminal, prepareLine(file)];
-  return { commands: fresh ? [prepare] : [["keys", terminal, "alt+q"], prepare], notice: null, wait: PREPARE_WAIT_MS };
+  return { commands: fresh ? [prepare] : [["keys", terminal, "alt+q"], prepare], notice: null, wait: waits.prepare };
 }
 
 // After a press, whether the zsh took it: `left` says the handoff file was still there once
