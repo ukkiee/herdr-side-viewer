@@ -294,7 +294,8 @@ The mod shows files, not agents, so it has no agent statuses.
   with the file's current text, or null, as `expected`, tried twice). On another machine it
   is `~/.cache/side-viewer/shell/<terminal>.txt` there (`/` in the address becomes `_`,
   so `nuc-pro_t1kb.txt`), written by one command there, `sh -c 'umask 077; mkdir -p "$1" &&
-  chmod 700 "$1" && printf %s "$3" > "$2"' sh <folder> <file> <text>`, with the text as an
+  chmod 700 "$1" && { [ ! -e "$2" ] || chmod 600 "$2"; } && printf %s "$3" > "$2"' sh
+  <folder> <file> <text>`, with the text as an
   argument. Then `hc keys
   <terminal> ctrl+alt+f12`. Instead of that key, a zsh not yet prepared gets the prepare line
   with `hc send`: a zle widget `_side_viewer_insert` that pushes a draft aside (`zle
@@ -506,8 +507,8 @@ The mod shows files, not agents, so it has no agent statuses.
   minutes, left by a quit, goes at the next remote save). A copy or preview is deleted when a newer one of the same file replaces it, or when
   not shown for 30 days. The viewer reads whichever file it is asked to show and writes the
   file it saves, on its machine. On another machine `>_` writes
-  `~/.cache/side-viewer/shell/<terminal>.txt` there instead (folder mode 700, set on every
-  write, file mode 600, deleted the same way); nothing of it lands in this Mac's data folder.
+  `~/.cache/side-viewer/shell/<terminal>.txt` there instead (folder mode 700 and file mode
+  600, both set on every write, deleted the same way); nothing of it lands in this Mac's data folder.
 - `install.sh`: runs `herdr-app check` on the mod folder, runs `build.sh`, then copies the
   mod folder into the app home (`keys-merge.js` goes along, unused there). Then, under
   `Shortcut keys`, `node` runs `keys-merge.js` on the app home's `keys.json` and the

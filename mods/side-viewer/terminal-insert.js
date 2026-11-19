@@ -29,10 +29,11 @@ export function handoffOf({ terminal, app, home }) {
 }
 
 // Run on the other machine as `sh -c HANDOFF_THERE sh <folder> <file> <text>`: the handoff file
-// written in one command, its folder readable by the owner alone, since the file holds what the
-// person is about to run. writeTextFile has no `on`, so the text goes as an argument; a code
-// block stays under Linux's 128 KiB limit for one. An earlier file is written over.
-export const HANDOFF_THERE = 'umask 077; mkdir -p "$1" && chmod 700 "$1" && printf %s "$3" > "$2"';
+// written in one command, it and its folder readable by the owner alone, since the file holds
+// what the person is about to run. writeTextFile has no `on`, so the text goes as an argument; a
+// code block stays under Linux's 128 KiB limit for one. An earlier file is written over, made
+// the owner's only before the text goes in (umask covers only a new one).
+export const HANDOFF_THERE = 'umask 077; mkdir -p "$1" && chmod 700 "$1" && { [ ! -e "$2" ] || chmod 600 "$2"; } && printf %s "$3" > "$2"';
 
 // The key the widget is bound to: one `hc keys` can press (it names keys up to F12) that zsh
 // and terminal programs leave unbound. It reaches zsh as "\e[24;7~".

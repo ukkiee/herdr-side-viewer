@@ -70,6 +70,22 @@ test("the command that writes the handoff file there makes the folder the owner'
   }
 });
 
+test("a handoff file already there that others could read is the owner's only once written over", () => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "handoff-"));
+  try {
+    const folder = path.join(scratch, ".cache/side-viewer/shell");
+    const file = path.join(folder, "nuc-pro_t1kb.txt");
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(file, "old");
+    fs.chmodSync(file, 0o644);
+    handOff(folder, file, "echo new");
+    assert.equal(fs.readFileSync(file, "utf8"), "echo new");
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
 // The prepare line for the handoff file `file` as zsh quotes it: the widget, its key in every
 // keymap, the file's text put on the buffer stack for the next prompt, then clear.
 const widget = (file) =>
