@@ -293,7 +293,7 @@ The mod shows files, not agents, so it has no agent statuses.
   `data/side-viewer/shell/<terminal>.txt` (folder made with `umask 077`; `writeTextFile`
   with the file's current text, or null, as `expected`, tried twice). On another machine it
   is `~/.cache/side-viewer/shell/<terminal>.txt` there (`/` in the address becomes `_`,
-  so `nuc-pro_t1kb.txt`), written by one command there, `sh -c 'umask 077; mkdir -p "$1" &&
+  so `mini_t7.txt`), written by one command there, `sh -c 'umask 077; mkdir -p "$1" &&
   chmod 700 "$1" && { [ ! -e "$2" ] || chmod 600 "$2"; } && printf %s "$3" > "$2"' sh
   <folder> <file> <text>`, with the text as an
   argument. Then `hc keys
@@ -315,7 +315,7 @@ The mod shows files, not agents, so it has no agent statuses.
   다시 누르세요.`, or after the prepare line (no key was sent) `셸이 아직 명령을 받을 준비가
   되지 않았습니다. 잠시 뒤 다시 누르세요.`
   Otherwise the viewer gives that pane the keyboard.
-  The machine is the prefix of an hc address (`nuc-pro/t1kb`): the kept shell's terminal,
+  The machine is the prefix of an hc address (`mini/t7`): the kept shell's terminal,
   else the viewer's pane, whatever space value its props hold. A machine `machines()` lists
   as unavailable gets nothing, and a step there refused for the connection
   (`remote-results.js`'s `unreachable`; the shell's `hc get` and each look at the handoff
