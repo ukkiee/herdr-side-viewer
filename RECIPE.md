@@ -285,7 +285,7 @@ The mod shows files, not agents, so it has no agent statuses.
   puts `block.text` on the clipboard.
 - **`>_`** (shell blocks only). Opens a shell pane below the viewer with `pane.split
   {direction: "down", pane: <viewer>, argv: [<zsh> -c 'cd -- "$1" 2>/dev/null; exec
-  <zsh> -l' zsh <folder>]}` (`<zsh>` is `/bin/zsh` on this Mac) and finds it by comparing
+  "$2" -l' zsh <folder> <zsh>]}` (`<zsh>` is `/bin/zsh` on this Mac) and finds it by comparing
   `panes()` (up to 5 s). The folder: in a viewer tab
   the document's; beside a conversation the `cwd` of a terminal pane in the same tab, an
   agent's first; else the home of the viewer's machine. The command (without its last

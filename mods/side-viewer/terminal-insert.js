@@ -179,12 +179,13 @@ export function openedShell(before, panes, viewer) {
 // The pane.split arguments for a shell below the viewer. pane.split takes no folder, so a
 // short zsh moves there first and becomes the login shell; a folder that is gone leaves the
 // shell where Herdr started it. Always zsh: the line goes in through a zle widget. `zsh` is
-// its path on the viewer's machine: /bin/zsh here, zshOf's answer on another machine.
+// its path on the viewer's machine: /bin/zsh here, zshOf's answer on another machine. Both the
+// folder and the zsh go as arguments, so a space or quote in either stays one word.
 export function splitOf(viewer, folder, zsh = ZSH) {
   return {
     direction: "down",
     pane: viewer,
-    argv: [zsh, "-c", `cd -- "$1" 2>/dev/null; exec ${zsh} -l`, "zsh", folder],
+    argv: [zsh, "-c", 'cd -- "$1" 2>/dev/null; exec "$2" -l', "zsh", folder, zsh],
   };
 }
 

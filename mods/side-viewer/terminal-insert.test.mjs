@@ -411,7 +411,7 @@ test("a new shell is zsh, split below the viewer and started in the folder", () 
   assert.deepEqual(splitOf("p2", "/work/it's here"), {
     direction: "down",
     pane: "p2",
-    argv: ["/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec /bin/zsh -l", "zsh", "/work/it's here"],
+    argv: ["/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec \"$2\" -l", "zsh", "/work/it's here", "/bin/zsh"],
   });
 });
 
@@ -419,8 +419,27 @@ test("a shell on another machine is the zsh found there, split below the viewer 
   assert.deepEqual(splitOf("nuc-pro/p3", "/home/me/work", "/usr/bin/zsh"), {
     direction: "down",
     pane: "nuc-pro/p3",
-    argv: ["/usr/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec /usr/bin/zsh -l", "zsh", "/home/me/work"],
+    argv: ["/usr/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec \"$2\" -l", "zsh", "/home/me/work", "/usr/bin/zsh"],
   });
+});
+
+test("a zsh path with a space stays one word when the short zsh becomes the login shell", () => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "split-"));
+  try {
+    const tools = path.join(scratch, "My Tools");
+    const work = path.join(scratch, "it's here");
+    fs.mkdirSync(tools);
+    fs.mkdirSync(work);
+    // Stands in for zsh: prints its own path, its arguments and the folder it started in.
+    const zsh = path.join(tools, "zsh");
+    fs.writeFileSync(zsh, '#!/bin/sh\nprintf "%s|%s|%s" "$0" "$*" "$(pwd -P)"\n', { mode: 0o755 });
+    const { argv } = splitOf("nuc-pro/p3", work, zsh);
+    // This Mac's zsh runs the short zsh's line in its place.
+    const said = execFileSync("/bin/zsh", argv.slice(1), { encoding: "utf8" });
+    assert.equal(said, `${zsh}|-l|${fs.realpathSync(work)}`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 });
 
 // FIND_ZSH's answers as `hc exec --on <machine> sh -l -c FIND_ZSH sh` gave them (2026-11-19).
