@@ -937,19 +937,21 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
     `pbpaste | shasum`. Click `>_` on `git status --short`: a shell pane opens below the
     viewer, with `git status --short` in its input line, not run, and no other line on its
     screen; its prompt is in the conversation terminal's folder; `pbpaste | shasum` is
-    unchanged. Clear the line
-    (ctrl+U), click `>_` on the first `Shell` card: the command goes into the same pane, no
-    new one.
-36. Busy shell, shown for real: in that shell pane clear the line and run `sleep 30`. While
-    it runs, click `>_`: the notification's title `터미널에 넣지 않았습니다` shows whole. Its
-    body is `셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.`, which
-    Herdr draws on one line and may cut with `…` at the notification's width; on screen it
-    starts `셸에서 다른 프로그램(sleep)이 실행 중입니다.`. Nothing is typed. When `sleep`
-    ends, click `>_` again: the command goes into the same pane.
-37. In that shell type `echo draft` without Enter, click `>_`: the input line holds the
-    command; clear it (ctrl+U) and press Enter on the empty line: `echo draft` comes back.
-    The same after ` bindkey -v`: the draft is not run and comes back. Clear the line, run
-    `exec zsh` and click `>_`: the command goes in and no other line is left on the screen.
+    unchanged. Clear the line with ctrl+C, here and in the steps below: ctrl+U clears only
+    one line of a command that spans several, and the next Enter runs the rest. Click `>_`
+    on the first `Shell` card: the command goes into the same pane, no new one.
+36. Busy shell, shown for real: in that shell pane clear the line (ctrl+C) and run
+    `sleep 30`. While it runs, click `>_`: the notification's title `터미널에 넣지 않았습니다`
+    shows whole. Its body is
+    `셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.`, which Herdr draws
+    on one line and may cut with `…` at the notification's width; on screen it starts
+    `셸에서 다른 프로그램(sleep)이 실행 중입니다.`. Nothing is typed. When `sleep` ends,
+    click `>_` again: the command goes into the same pane.
+37. In that shell clear the line, type `echo draft` without Enter, click `>_`: the input
+    line holds the command; clear it (ctrl+C): nothing runs and `echo draft` comes back at
+    the next prompt. Clear the line, run ` bindkey -v` and do the same: the draft is not run
+    and comes back. Clear the line, run `exec zsh` and click `>_`: the command goes in and
+    no other line is left on the screen.
     Clear the line, run `exec zsh` again and click `>_`: a notification
     `터미널에 넣지 못했습니다` comes and the input line may hold `;7~`; clear it and click `>_`
     again: the command goes in.
@@ -1132,17 +1134,18 @@ echo 'docs/samples/code-sample.md:12 and `box.svg`'
     shell is on that machine: `hc get` on its terminal (the new one in `hc ls`) gives an
     address that starts with `<machine>/`, and its prompt is in `/tmp/side-viewer-remote`,
     the folder of the terminal beside the viewer there. Then:
-    - clear the line (ctrl+U), click `>_` on the first `Shell` card: the command goes into
-      the same pane, no new one;
-    - clear the line, run `sleep 30` and click `>_` while it runs: the notification's title
-      `터미널에 넣지 않았습니다` shows whole. Its body is
+    - clear the line with ctrl+C, here and below (ctrl+U clears only one line of a command
+      that spans several, and the next Enter runs the rest), click `>_` on the first `Shell`
+      card: the command goes into the same pane, no new one;
+    - clear the line (ctrl+C), run `sleep 30` and click `>_` while it runs: the
+      notification's title `터미널에 넣지 않았습니다` shows whole. Its body is
       `셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.`, which Herdr draws
       on one line and may cut with `…` at the notification's width; on screen it starts
       `셸에서 다른 프로그램(sleep)이 실행 중입니다.`. Nothing is typed. When `sleep` ends,
       click `>_` again: the command goes into the same pane;
-    - clear the line (ctrl+U), type `echo draft` without Enter, click `>_`: the input line
-      holds the command; clear it (ctrl+U) and press Enter on the empty line: `echo draft`
-      comes back;
+    - clear the line, type `echo draft` without Enter, click `>_`: the input line holds the
+      command; clear it (ctrl+C): nothing runs and `echo draft` comes back at the next
+      prompt;
     - clear the line and run `ls -la ~/.cache/side-viewer/shell/` in that shell: the folder
       is `drwx------` and holds no file. On this Mac
       `ls ~/.config/herdr-app/data/side-viewer/shell/` lists no file starting with
