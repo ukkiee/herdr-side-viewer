@@ -52,8 +52,9 @@ func defaultApp(_ ext: String) -> String? {
   return Bundle(url: app)?.bundleIdentifier
 }
 
-// The name Finder shows for the app, in the person's language, or nil when macOS cannot find it.
-// Finder adds ".app" to the name when the person has it show every extension.
+// The app's name as FileManager.displayName gives it (the name Finder shows), without the ".app"
+// Finder adds when the person has it show every extension; nil when macOS cannot find the app.
+// Its language is not promised: as a bare binary on a Korean system it gave "TextEdit".
 func appName(_ bundleID: String) -> String? {
   guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
   let name = FileManager.default.displayName(atPath: app.path)
