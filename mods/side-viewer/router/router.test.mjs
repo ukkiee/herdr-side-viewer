@@ -390,6 +390,13 @@ test("restore asks for TextEdit or Preview when the recorded app is no longer in
   assert.match(r.stdout, /macOS 확인 창이 2번 뜹니다\./);
   assert.match(r.stdout, /^md: 원래 앱 com\.example\.Gone 이 없어 com\.apple\.TextEdit 으로 돌립니다\.$/m);
   assert.deepEqual(w.requests(), ["md com.example.Gone", "md com.apple.TextEdit", "png com.example.Gone", "png com.apple.Preview"]);
+  // Every request is preceded by its window line; the second request for a type keeps its i.
+  assert.deepEqual(r.stdout.split("\n").filter((line) => line.startsWith("확인 창 ")), [
+    `확인 창 1/2: md (지금 ${ROUTER_ID} → com.example.Gone)`,
+    `확인 창 1/2: md (지금 ${ROUTER_ID} → com.apple.TextEdit)`,
+    `확인 창 2/2: png (지금 ${ROUTER_ID} → com.example.Gone)`,
+    `확인 창 2/2: png (지금 ${ROUTER_ID} → com.apple.Preview)`,
+  ]);
   assert.equal(w.defaultOf("md"), "com.apple.TextEdit");
   assert.equal(w.defaultOf("png"), "com.apple.Preview");
 });
@@ -489,13 +496,15 @@ test("restore speaks English when it falls back to another app, and says one win
   w.name(ROUTER_ID, "Side Viewer Router");
   const r = w.takeover("restore");
   assert.equal(r.status, 0, r.stderr);
-  // The app that is gone has no name to show, so its bundle id stands in.
+  // The app that is gone has no name to show, so its bundle id stands in, and the window line
+  // is printed again for the app actually asked for.
   assert.equal(
     r.stdout,
     "mdx: no original app recorded, switching to com.apple.TextEdit.\n" +
       "macOS will show 2 confirmation windows. In each window, choose to change back to the original app.\n" +
       "Window 1/2: md (now Side Viewer Router → com.example.Gone)\n" +
       "md: original app com.example.Gone not found, switching to com.apple.TextEdit.\n" +
+      "Window 1/2: md (now Side Viewer Router → TextEdit)\n" +
       "Window 2/2: mdx (now Side Viewer Router → TextEdit)\n" +
       "Changed: md mdx\n",
   );

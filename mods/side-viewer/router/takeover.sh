@@ -161,6 +161,8 @@ run_plan() {
       if [ -n "$other" ] && [ "$other" != "$app" ]; then
         say app_gone "$ext" "$app" "$other"
         app=$other
+        # The window that does come up is for this app, so the line above it says so.
+        say window "$window" "$count" "$group" "$(app_label "$before")" "$(app_label "$app")"
         "$router" --set-default-app "$ext" "$app" < /dev/null > /dev/null 2> "$errors"
         code=$?
       fi
