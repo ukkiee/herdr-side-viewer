@@ -176,13 +176,35 @@ export function openedShell(before, panes, viewer) {
 
 // The pane.split arguments for a shell below the viewer. pane.split takes no folder, so a
 // short zsh moves there first and becomes the login shell; a folder that is gone leaves the
-// shell where Herdr started it. Always zsh: the line goes in through a zle widget.
-export function splitOf(viewer, folder) {
+// shell where Herdr started it. Always zsh: the line goes in through a zle widget. `zsh` is
+// its path on the viewer's machine: /bin/zsh here, zshOf's answer on another machine.
+export function splitOf(viewer, folder, zsh = ZSH) {
   return {
     direction: "down",
     pane: viewer,
-    argv: [ZSH, "-c", `cd -- "$1" 2>/dev/null; exec ${ZSH} -l`, "zsh", folder],
+    argv: [zsh, "-c", `cd -- "$1" 2>/dev/null; exec ${zsh} -l`, "zsh", folder],
   };
+}
+
+// Where a zsh may be when the login shell's PATH has none, in the order they are taken.
+const ZSH_PATHS = ["/bin/zsh", "/usr/bin/zsh", "/usr/local/bin/zsh", "/opt/homebrew/bin/zsh"];
+
+// Run on another machine as `sh -l -c FIND_ZSH sh`, so PATH is the one its login shell sets
+// up: a "login <path>" line with `command -v zsh` when that is a program file (empty when not:
+// none, or an alias), then a "path <path>" line for each of ZSH_PATHS that is one. The tags
+// keep apart whatever a login profile prints first.
+export const FIND_ZSH = 'z=$(command -v zsh 2>/dev/null); { [ -f "$z" ] && [ -x "$z" ]; } || z=; ' +
+  "printf 'login %s\\n' \"$z\"; " +
+  `for p in ${ZSH_PATHS.join(" ")}; do [ -f "$p" ] && [ -x "$p" ] && printf 'path %s\\n' "$p"; done; exit 0`;
+
+// FIND_ZSH's answer as the zsh to start there: the login shell's, else the first of ZSH_PATHS
+// there, else null (no zsh, so no shell pane: the widget is zsh's).
+export function zshOf(stdout) {
+  const lines = String(stdout ?? "").split("\n");
+  const login = lines.filter((line) => line.startsWith("login ")).pop()?.slice("login ".length);
+  if (login?.startsWith("/")) return login;
+  const found = new Set(lines.filter((line) => line.startsWith("path ")).map((line) => line.slice("path ".length)));
+  return ZSH_PATHS.find((p) => found.has(p)) ?? null;
 }
 
 // The folder a new shell pane starts in. In a viewer tab, the shown document's folder. Beside

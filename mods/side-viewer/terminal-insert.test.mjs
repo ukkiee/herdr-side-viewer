@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { insertFileOf, insertFolderOf, handoffOf, HANDOFF_THERE, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
+import { insertFileOf, insertFolderOf, handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
 import { translator } from "./i18n.js";
 
 // The notices as a Korean system shows them.
@@ -349,6 +349,62 @@ test("a new shell is zsh, split below the viewer and started in the folder", () 
     pane: "p2",
     argv: ["/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec /bin/zsh -l", "zsh", "/work/it's here"],
   });
+});
+
+test("a shell on another machine is the zsh found there, split below the viewer and started in the folder", () => {
+  assert.deepEqual(splitOf("nuc-pro/p3", "/home/me/work", "/usr/bin/zsh"), {
+    direction: "down",
+    pane: "nuc-pro/p3",
+    argv: ["/usr/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec /usr/bin/zsh -l", "zsh", "/home/me/work"],
+  });
+});
+
+// FIND_ZSH's answers as `hc exec --on <machine> sh -l -c FIND_ZSH sh` gave them (2026-11-19).
+const NUC_PRO = "login /usr/bin/zsh\npath /bin/zsh\npath /usr/bin/zsh\n";
+const IMAC = "login /bin/zsh\npath /bin/zsh\n";
+
+test("the zsh there is the login shell's `command -v zsh` first", () => {
+  assert.equal(zshOf(NUC_PRO), "/usr/bin/zsh");
+  assert.equal(zshOf(IMAC), "/bin/zsh");
+  // Lines a login profile prints before the answer are not taken for it.
+  assert.equal(zshOf("Welcome to nuc-pro\npath of least resistance\nlogin /usr/local/bin/zsh\n"), "/usr/local/bin/zsh");
+});
+
+test("without a login answer, the zsh there is the first of /bin, /usr/bin, /usr/local/bin and /opt/homebrew/bin", () => {
+  assert.equal(zshOf("login \npath /bin/zsh\npath /usr/bin/zsh\n"), "/bin/zsh");
+  assert.equal(zshOf("login \npath /opt/homebrew/bin/zsh\npath /usr/local/bin/zsh\n"), "/usr/local/bin/zsh");
+  assert.equal(zshOf("login \npath /opt/homebrew/bin/zsh\n"), "/opt/homebrew/bin/zsh");
+});
+
+test("no zsh there: no login answer and none of the four paths", () => {
+  assert.equal(zshOf("login \n"), null);
+  assert.equal(zshOf(""), null);
+  assert.equal(zshOf("login zsh\n"), null);
+});
+
+test("the zsh lookup answers with the login shell's zsh only when it is a program file", () => {
+  // Run here with a PATH whose zsh is a folder, and one whose zsh is a program.
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "find-zsh-"));
+  try {
+    const run = (bin) => execFileSync("/bin/sh", ["-c", FIND_ZSH, "sh"], { encoding: "utf8", env: { PATH: bin } });
+    fs.mkdirSync(path.join(scratch, "a/zsh"), { recursive: true });
+    assert.match(run(path.join(scratch, "a")), /^login \n/);
+    fs.mkdirSync(path.join(scratch, "b"));
+    fs.writeFileSync(path.join(scratch, "b/zsh"), "#!/bin/sh\n", { mode: 0o755 });
+    assert.match(run(path.join(scratch, "b")), new RegExp(`^login ${scratch}/b/zsh\n`));
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test("beside a conversation on another machine with no conversation terminal, the shell starts in that machine's home", () => {
+  const panes = [agentPane("nuc-pro/p1", "nuc-pro/tab1", "nuc-pro/t1", "/home/me/api"), viewerPane("nuc-pro/p2", "nuc-pro/tab2")];
+  assert.equal(shellFolder({ viewerTab: false, file: "/home/me/a.md", viewer: "nuc-pro/p2", panes, shell: null, home: "/home/me" }), "/home/me");
+  assert.equal(shellFolder({ viewerTab: true, file: null, viewer: "nuc-pro/p2", panes, shell: null, home: "/home/me" }), "/home/me");
+  // With one, its folder there; in a viewer tab, the document's folder there.
+  const beside = [agentPane("nuc-pro/p1", "nuc-pro/tab1", "nuc-pro/t1", "/home/me/api"), viewerPane("nuc-pro/p2", "nuc-pro/tab1")];
+  assert.equal(shellFolder({ viewerTab: false, file: "/home/me/a.md", viewer: "nuc-pro/p2", panes: beside, shell: null, home: "/home/me" }), "/home/me/api");
+  assert.equal(shellFolder({ viewerTab: true, file: "/home/me/notes/a.md", viewer: "nuc-pro/p2", panes: beside, shell: null, home: "/home/me" }), "/home/me/notes");
 });
 
 test("a block of several lines stays several lines, without its last newline", () => {
