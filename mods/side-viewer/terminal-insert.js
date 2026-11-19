@@ -145,6 +145,27 @@ export function shellState(info) {
   return /^-?zsh$/.test(program) ? { state: "ready", pid: foreground.pid, argv: foreground.argv } : { state: "busy", program };
 }
 
+// The state of the terminal on machine `machine` (null: this Mac) from `hc get <t> --json`'s
+// answer `answer` ({ code, stdout, stderr }): shellState of what it printed, or, when it failed,
+// { state: "unreachable", machine } if that was the connection (cutOff), else "gone".
+export function stateOfGet({ machine, answer }) {
+  if (answer?.code !== 0) return cutOff({ machine, failure: answer }) ? { state: "unreachable", machine } : { state: "gone" };
+  let info = null;
+  try {
+    info = JSON.parse(answer.stdout);
+  } catch {}
+  return shellState(info);
+}
+
+// What one look at the handoff file on machine `machine` says: "taken" when it is gone,
+// "left" when it is still there, "unreachable" when the read was refused for the connection.
+// Any other refused read counts as taken, as the file can't be told to be there.
+//   text: what the read gave (null: no file); failure: the read's rejection, if it was refused
+export function handoffLook({ machine, text = null, failure = null }) {
+  if (failure != null) return cutOff({ machine, failure }) ? "unreachable" : "taken";
+  return text == null ? "taken" : "left";
+}
+
 const MOD = "side-viewer";
 const ZSH = "/bin/zsh";
 

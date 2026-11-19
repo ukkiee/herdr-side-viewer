@@ -317,8 +317,9 @@ The mod shows files, not agents, so it has no agent statuses.
   The machine is the prefix of an hc address (`nuc-pro/t1kb`): the kept shell's terminal,
   else the viewer's pane, whatever space value its props hold. A machine `machines()` lists
   as unavailable gets nothing, and a step there refused for the connection
-  (`remote-results.js`'s `unreachable`) stops the press: `터미널에 넣지 못했습니다` /
-  `<machine> 기계에 연결할 수 없어요`, with no pane opened. Before the split, another
+  (`remote-results.js`'s `unreachable`; the shell's `hc get` and each look at the handoff
+  file count) stops the press: `터미널에 넣지 못했습니다` / `<machine> 기계에 연결할 수
+  없어요`, with no pane opened after it and the keyboard left where it was. Before the split, another
   machine is asked once for its zsh with `sh -l -c FIND_ZSH sh`: the login shell's
   `command -v zsh` when that is a program file, else the first of `/bin/zsh`,
   `/usr/bin/zsh`, `/usr/local/bin/zsh`, `/opt/homebrew/bin/zsh` there. A path found is

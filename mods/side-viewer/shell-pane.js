@@ -6,7 +6,7 @@
 // The shell is on the viewer's machine: a split of a viewer in another machine's space opens
 // it there, so the handoff file, the zsh and the home are that machine's (file-access.js).
 import { hc, run, panes, focused, props, appHome, notify, machines, writeTextFile } from "herdr";
-import { handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, insertText, insertPlan, pressOutcome, waitsOf, machineOfAddress, cutOff, shellState, noticeOf, viewerPaneOf, liveShell, openedShell, splitOf, shellFolder } from "./terminal-insert.js";
+import { handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, insertText, insertPlan, pressOutcome, waitsOf, machineOfAddress, cutOff, stateOfGet, handoffLook, noticeOf, viewerPaneOf, liveShell, openedShell, splitOf, shellFolder } from "./terminal-insert.js";
 import { accessOf } from "./file-access.js";
 
 // How long a new pane may take to show up in panes(), and a new shell to reach its prompt.
@@ -66,8 +66,8 @@ export class ShellPane {
   async putOn(machine, kept, viewer, all, command, file, viewerTab, tr, trouble, cx) {
     const access = accessOf(machine);
     if (kept) {
-      const state = await this.settled(kept.terminal, cx);
-      if (state.state === "busy") return noticeOf(state, tr);
+      const state = await this.settled(kept.terminal, machine, cx);
+      if (state.state === "busy" || state.state === "unreachable") return noticeOf(state, tr);
       if (state.state === "ready") return this.send(kept, command, state, false, access, tr, trouble, cx);
     }
     viewer ??= viewerPaneOf({ props: props(), focused: focused(), panes: all });
@@ -80,8 +80,8 @@ export class ShellPane {
     const opened = await this.appeared(all, viewer, cx);
     if (!opened) return noticeOf({ state: "failed" }, tr);
     this.shell = { ...opened, prepared: null };
-    const state = await this.settled(opened.terminal, cx);
-    if (state.state === "busy") return noticeOf(state, tr);
+    const state = await this.settled(opened.terminal, machine, cx);
+    if (state.state === "busy" || state.state === "unreachable") return noticeOf(state, tr);
     if (state.state !== "ready") return noticeOf({ state: "failed" }, tr);
     return this.send(this.shell, command, state, true, access, tr, trouble, cx);
   }
@@ -109,16 +109,12 @@ export class ShellPane {
     return null;
   }
 
-  // The terminal's state once it is no longer starting (terminal-insert.js, shellState).
-  async settled(terminal, cx) {
+  // The state of the terminal on `machine` once it is no longer starting (terminal-insert.js,
+  // stateOfGet): unreachable when `hc get` failed for the connection.
+  async settled(terminal, machine, cx) {
     let state = { state: "starting" };
     for (let waited = 0; waited <= WAIT_MS; waited += STEP_MS) {
-      const result = await hc(["get", terminal, "--json"]);
-      let info = null;
-      try {
-        info = result.code === 0 ? JSON.parse(result.stdout) : null;
-      } catch {}
-      state = shellState(info);
+      state = stateOfGet({ machine, answer: await hc(["get", terminal, "--json"]) });
       if (state.state !== "starting") return state;
       await cx.sleep(STEP_MS);
     }
@@ -144,20 +140,23 @@ export class ShellPane {
       if (result.code !== 0) return trouble(result);
     }
     const waits = waitsOf(access.machine);
-    const left = await this.untaken(access, file, plan.wait, waits.step, cx);
-    if (left) await access.run("rm", ["-f", "--", file]).catch(() => null);
-    const outcome = pressOutcome({ left, state, keyed: plan.wait === waits.key, tr });
+    const look = await this.untaken(access, file, plan.wait, waits.step, cx);
+    if (look !== "taken") await access.run("rm", ["-f", "--", file]).catch(() => null);
+    if (look === "unreachable") return noticeOf({ state: "unreachable", machine: access.machine }, tr);
+    const outcome = pressOutcome({ left: look === "left", state, keyed: plan.wait === waits.key, tr });
     shell.prepared = outcome.prepared;
     if (outcome.notice) return outcome.notice;
     run("pane.focus", { pane: shell.pane });
     return null;
   }
 
-  // Whether the handoff file is still there after `wait` ms, looking every `step` ms.
+  // Whether the handoff file was taken within `wait` ms, looking every `step` ms: "taken",
+  // "left", or "unreachable" when a look was refused for the connection (handoffLook).
   async untaken(access, file, wait, step, cx) {
+    const { machine } = access;
     for (let waited = 0; ; waited += step) {
-      if ((await access.read(file).catch(() => null)) == null) return false;
-      if (waited >= wait) return true;
+      const look = handoffLook(await access.read(file).then((text) => ({ machine, text }), (failure) => ({ machine, failure })));
+      if (look !== "left" || waited >= wait) return look;
       await cx.sleep(step);
     }
   }

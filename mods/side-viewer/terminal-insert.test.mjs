@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { insertFileOf, insertFolderOf, handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, cutOff, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
+import { insertFileOf, insertFolderOf, handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, cutOff, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf, stateOfGet, handoffLook } from "./terminal-insert.js";
 import { translator } from "./i18n.js";
 import { en as alertsEn, ko as alertsKo } from "./messages-alerts.js";
 
@@ -278,6 +278,33 @@ test("a remote command refused for the connection means the machine is cut off; 
   assert.equal(cutOff({ machine: "nuc-pro", failure: { code: 1, stdout: "", stderr: "sh: 1: cannot create /x: Permission denied" } }), false);
   // This Mac's own failures are never a lost connection.
   assert.equal(cutOff({ machine: null, failure: new Error("the machine is unreachable") }), false);
+});
+
+// `hc get <t> --json` answers: a live zsh at its prompt, and failures with hc's JSON error.
+const got = (info) => ({ code: 0, stdout: JSON.stringify(info), stderr: "" });
+const gotError = (kind, message) => ({ code: 1, stdout: "", stderr: JSON.stringify({ error: { kind, message } }) });
+const LOST = gotError("timeout", "request timed out after 10000 ms");
+
+test("a terminal on another machine whose `hc get` failed for the connection is unreachable, not gone", () => {
+  assert.deepEqual(stateOfGet({ machine: "nuc-pro", answer: LOST }), { state: "unreachable", machine: "nuc-pro" });
+  assert.deepEqual(noticeOf(stateOfGet({ machine: "nuc-pro", answer: LOST }), ko).body, "nuc-pro 기계에 연결할 수 없어요");
+});
+
+test("any other `hc get` failure, or one here, is a terminal that is gone; an answer is read as the shell's state", () => {
+  assert.deepEqual(stateOfGet({ machine: "nuc-pro", answer: gotError("not_found", "no terminal t7") }), { state: "gone" });
+  assert.deepEqual(stateOfGet({ machine: null, answer: LOST }), { state: "gone" });
+  assert.deepEqual(stateOfGet({ machine: null, answer: { code: 0, stdout: "not json", stderr: "" } }), { state: "gone" });
+  assert.deepEqual(stateOfGet({ machine: "nuc-pro", answer: got(terminal("zsh", ["/bin/zsh", "-l"])) }), { state: "ready", pid: 2, argv: ["/bin/zsh", "-l"] });
+  assert.deepEqual(stateOfGet({ machine: null, answer: got(terminal("sleep", ["sleep", "9"])) }), { state: "busy", program: "sleep" });
+});
+
+test("a look at the handoff file: gone is taken, still there is left, a read refused for the connection is unreachable", () => {
+  assert.equal(handoffLook({ machine: "nuc-pro", text: null }), "taken");
+  assert.equal(handoffLook({ machine: "nuc-pro", text: "echo hi" }), "left");
+  assert.equal(handoffLook({ machine: "nuc-pro", failure: new Error("`herdr.readTextFile`: the machine is unreachable") }), "unreachable");
+  // Any other refusal, and every refusal here, counts as taken.
+  assert.equal(handoffLook({ machine: "nuc-pro", failure: new Error("file too large") }), "taken");
+  assert.equal(handoffLook({ machine: null, failure: new Error("the machine is unreachable") }), "taken");
 });
 
 test("a busy shell gets nothing, only a notice", () => {
