@@ -7,7 +7,11 @@ svg sources and the code can be edited and saved with cmd+S. A viewer already sh
 the next file, `←` goes back, the content reloads when the file changes, and the header can
 open the file in a tab of its own. Outside Herdr the same files open in the app they opened
 in before. macOS only: a small background app, the **router**, becomes the default app for a
-list of extensions and passes each file to the viewer or to its **original app**.
+list of extensions and passes each file to the viewer or to its **original app**. `cmd-o`
+opens the **path picker**, a popup of the file paths the focused conversation printed. A
+viewer reads, checks and writes the files of its space's **machine**, so in a **remote
+space** (a space on a Linux machine or another Mac) it shows that machine's files, opened
+from the picker.
 
 ![Side Viewer](preview.png)
 
@@ -44,7 +48,8 @@ Top to bottom:
     `hover` background under the pointer, a tooltip, 2px apart. While a markdown document,
     code, an image or an svg is drawn, `새 탭으로 열기` (open in a new tab); for every file
     `원래 앱으로 열기` (open in the original app) and `Finder에서 보기` (show in Finder). A
-    notice has only those two.
+    notice has only those two. A file on another machine has neither of the two
+    (machine.js, `headerActions`), so its notice has no buttons.
   - With no file the name reads `Side Viewer` and there are no buttons.
 - **Body**, one of:
   - **Markdown view**: a scrolling column as wide as the pane, 28px side and 24px vertical
@@ -86,7 +91,29 @@ Top to bottom:
     empty or blank code file opens as an empty code view),
     `이 파일은 더 이상 없습니다.` (gone), `이 파일을 읽을 수 없습니다.` (unreadable),
     `뷰어에서 열기에는 너무 큽니다.` (too large),
-    `이 종류의 파일은 뷰어에서 열 수 없습니다.` (no view for this file).
+    `이 종류의 파일은 뷰어에서 열 수 없습니다.` (no view for this file),
+    `<machine> 기계에 연결할 수 없어요.` (the machine can't be reached),
+    `Windows 기계의 파일은 아직 볼 수 없어요.` (a Windows machine).
+
+The **path picker** is a separate popup over the window, not a pane (mod.json `overlay`: a
+`popup` as large as the window with no frame of Herdr's, `frame: "none"`). It is clear, so the
+window shows through, and holds one card 40px below the window's top, centered across:
+640px wide, or the window's width less 16px each side when that is narrower (240px at the
+least), and at most 0.8 of the window's height. The card is drawn like Herdr's own popup,
+`popover` with a 1px `border`, radius 12 and a large shadow, 14px padding, 10px between its
+parts:
+
+- **Filter**: a 36px tall row, radius 9, a 1px `accent` border on `background`: the input at
+  12.8px with the placeholder `경로 거르기`, then a small `Esc` button (11px `dim`, `hover`
+  under the pointer).
+- **List**: rows 32px tall, radius 7, 10px side padding: the file name in `foreground` (at
+  most 280px, cut with an ellipsis), then its folder at 11.5px in `dim`, cut with an
+  ellipsis. The chosen row and the row under the pointer have `hover`. Taller than 352px,
+  or than the card's 0.8 of the window leaves it (one row at the least), the list scrolls.
+- **Status line** in place of the list, in `muted`: `찾는 중`,
+  `이 대화에 열 수 있는 파일 경로가 없어요`, `맞는 경로가 없어요`,
+  `대화 터미널을 누른 뒤 다시 눌러 주세요`, `경로를 찾지 못했어요: <reason>`, or the two
+  remote notices above.
 
 ## How it behaves
 
@@ -94,15 +121,70 @@ The mod shows files, not agents, so it has no agent statuses.
 
 - **Opening.** A cmd-click on a path reaches the router through macOS. The router notes
   which app is in front and runs `open.sh <file> <front app>`. If that app's path contains
-  `Herdr.app` (or its name is `herdr-app`), the file goes to the side viewer; otherwise to
-  the original app.
+  `Herdr.app` (or its name is `herdr-app`), `open.sh` reads the focused space from
+  `herdr-app status`. A space of this Mac (an id with no `/`) gets the file in a side
+  viewer; a remote space (`<machine>/<id>`) sends it to the original app, since a viewer
+  there shows that machine's files. Any other front app: the original app.
 - **Reuse.** A side viewer showing in the current tab takes the file: the pane count stays
   and only the content changes. With no viewer showing (none, or only in another tab), a
-  new pane splits off to the right of the focused pane about 0.4 s later.
+  new pane splits off to the right of the focused pane about 0.4 s later. A viewer takes
+  only a request for its own space (request.js): the request and the new pane's props carry
+  the space value, and a side without one (a viewer opened before spaces were sent) counts
+  as this Mac.
 - **Falling back.** The file opens in its original app instead when `herdr-app` is not at
   `~/.local/bin/herdr-app`, the mod is not installed in the app home, the path holds a
-  control character, the `pane.split` command fails, or `herdr-app` does not finish within
-  5 seconds.
+  control character, `herdr-app status` fails, takes over 5 seconds or gives no plain space
+  id (`[A-Za-z0-9_-]`), a remote space has focus, the `pane.split` command fails, or
+  `herdr-app` does not finish within 5 seconds. An `"errors"` list in the status answer
+  (another mod's) is not a failure.
+- **Path picker** (`cmd-o`, bound to `mod.open:side-viewer`). The copy Herdr opens as the
+  popup (`props().overlay`) is the picker, not a viewer. Once, as it opens, it takes the
+  conversation from `focused()` and `panes()` (path-picker.js `conversationOf`): a focused
+  terminal; for a focused side viewer, a terminal in its tab, an agent's first; anything else
+  says `대화 터미널을 누른 뒤 다시 눌러 주세요`. The machine is the focused space's
+  (machine.js). A machine `machines()` lists as `unavailable` gets the "can't reach" line at
+  once. Otherwise, in order: the machine's home (`sh` there; a Windows machine fails here),
+  `hc read <terminal> --lines 1000`, the candidates (`pathCandidates`: absolute, `~`,
+  relative to the terminal's `cwd`, with `:12`, `:12:3` or `:12-20` cut off, in backticks;
+  URLs out; only extensions in `extensions.json`; latest first; each once; at most 200), one
+  existence check on the machine (`sh -c EXISTS`, links followed), and the first 30 that
+  exist. Typing keeps the paths that contain the text, ignoring case; ↑↓ move and wrap;
+  Enter or a click picks; Esc, the `Esc` button or a click beside the card closes it.
+  A failed `hc read` shows its JSON error's `message` in `경로를 찾지 못했어요: <reason>`;
+  `failureOf` sorts out "unreachable" and "windows" first.
+- **Opening a pick** (main.js `openPicked`). With no viewer showing in the conversation's
+  tab (`openTargetOf`; one behind another pane's zoom doesn't count), the popup closes and
+  `pane.split {pane: <conversation>, direction: "right", mod: "side-viewer", props: {file,
+  space}}` runs. Otherwise the picker writes the same request as `open.sh`
+  (`{"id","file","at","space"}`, id `<seconds>-picker-<random>`), runs
+  `side-viewer.show`, looks for `answer-<id>` 8 times every 50 ms, and closes once it is
+  there. No answer: it takes the answer's name itself and splits as above. A failed request
+  write splits too.
+- **Remote files.** The viewer's machine is its space's: the props' `space` value is
+  looked up in `spaces()` at every read (machine.js `machineOf`), and a viewer without one is
+  on this Mac. A viewer whose space is not listed yet (just after the app starts) shows
+  `불러오는 중…` and reads and saves nothing; within 3 seconds of Herdr listing the space, or
+  of the space's machine changing, it reads the file again. On another machine every read
+  goes through file-access.js with Herdr's `on`: the probe (`sh` with `stat -c` on Linux,
+  `stat -f` on macOS), `readTextFile(path, {on})` for text, and for an image the bytes in
+  pieces of 4 MiB from `hc exec --on <machine> sh -c 'tail -c +<from> | head -c <n>'` (20
+  seconds each, 120 for the whole copy), run by this Mac's `sh` into `<copy>.<pid>.part`, then
+  moved to the copy under `images/`, named by a hash of `<machine>:<path>`, only when its size
+  is the probe's. The size limits (20 MiB for an image), the first-bytes check and the
+  notices are this Mac's. A machine that `machines()` lists as `unavailable`, or a refusal
+  whose words hold `unreachable` or `timed out`, gives `<machine> 기계에 연결할 수 없어요.`;
+  `cannot start sh: program not found` gives the Windows notice; any other refusal
+  `이 파일을 읽을 수 없습니다.`
+- **Remote changes.** No folder is watched on another machine. Every 3 seconds, only while
+  its file is on another machine or its space is not listed yet, the viewer runs
+  `cksum <file>` there (10-second limit; a check still running skips its turn) and
+  reads the file again only when the mark (`<sum> <size>`, `missing`, `unreadable`, or the
+  failure kind) differs from the last one. The first mark of a file is only noted. Losing
+  the machine is a mark too, so the viewer turns to the "can't reach" notice and reads the
+  file again when it is back. The 15-second recheck runs as on this Mac. A file with unsaved
+  edits is never read over them, so a lost machine leaves the editor and its edits on
+  screen, and the header's status says `<machine> 기계에 연결할 수 없어요` (red, the save
+  button stays, the whole line on hover) until the machine is back.
 - **View by extension.** `md markdown mdx` → markdown view. `png jpg jpeg jpe gif webp svg
   svgz` → image view, and only when the file's first bytes are an image's (PNG, JPEG, GIF,
   WebP, SVG, or gzip for `.svgz`); otherwise the "no view" notice. A `.svg` whose bytes are
@@ -114,8 +196,8 @@ The mod shows files, not agents, so it has no agent statuses.
 - **Back.** Each viewer keeps its own history. Opening a file adds the one being left;
   opening the file already shown adds nothing. `←` returns to the previous file and drops
   the one left behind (there is no forward).
-- **Reload.** The viewer watches the shown file's folder and also checks the file again
-  every 15 seconds. A file directly in the home folder or in `/` is not watched, only
+- **Reload.** On this Mac the viewer watches the shown file's folder (another machine's
+  file: "Remote changes" above) and also checks the file again every 15 seconds. A file directly in the home folder or in `/` is not watched, only
   checked every 15 seconds. A text file whose size and modified time are as at the last
   read is not read again (unless it changed within the last 2 seconds, since the time is in
   whole seconds). While a read of the shown file is under way, a new change waits for it
@@ -162,6 +244,21 @@ The mod shows files, not agents, so it has no agent statuses.
   `writeTextFile(file, text, disk)`. With no entry cmd+S does nothing. Text over 1 MiB
   (1,048,576 UTF-8 bytes) is not sent and the status says `너무 커서 저장할 수 없어요`. Typing
   that lands while a save is under way stays unsaved. Nothing is ever saved on a timer.
+- **Saving on another machine.** `writeTextFile` writes on this Mac only, so a remote file
+  goes through file-access.js `write`: `readTextFile(path, {on})` again, and when that is
+  not `disk`, nothing is written and the text read goes to the same handling as a refused
+  save's read (`외부에서 바뀌었어요`, or `파일이 지워졌어요` when gone). A file there the
+  user can't write (`test -e && ! test -w`) is not written and says `쓰기 권한이 없어요`.
+  Otherwise the text is written to `data/side-viewer/remote-saves/<ms>-<random>.txt` (folder made with
+  `umask 077`, mode 700; files there older than 10 minutes are deleted first), handed on
+  stdin to `hc file write --on <machine> <path>` by this Mac's `sh`, and the copy is deleted
+  whatever happened. `hc file write` replaces the file and keeps its mode, and writes
+  through a symbolic link to its target. Failures (remote-results.js `saveFailureOf`):
+  `unreachable` or `timed out` in the error, or a machine `machines()` lists as
+  `unavailable` before the save, says `<machine> 기계에 연결할 수 없어요`; `os error 13`, `1`
+  or `30` says
+  `쓰기 권한이 없어요`; anything else `저장하지 못했어요`, with the error on hover. Checkbox
+  clicks save the same way.
 - **Rendering edits.** Switching an edited source to `렌더링` draws the edited text: the
   markdown blocks are parsed again, and an svg is drawn from a copy of the edited text under
   `previews/`. The file is not written.
@@ -214,7 +311,8 @@ The mod shows files, not agents, so it has no agent statuses.
   중입니다. 끝난 뒤 다시 누르세요.`; when no pane can be opened or found,
   `터미널에 넣지 못했습니다` / `셸 pane을 열거나 찾지 못했습니다.`.
 - **New tab** (`새 탭으로 열기`). Runs `tab.new {name: <file name>, space, mod:
-  "side-viewer", props: {file, viewerTab: true, handoff?}}`, finds the new tab by comparing
+  "side-viewer", props: {file, viewerTab: true, handoff?, space?}}` (the viewer's space
+  value, so the tab reads from the same machine), finds the new tab by comparing
   `spaces()` (every 50 ms with `cx.sleep`, up to 3 seconds), then `tab.move` right after the
   viewer's tab and `tab.select`. Not found by then: a notification
   `새 탭으로 넘어가지 못했습니다` names the tab. Every click makes a tab. Unsaved edits go to `handoff-<id>.json` in the data
@@ -233,7 +331,10 @@ The mod shows files, not agents, so it has no agent statuses.
   the history. `http`, `https` and `mailto` go to macOS's handler. Any other local file is
   only shown in Finder, never opened. Relative links start from the shown document's
   folder; `~/`, absolute paths and `file://` work; an anchor alone, or another scheme, does
-  nothing.
+  nothing. In a document on another machine, a markdown, code or image file opens in the
+  viewer, any other file gets a notification `이 파일은 보여 줄 수 없어요` with its path as
+  the body, `~` is that machine's home (asked once with `sh` and remembered; unknown, a `~`
+  link does nothing), and web and mail links still go to this Mac's handler.
 - **Take over** (`SideViewerRouter --make-default`, or `--make-default code`). Without
   `code` it covers the markdown and image extensions; with it, the code extensions too. It
   records each extension's original app, prints `macOS 확인 창이 N번 뜹니다.` (N = the
@@ -272,14 +373,24 @@ The mod shows files, not agents, so it has no agent statuses.
 ## Built from
 
 - `mods/side-viewer/mod.json`: `{ "place": "none", "title": "Side Viewer", "focusable":
-  true }` (focusable for cmd+S). Opened with `pane.split {direction: "right", mod:
-  "side-viewer", props: {file}}`; `props.file` is the absolute path to show. A viewer tab's
-  props are `{file, viewerTab: true, handoff?}`.
+  true, "overlay": { "kind": "popup", "at": "top", "offset": 0, "width": 1, "height": 1,
+  "frame": "none" } }` (focusable for cmd+S; the overlay is the path picker, the whole
+  window, with the card drawn by the mod: a popup's `width` in px doesn't shrink with the
+  window). Opened with `pane.split {direction: "right", mod: "side-viewer", props:
+  {file, space}}`; `props.file` is the absolute path to show, `props.space` the space id
+  without its `<machine>/` prefix (no machine name, ADR 0002). A viewer tab's props are
+  `{file, viewerTab: true, handoff?, space?}`.
+- `keys.json` (repository root): `{"global": {"cmd-o": "mod.open:side-viewer"}}`, the key
+  `install.sh` merges into the person's.
 - `mods/side-viewer/main.js`: the one `View`: state, reads, requests, the watch, edits and
   saves, the language read, the tab and shell commands' wiring. Drawing is in `header.js`,
   `markdown-view.js`, `code-card.js`, `code-view.js`, `image-view.js`, `notice-view.js`;
   `markdown-image-loader.js` makes the copies of pictures in markdown, `shell-pane.js` runs
-  `>_`. The decisions sit in modules without `herdr` imports, so `node --test` runs them:
+  `>_`, `picker-view.js` is the path picker (`PathPicker`: its state, the reads behind it,
+  keys and drawing), and `file-access.js` is every touch of the shown files: `accessOf(machine)`
+  gives one access per machine with `read`, `run`, `exists`, `home`, `mark` (`cksum`),
+  `copy` (picture bytes), `key` (copy names) and `write` (saves, this Mac's and another
+  machine's). The decisions sit in modules without `herdr` imports, so `node --test` runs them:
   `views.js` (extension → view and language, size limits, the probe script, which views
   switch and take typing, the editor options), `document.js` (notices, header label),
   `history.js`, `request.js` (the handoff from `open.sh`), `links.js` (link clicks, watch
@@ -291,12 +402,20 @@ The mod shows files, not agents, so it has no agent statuses.
   paths and sizes), `svg-preview.js` (edited svg previews), `terminal-insert.js` (`>_`'s
   folder, shell state, commands, notices), `viewer-tab.js` (props, handoff file, tab
   placement and name), `checkbox.js` (turning over a task line), `i18n.js` (the language
-  from `AppleLanguages`, the asking-again delays, the translator `tr`). Each has a
-  `*.test.mjs`.
+  from `AppleLanguages`, the asking-again delays, the translator `tr`), `machine.js` (the
+  space value, the viewer's machine, the existence and home commands and their answers,
+  `FIND_HC`, the header's actions), `remote-results.js` (`cksum` marks, refusal kinds,
+  `unavailable`, remote save failures), `path-picker.js` (candidates from terminal text,
+  `CHECK_LIMIT` 200 and `PICK_LIMIT` 30, the filter, the conversation to read, where a pick
+  opens), `keys-merge.js` (merging `keys.json`). Each has a `*.test.mjs`. `links.js` also
+  decides remote links, `request.js` matches a request's space to the viewer's, and
+  `edit-state.js` holds remote save failures.
 - The words on screen, each a `{ en, ko }` table whose keys start with its area:
   `messages-header.js` (`header.`: the switch, buttons, tooltips and the status),
   `messages-body.js` (`body.`: the notices and the picture error), `messages-alerts.js`
-  (`alerts.`: the `>_` and new-tab notifications). Values go in through `{name}` places.
+  (`alerts.`: the `>_`, new-tab and remote link notifications), `messages-picker.js`
+  (`picker.`: the path picker's placeholder and lines; it borrows `body.unreachable` and
+  `body.windows`). Values go in through `{name}` places.
   The pure modules take `tr` as their last argument and speak English without it.
   `i18n.test.mjs` checks that both languages have the same keys and places, that every key
   is used and every key used exists, that every call of a function that writes a sentence
@@ -305,11 +424,13 @@ The mod shows files, not agents, so it has no agent statuses.
   `image`, `code`. The router build and the mod both read it, and it alone says which
   extensions are markdown. A listed extension is taken over only once the router is its
   default app: `markdown` and `image` with `--make-default`, `code` with `--make-default code`.
-- `mods/side-viewer/open.sh`: the branch the router calls. It writes
-  `request.json` (`{"id","file","at"}`) into the data folder, runs
+- `mods/side-viewer/open.sh`: the branch the router calls. It first reads the focused
+  space from `herdr-app status` (time limit `SIDE_VIEWER_TIMEOUT`, 5 seconds) and sends the
+  file to the original app for a remote space or an answer without a plain id. Then it writes
+  `request.json` (`{"id","file","at","space"}`) into the data folder, runs
   `herdr-app do side-viewer.show`, waits 8 × 0.05 s for the viewer's `answer-<id>` file,
   and otherwise runs `herdr-app do pane.split --direction right --mod side-viewer --props
-  '{"file":"…"}'`. Answer files older than a minute are deleted on the next run.
+  '{"file":"…","space":"…"}'`. Answer files older than a minute are deleted on the next run.
 - `mods/side-viewer/router/`: `main.swift` (the app: receives files, reads and sets one
   default app at a time), `takeover.sh` (make-default, restore, status; `system_lang` picks
   the language and `say` holds every line it prints in both), `open-original.sh`,
@@ -327,27 +448,44 @@ The mod shows files, not agents, so it has no agent statuses.
   with no icon.
 - `herdr` functions: `props`, `readTextFile`, `writeTextFile`, `nextCommand`, `home`,
   `appHome`, `theme`, `settings`, `exec`, `watchFolder`, `run`, `spaces`, `focused`,
-  `panes`, `hc`, `notify`, `shared`, `setShared`; `cx.spawn`, `cx.timer.every`, `cx.timer.after`, `cx.notify`,
-  `cx.write_to_clipboard`. `gpui-kit`: `View`, `div`, `image`, `svg`, `PathBuilder`,
-  `Background`. `gpui-base`: `v_flex`, `h_flex`, `TextView.markdown`, `Editor`,
-  `EditorState`. Node: `fs/promises` `readFile`.
+  `panes`, `hc`, `notify`, `shared`, `setShared`, `machines`, `closeOverlay`
+  (`readTextFile` and `exec` also with `{on: <machine>}`); `cx.spawn`, `cx.timer.every`, `cx.timer.after`, `cx.notify`,
+  `cx.write_to_clipboard`, `cx.focus_handle`, `cx.sleep`, `cx.stop_propagation`. `gpui-kit`:
+  `View`, `div`, `image`, `svg`, `PathBuilder`, `Background`. `gpui-base`: `v_flex`, `h_flex`,
+  `TextView.markdown`, `Editor`, `EditorState`, `InputState`, `Input`, `ScrollHandle`. Node:
+  `fs/promises` `readFile`.
 - Command for scripts: `side-viewer.show`. Herdr commands the mod runs: `pane.split`,
-  `tab.new`, `tab.move`, `tab.select`, `tab.rename`; hc: `get`, `keys`, `send`.
+  `tab.new`, `tab.move`, `tab.select`, `tab.rename`, and `side-viewer.show` from the picker;
+  hc: `get`, `keys`, `send`, `read`.
 - Programs the mod runs: `sh` (with `stat`, `head`, `od`, `cp`, `touch`, `mkdir`), `open`,
-  `rm`, `mkdir`, `touch`, `sleep`, `defaults`, and `/bin/zsh` in the shell pane. The scripts
+  `rm`, `mkdir`, `touch`, `sleep`, `defaults`, and `/bin/zsh` in the shell pane. For another
+  machine it runs there `sh` (with `stat`, `head`, `od`, `uname`, `printf`) and `cksum`,
+  and on this Mac `sh` with `hc` (`hc file write --on`, `hc exec --on … cat`, the `hc` on
+  `PATH`, else `~/.local/bin/hc`), `mkdir`, `chmod`, `find`, `mv`. The scripts
   also use `herdr-app`, `plutil`, `awk`, `sed`, `find`, `mktemp`, and `defaults` and `tr`
-  for the language.
+  for the language; `install.sh` uses `node` to merge `keys.json`.
 - Files outside the mod folder, all under the app home's `data/side-viewer/`:
-  `original-apps.tsv` (`<extension><TAB><bundle id>` per line), `request.json`,
-  `answer-<id>`, `images/<path hash>-<bytes>-<modified>.<kind>` (copies of images and of
-  pictures in markdown, mode 600), `previews/` (edited svg sources, same names, folder mode
+  `original-apps.tsv` (`<extension><TAB><bundle id>` per line), `request.json`
+  (`{"id","file","at","space"}`, from `open.sh` or the picker), `answer-<id>`,
+  `images/<path hash>-<bytes>-<modified>.<kind>` (copies of images and of
+  pictures in markdown, mode 600; for another machine the hash is of `<machine>:<path>`, and
+  `<copy>.<pid>.part` holds the bytes while they arrive; one a killed copy left is swept
+  with the copies), `previews/` (edited svg sources, same names, folder mode
   700), `handoff-<id>.json` (`{"id","file","at","edit"}`, deleted by the tab that reads
-  it), and `shell/<terminal>.txt` (the command for `>_`, folder mode 700, deleted by the
-  shell's widget as it reads it). A copy or preview is deleted when a newer one of the same file replaces it, or when
+  it), `shell/<terminal>.txt` (the command for `>_`, folder mode 700, deleted by the
+  shell's widget as it reads it), and `remote-saves/<ms>-<random>.txt` (the text of a save
+  to another machine, folder mode 700, deleted when the write ends; one older than 10
+  minutes, left by a quit, goes at the next remote save). A copy or preview is deleted when a newer one of the same file replaces it, or when
   not shown for 30 days. The viewer reads whichever file it is asked to show and writes the
-  file it saves.
+  file it saves, on its machine.
 - `install.sh`: runs `herdr-app check` on the mod folder, runs `build.sh`, then copies the
-  mod folder into the app home. It never runs the take-over command; building can still
+  mod folder into the app home (`keys-merge.js` goes along, unused there). Then, under
+  `Shortcut keys`, `node` runs `keys-merge.js` on the app home's `keys.json` and the
+  repository's: a key already bound the same is left (`already there.`), a key bound to
+  another action in any section is left and reported, a missing, invalid or non-object
+  `keys.json` is left and the lines to add are printed, and a changed file is written
+  beside the real one and renamed over it, so a link stays a link. Without `node` it prints
+  the repository's `keys.json`. It never runs the take-over command; building can still
   change a default (see "Building the app is enough" under Watch out).
 
 ## Watch out
@@ -412,8 +550,8 @@ Platform:
 - A focused editor always draws its cursor, and a mod can't turn it off. A clear layer over
   each card swallows clicks, so a card never takes the keyboard; Tab could still reach it.
 - `TextView` draws no local picture given as a `data:` address, hence copies under the app
-  home, as for the image view. A remote address might be fetched by it, so remote pictures
-  are dropped instead of handed to it.
+  home, as for the image view. A web address might be fetched by it, so web pictures
+  (a web address, `data:`, another scheme) are dropped instead of handed to it.
 - A mod has no per-character style: text inside a block is a `TextView`. Whether a
   wrapping `div`'s size, weight and color reach the `TextView` (headings, quotes, footnotes)
   is not documented; step 32 of Done when checks it on screen.
@@ -490,14 +628,67 @@ macOS:
 - macOS starts the router without your shell's environment: it uses
   `~/.local/bin/herdr-app` and `~/.config/herdr-app` whatever `HERDR_APP_HOME` was at
   install time. `SIDE_VIEWER_DATA` is for tests; the mod always uses the app home.
+- `router/build.sh` ends with `lsregister -f` on the app wherever it builds it, so running it
+  registers the router with LaunchServices and can change a default (above). Tests and
+  trial installs replace it rather than run it.
+
+Remote machines and the path picker:
+
+- A cmd-click in a remote space opens nothing: the path is not on this Mac, so macOS never
+  calls the router. Hence the picker. A mod also can't learn its own pane id, and `panes()`
+  doesn't give a mod pane's props, so the opener puts the space value in the props and the
+  viewer finds its machine in `spaces()` (ADR 0002). Herdr may not list a remote space yet
+  just after the app starts; until it does, the viewer reads and saves nothing, since this
+  Mac's file of the same path is another file.
+- Herdr's `writeTextFile` and `watchFolder` work on this Mac only. A remote save reads the
+  file again and then writes it, two steps, so a change that lands between them (well under
+  a second) is overwritten. Its text can't go as an `exec` argument (a long one is refused)
+  and `exec` has no stdin, hence the copy in `remote-saves/` piped to `hc file write --on`.
+- `hc file write` replaces a file even when it is read-only: mode 444 in a writable folder is
+  written and stays 444. Hence the `test -w` before a remote save. A folder without write
+  permission gives `Permission denied (os error 13)`. A path that is a folder gives `Is a directory (os error 21)`, shown as
+  `저장하지 못했어요`. It also makes missing folders, but the read before it finds no file and
+  says `파일이 지워졌어요` instead.
+- `cksum` answers `<sum> <size> <path>` the same on Linux and macOS; the path is left out of
+  the mark, so a file opened through a link keeps its mark. No file:
+  `No such file or directory`; no permission or a folder: any other refusal.
+- `hc exec --on …` passes a picture's bytes through unchanged, but keeps only the first 8 MB
+  of what a command prints, says so only on stderr (`[hc] output cut: kept the first 8 MB`)
+  and exits 0. Hence the 4 MiB pieces and the size check against the probe: a cut or changed
+  file gives no copy, and the picture says `이 파일을 읽을 수 없습니다.` A `.part` left by a
+  killed copy goes with the 30-day cleanup.
+- The mod's `exec` may not have `~/.local/bin` on its `PATH` (an app opened from Finder runs
+  with `/usr/bin:/bin:/usr/sbin:/sbin`), so `hc` is looked for there too. Without it a remote
+  save fails with `저장하지 못했어요` and a remote picture with `이 파일을 읽을 수 없습니다.`
+- Herdr's words for a machine it can't reach (`the machine is unreachable`) and for a
+  Windows machine (`cannot start sh: program not found`, the line Herdr's Files mod uses)
+  come from its documentation and mods, not from a cut connection or a Windows machine here.
+  A command that runs past its time gives hc's `[hc] timed out after <n> ms: ended` (exit
+  124), counted as out of reach; the words of Herdr's own `exec` timeout are not known.
+- The picker reads the terminal with `hc read --lines 1000`, which gives a line the screen
+  wrapped back whole, so a path longer than the terminal is wide is found. Outside backticks a path ends at a space or one of `'"()[]{}<>|,;*=`.
+- The picker closes only after the pick is settled (up to about 0.4 s while it waits for a
+  viewer's answer): a closed popup's tasks are cancelled, which would end the wait.
+- A popup's `width` in px is a fixed size: Herdr doesn't shrink it to a narrower window, and
+  a popup with no width doesn't follow its content either. Hence the whole-window frameless
+  popup and the mod's own card, sized from `window.viewport_size()` (pixels) over
+  `settings().zoom` on each render. A picker left open while the window is resized keeps its
+  card until it is opened again. With `frame: "none"` a click beside the card lands on the
+  mod, so the clear backdrop closes the picker and the card stops the click.
+- `focused()` is read once as the popup opens, before it could take the focus.
+- A remote viewer's header writes the folder with that machine's home as `~` once the
+  machine has told its home; until then the folder shows whole.
 
 Limits and assumptions:
 
 - Line numbers in a path (`app.ts:12`) are ignored; the file shows from the top.
-- No web addresses, no paths from another machine's terminal, no binary files (`pdf`,
-  `zip`), no keyboard navigation between blocks, no cmd+E, no `{{placeholders}}`.
+- No web addresses, no cmd-click in a remote space (the picker instead), no binary files
+  (`pdf`, `zip`), no keyboard navigation between blocks, no cmd+E, no `{{placeholders}}`.
+- Remote spaces on Linux and macOS machines only; a Windows machine gets its notice. No
+  `>_` into a shell on another machine, no folder watch there (a 3-second check instead). A
+  viewer shows only the files of its own space's machine.
 - Not drawn: `mermaid` as a diagram, math, GitHub alert boxes, HTML tags, definition lists,
-  `html` as a page, remote pictures, pictures inside a paragraph. Code in a card can't be
+  `html` as a page, web pictures, pictures inside a paragraph. Code in a card can't be
   selected or edited.
 - No autosave and no prompt on close: unsaved edits die with the pane. The checkbox click is
   the one save without cmd+S.
@@ -518,7 +709,7 @@ Limits and assumptions:
 
 Each step is one check, done by hand in the app; nothing drives the Herdr window. The
 words on screen and the command output are as a Korean screen shows them (macOS's first
-preferred language Korean); steps 45 and 46 check English. Step 48 gives the extensions
+preferred language Korean); steps 45 and 46 check English. Step 67 gives the extensions
 back, so it comes last.
 
 ### Install, router and viewing
@@ -529,9 +720,11 @@ Have an agent's conversation in Herdr print the paths of a markdown file, a code
 an image, as an absolute path, a relative path, a path with a line number (`app.ts:12`)
 and a path in code formatting.
 
-1. `./install.sh` prints `check passed`, `built …/Side Viewer Router.app`, and the
-   `--make-default` command. Where the router was already built, `router --status` reads
-   the same before and after: installing changes no default app.
+1. `./install.sh` prints `check passed`, `built …/Side Viewer Router.app`, under
+   `Shortcut keys` the line `cmd-o → "mod.open:side-viewer" (global)` (or the same ending in
+   `: already there.`, or why it was left), and the `--make-default` command. Where the
+   router was already built, `router --status` reads the same before and after: installing
+   changes no default app.
 2. `router --status` prints one line per extension: extension, current default app, recorded
    original app or `-`.
 3. `router --make-default` first prints `macOS 확인 창이 N번 뜹니다.`, and exactly N windows
@@ -759,9 +952,11 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
       `herdr-app do pane.split --direction right --mod side-viewer --props '{"file":"/etc/hosts"}'`
       shows `The viewer can't open this kind of file.`;
     - in `docs/samples/code-sample.md` the card labels are still `Shell`, `JavaScript` and
-      so on. Run `sleep 30` in the shell pane and click `>_`: the notification reads
-      `Not inserted into the terminal` and
-      `Another program (sleep) is running in the shell. Press again when it ends.`, whole.
+      so on. Run `sleep 30` in the shell pane and click `>_`: the notification's title
+      `Not inserted into the terminal` shows whole. Its body is
+      `Another program (sleep) is running in the shell. Press again when it ends.`, which
+      Herdr draws on one line and may cut with `…` at the notification's width; on screen
+      it starts `Another program (sleep) is running in the shell.`.
 46. Korean again, and the router. Put Korean first again and open a new viewer: every
     viewer turns Korean, with the words quoted in the steps above. Quit Herdr and open it
     again: the viewers come back in Korean (a moment of English first is the gap in Watch
@@ -774,9 +969,139 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
     bring up confirmation windows.
 47. `herdr-app status` reports no mod error after steps 1–46.
 
+### The path picker and remote spaces
+
+Steps 48–53 are in a space on this Mac, with the setup above. Steps 54–66 are done twice:
+in a space on a Linux machine and in a space on another Mac, each a machine connected to
+Herdr (`hc machine ls` names them). A Windows machine is not checked here; its notice is
+covered by `node --test` only.
+
+48. `grep -n cmd-o ~/.config/herdr-app/keys.json` shows `"cmd-o": "mod.open:side-viewer"`
+    inside `global`. Note `shasum ~/.config/herdr-app/keys.json`, run `./install.sh` again:
+    under `Shortcut keys` it prints `cmd-o → "mod.open:side-viewer" (global): already
+    there.`, and the `shasum` is unchanged.
+49. In the conversation that printed the paths for steps 6–8, run
+    `echo /tmp/side-viewer-nope.md /etc/hosts.txt` in a terminal of that tab, click into the
+    conversation's terminal and press `cmd-o`: a card at the top of the window, about
+    640px wide, `경로 거르기` in a field that takes typing at once, and `찾는 중` for a moment.
+    Then one row per file, name and dimmed folder: the files the conversation printed, the
+    one printed last on top, each once, the line-number path without its number, the
+    relative and code-formatted ones too. Neither `echo`ed path is there.
+50. Type a few letters of one name, in capitals: only paths holding them stay. Type `zzzz`:
+    `맞는 경로가 없어요`. Clear it. ↓ and ↑ move the highlight, and ↓ on the last row goes to
+    the first. Enter: the popup closes and the file shows in the side viewer beside the
+    conversation, with the pane count unchanged. `cmd-o` and a click on a row: the same.
+    `cmd-o` then Esc, `cmd-o` then the `Esc` button, `cmd-o` then a click beside the card:
+    each closes it and nothing else changes.
+51. Close the side viewer, click the conversation's terminal, `cmd-o`, pick a file: a new
+    viewer splits off to the right of the conversation. If the code group is not taken over,
+    pick a `.js` path: it opens in the viewer all the same.
+52. Click the side viewer beside the conversation and press `cmd-o`: the same rows as from
+    the terminal. In a viewer tab (step 38), `cmd-o` shows
+    `대화 터미널을 누른 뒤 다시 눌러 주세요`. In a terminal whose screen is empty (`clear`),
+    `cmd-o` shows `이 대화에 열 수 있는 파일 경로가 없어요`. Narrow the Herdr window below
+    640px and `cmd-o`: the card stays inside the window with `Esc` showing, long folders cut
+    with an ellipsis; a click beside the card closes it. In a wide window the card is 640px.
+53. A viewer with no space value in its props: from a terminal in the
+    conversation's tab run
+    `herdr-app do pane.split --direction right --mod side-viewer --props "{\"file\":\"$HOME/side-viewer-check/markdown-sample.md\"}"`:
+    the document shows. Cmd-click `~/side-viewer-check/main.js` in the conversation: it
+    opens in that viewer, with no new pane. Close it.
+
+Set up for each remote machine, from the repository root on this Mac (`m` is the
+machine's name from `hc machine ls`):
+
+```sh
+m=<machine>
+r=/tmp/side-viewer-remote
+put() { hc exec -i --on "$m" sh -c 'mkdir -p "$(dirname "$1")" && cat > "$1"' sh "$r/$1" < "$2"; }
+put docs/samples/markdown-sample.md docs/samples/markdown-sample.md
+put docs/samples/code-sample.md docs/samples/code-sample.md
+put preview.png preview.png
+put main.js mods/side-viewer/main.js
+printf '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120"><rect width="200" height="120" fill="steelblue"/></svg>\n' | put box.svg /dev/stdin
+printf '# Links\n\n![absolute](%s/box.svg)\n\n[code](docs/samples/code-sample.md) [script](main.js) [picture](preview.png) [pdf](notes.pdf) [home](~/.profile) [web](https://herdr.dev)\n' "$r" | put links.md /dev/stdin
+hc exec --on "$m" sh -c 'cd "$1" && printf "echo hi\n" > run.sh && chmod 755 run.sh && ln -s docs/samples/markdown-sample.md link.md && printf "read only\n" > readonly.md && chmod 444 readonly.md && mkdir ro && printf "locked\n" > ro/locked.md && chmod 555 ro && : > "docs/samples/$(printf "%0150d" 0 | tr 0 a).md"' sh "$r"
+```
+
+`markdown-sample.md` sits two folders down, so its `../../preview.png` finds the copy. Then
+in a space on that machine open a terminal (a shell there) and run:
+
+```sh
+cd /tmp/side-viewer-remote && find "$PWD" -type f | sort
+echo "$PWD/link.md $PWD/missing.md"
+echo 'docs/samples/code-sample.md:12 and `box.svg`'
+```
+
+54. Press `cmd-o` in that terminal: rows for the files `find` printed with a listed
+    extension, `box.svg` and `code-sample.md` (from the relative path, number dropped) on
+    top (on a Mac the relative one may show under `/private/tmp`), `link.md` among them, and
+    no `missing.md`. Then narrow the pane until the long `aaa…a.md` path wraps on screen, `clear`,
+    run the `find` again and `cmd-o`: the long path is listed too.
+55. With that remote space focused in Herdr, in Terminal.app (outside Herdr) run
+    `~/.local/bin/herdr-app status`: `"space"` reads `"<machine>/sp…"`. Then
+    `sh "$HOME/Applications/Side Viewer Router.app/Contents/Resources/open.sh" "$HOME/side-viewer-check/markdown-sample.md" /Applications/Herdr.app`:
+    the file opens in its original app, and no side viewer opens or changes in either space.
+56. Pick `markdown-sample.md`: a side viewer opens right of the terminal, the document
+    rendered, the picture under `본문 이미지` drawn, the folder
+    `/tmp/side-viewer-remote/docs/samples`. The header has `렌더링 | 원문` and
+    `새 탭으로 열기`, and no `원래 앱으로 열기` or `Finder에서 보기`. `원문` shows the source.
+57. Pick in turn `main.js` (code view, colors, line numbers), `box.svg` (a blue box,
+    `렌더링 | 원문`, the source in xml colors) and `preview.png` (the picture). In the terminal
+    run `: > empty.md; echo "$PWD/empty.md"` and pick it: folder and name,
+    `이 파일은 비어 있습니다.`, and the switch to a source ready to type.
+58. Pick `links.md`: the blue box drawn from its absolute path. Click `code`:
+    `code-sample.md` in the viewer, and `←` comes back. `script`: `main.js` as code.
+    `picture`: `preview.png`. `pdf`: a notification `이 파일은 보여 줄 수 없어요` with
+    `/tmp/side-viewer-remote/notes.pdf`. `home`: the same notification with that machine's
+    home in the path (`/home/…/.profile` on Linux, `/Users/…/.profile` on a Mac). `web`: the
+    browser on this Mac.
+59. Show `docs/samples/markdown-sample.md` with nothing unsaved. In the terminal run
+    `echo '밖에서 더한 줄' >> docs/samples/markdown-sample.md`: the line shows within about 3
+    seconds, with no click. Edit the source without saving and run the `echo` again: within
+    about 3 seconds the status says `외부에서 바뀌었어요` with `다시 읽기` and `덮어쓰기`, and
+    the edit stays. `다시 읽기`: the disk text with both added lines.
+60. Saving. Pick `main.js`, type a word, cmd+S: `편집됨` goes, and `grep <word> main.js` in
+    the terminal finds it; on this Mac `ls ~/.config/herdr-app/data/side-viewer/remote-saves/`
+    lists nothing. Pick `run.sh`, add a line `echo bye`, save: `ls -l run.sh` still shows
+    `-rwxr-xr-x`, and `./run.sh` prints `hi` and `bye`. Pick `link.md`, add a line, save:
+    `ls -l link.md` still shows `-> docs/samples/markdown-sample.md`, and
+    `tail -1 docs/samples/markdown-sample.md` is the new line. In the rendering of
+    `markdown-sample.md` click `남은 할 일`: `grep -n '할 일' docs/samples/markdown-sample.md`
+    shows `- [x] 남은 할 일`.
+61. Conflict. Edit `main.js` without saving, run `echo '// outside' >> main.js` in the
+    terminal, and press cmd+S at once: the status says `외부에서 바뀌었어요` (the save was
+    refused, or the 3-second check found it first), and `tail -1 main.js` is `// outside`.
+    Click `덮어쓰기`: the status goes, and `grep -c '// outside' main.js` prints `0`.
+62. Permission. Pick `ro/locked.md`, edit, cmd+S: `쓰기 권한이 없어요` in red, `저장` and the
+    edit stay. Pick `readonly.md`, edit, cmd+S: the same `쓰기 권한이 없어요` in red, `저장`
+    and the edit stay, and `cat readonly.md` still prints `read only` (Watch out, `test -w`).
+63. New tab. Edit `markdown-sample.md` without saving, click `새 탭으로 열기`: a tab right
+    after the current one, in the same remote space, with the edit and `편집됨`, no
+    `원래 앱으로 열기` or `Finder에서 보기`, and the picture drawn. Click in the tab, then
+    cmd+S: `tail` in the terminal shows the edit.
+64. `>_`. In `code-sample.md`, click `>_` on a `Shell` card: a notification
+    `터미널에 넣지 못했습니다` with `다른 기계의 셸에는 넣을 수 없습니다. 복사 버튼으로 붙여
+    넣으세요.`, and no pane opens and nothing is typed. The copy button still copies.
+65. Out of reach, only with a way to cut that machine off that you choose (its network off,
+    say); otherwise note it as not checked. Edit `main.js` without saving and cut it: the
+    editor and the edit stay, and within a few seconds the status says
+    `<machine> 기계에 연결할 수 없어요` in red with the save button; cmd+S keeps it, and
+    `cmd-o` in that space shows `<machine> 기계에 연결할 수 없어요.` Reconnect: within a few
+    seconds the status is `편집됨` again, and cmd+S saves. Show
+    `markdown-sample.md` with nothing unsaved and cut it again: within a few seconds the
+    viewer shows `<machine> 기계에 연결할 수 없어요.` Reconnect: the document comes back by
+    itself within a few seconds.
+66. `herdr-app status` reports no mod error. Clean up that machine and check it is gone:
+
+    ```sh
+    hc exec --on "$m" sh -c 'chmod 755 "$1/ro"; rm -rf "$1"' sh /tmp/side-viewer-remote
+    hc exec --on "$m" ls /tmp/side-viewer-remote   # No such file or directory
+    ```
+
 ### Giving the extensions back
 
-48. `router --restore` announces its windows, and exactly that many follow; pick the original
+67. `router --restore` announces its windows, and exactly that many follow; pick the original
     app in each (the button that names the other app, not the router). `바뀜` lists only
     extensions that left the router; any that stay are under `라우터에 남음`, and
     `router --status` then shows the router for those and no others. An extension the

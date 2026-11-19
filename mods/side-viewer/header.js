@@ -3,11 +3,14 @@
 //
 // header: {
 //   file,         the shown file, or null
+//   home,         the home folder of the file's machine, which the folder shows as `~`; null
+//                 shortens nothing
 //   canGoBack,    whether there is a file to go back to
 //   state,        this.content.state of the viewer
 //   raw,          whether the markdown or svg view shows the source
 //   status,       what the shown file's edits read, or null without edits (edit-state.js statusOf):
 //                 { kind: "edited" | "failed" | "conflict", message, tip, buttons }
+//   remote,       whether the file is on another machine: no original app and no Finder then
 //   tr,           the viewer's translator for the buttons' words (i18n.js)
 //   onBack, onToggleRaw, onSave, onDiscard, onOverwrite, onNewTab, onOriginal, onFinder: (cx) => void
 // }
@@ -16,13 +19,13 @@
 // switch, then the actions (new tab, original app, Finder). Each part is one line of renderHeader.
 import { div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { home } from "herdr";
 import { labelOf } from "./document.js";
 import { switchable, opensInTab } from "./views.js";
+import { headerActions } from "./machine.js";
 
 export function renderHeader(t, header) {
   const { file, canGoBack, state, status } = header;
-  const label = file ? labelOf(file, home()) : { name: "Side Viewer", folder: "" };
+  const label = file ? labelOf(file, header.home) : { name: "Side Viewer", folder: "" };
   return h_flex().h(40).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border)
     .when(canGoBack, (el) => el.child(renderBack(t, header)))
     .child(div().min_w(0).truncate().text_size(13).font_semibold().child(label.name))
@@ -32,7 +35,7 @@ export function renderHeader(t, header) {
     .when(Boolean(file && status), (el) => el.child(renderStatus(t, header)))
     // The switch belongs to a drawn markdown document or svg, not to a notice about one.
     .when(switchable(state), (el) => el.child(renderSwitch(t, header)))
-    .when(Boolean(file), (el) => el.child(renderActions(t, header, opensInTab(state))));
+    .when(Boolean(file), (el) => el.child(renderActions(t, header, headerActions({ remote: header.remote === true, newTab: opensInTab(state) }))));
 }
 
 // Back, drawn only while there is a file to go back to.
@@ -86,14 +89,18 @@ function renderCell(t, id, label, selected, onToggleRaw) {
     .child(label);
 }
 
-// "Open in a new tab" (`newTab`: only over drawn content, views.js opensInTab), "Open in the
-// original app" and "Show in Finder".
-function renderActions(t, { tr, onNewTab, onOriginal, onFinder }, newTab) {
+// "Open in a new tab", "Open in the original app" and "Show in Finder", those of `actions`
+// (machine.js headerActions) that apply.
+function renderActions(t, { tr, onNewTab, onOriginal, onFinder }, actions) {
   return h_flex().flex_none().gap(2)
-    .when(newTab, (el) => el.child(renderButton(t, "side-viewer-new-tab", "new-tab", tr("header.newTab"), (_event, cx) => onNewTab(cx))))
-    .child(renderButton(t, "side-viewer-original", "original", tr("header.original"), (_event, cx) => onOriginal(cx)))
-    .child(renderButton(t, "side-viewer-finder", "finder", tr("header.finder"), (_event, cx) => onFinder(cx)));
+    .children(actions.map((action) => ACTIONS[action](t, { tr, onNewTab, onOriginal, onFinder })));
 }
+
+const ACTIONS = {
+  newTab: (t, { tr, onNewTab }) => renderButton(t, "side-viewer-new-tab", "new-tab", tr("header.newTab"), (_event, cx) => onNewTab(cx)),
+  original: (t, { tr, onOriginal }) => renderButton(t, "side-viewer-original", "original", tr("header.original"), (_event, cx) => onOriginal(cx)),
+  finder: (t, { tr, onFinder }) => renderButton(t, "side-viewer-finder", "finder", tr("header.finder"), (_event, cx) => onFinder(cx)),
+};
 
 function renderButton(t, id, icon, label, onClick) {
   return h_flex().id(id).flex_none().size(24).items_center().justify_center().rounded(4)

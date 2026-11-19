@@ -6,7 +6,8 @@
 // A file without an entry shows what is on disk. An entry may also carry `bar`, what is wrong
 // with the edits, which the header's status shows in place of 편집됨 (statusOf):
 // { kind: "conflict", disk } when the disk now holds `disk` instead, or
-// { kind: "failed", reason, detail? } when a save failed or the file was deleted. The name
+// { kind: "failed", reason, detail?, machine? } when a save failed or the file was deleted
+// (`machine`: the machine a remote save could not reach). The name
 // `bar` stays because entries travel to new viewer tabs in the handoff file (takeEdit).
 import { wordsOf } from "./i18n.js";
 
@@ -60,8 +61,12 @@ export function diskRead(edits, file, text) {
   // The disk caught up with the edit, as when the viewer's own save is read back.
   if (text === entry.text) return { edits: without(edits, file), step: "show" };
   // The disk is back to the text the edit started from: a `bar` about the disk (changed or
-  // deleted) goes, a failed save's `bar` stays, since nothing has been saved since.
-  if (text === entry.disk) return { edits: holds(entry) ? withBar(edits, file, null) : edits, step: "keep" };
+  // deleted) goes, and so does a save that could not reach the machine, which this read just
+  // reached. Any other failed save's `bar` stays, since nothing has been saved since.
+  if (text === entry.disk) {
+    const goes = holds(entry) || entry.bar?.reason === "unreachable";
+    return { edits: goes ? withBar(edits, file, null) : edits, step: "keep" };
+  }
   const bar = text === null ? { kind: "failed", reason: "deleted" } : { kind: "conflict", disk: text };
   return { edits: withBar(edits, file, bar), step: "keep" };
 }
@@ -105,13 +110,24 @@ export function refusalOf(error) {
   return "other";
 }
 
-// A save of `file` was refused for a reason other than a change on disk: the edits stay,
-// and the header's status says why.
-export function saveFailed(edits, file, error) {
-  if (!file || !edits[file]) return edits;
+// A refusal of writeTextFile other than "changed" as the failure of a write (writeFailed):
+// { reason: "permission" | "large" } or { reason: "other", detail } with Herdr's own wording.
+export function refusalFailureOf(error) {
   const reason = refusalOf(error);
-  const bar = { kind: "failed", reason, ...(reason === "other" ? { detail: messageOf(error) } : {}) };
-  return withBar(edits, file, bar);
+  return reason === "permission" || reason === "large" ? { reason } : { reason: "other", detail: messageOf(error) };
+}
+
+// A save of `file` to the machine `machine` (null: this Mac) failed: `failure` is
+// { reason, detail? }, from remote-results.js saveFailureOf on another machine or
+// refusalFailureOf here. The edits stay, and the header's status says why, the machine being
+// out of reach among the reasons. A file that changed or went away is not a failure: its read
+// goes to diskRead.
+export function writeFailed(edits, file, failure, machine) {
+  if (!file || !edits[file]) return edits;
+  const reason = failure?.reason;
+  if (reason === "unreachable") return withBar(edits, file, { kind: "failed", reason, machine });
+  if (reason === "permission" || reason === "large") return withBar(edits, file, { kind: "failed", reason });
+  return withBar(edits, file, { kind: "failed", reason: "other", detail: failure?.detail });
 }
 
 // Handing `file`'s edits to a new viewer tab, as { edits, edit }: `edit` is the file's entry,
@@ -149,6 +165,7 @@ export function barOf(edits, file, tr) {
   if (!bar) return null;
   const words = wordsOf(tr);
   if (bar.kind === "conflict") return { kind: bar.kind, message: words(MESSAGES.conflict) };
+  if (bar.reason === "unreachable") return { kind: bar.kind, message: words("header.unreachable", { machine: bar.machine }) };
   if (typeof MESSAGES[bar.reason] === "string" && bar.reason !== "other") return { kind: bar.kind, message: words(MESSAGES[bar.reason]) };
   return { kind: bar.kind, message: words(MESSAGES.other), detail: bar.detail };
 }
@@ -158,8 +175,15 @@ export function barOf(edits, file, tr) {
 // message, which a narrow header may cut, or Herdr's wording for an unknown failure.
 // `buttons`: ["save"], or ["discard", "overwrite"] for a conflict, where saving would only
 // be refused again. Words in tr's language (i18n.js).
-export function statusOf(edits, file, tr) {
+// `away`: the name of the file's machine while it cannot be reached, else null. The edits
+// stay, and the status says so over anything else, with the save button, until the machine
+// is back.
+export function statusOf(edits, file, tr, away = null) {
   if (!unsaved(edits, file)) return null;
+  if (away) {
+    const message = wordsOf(tr)("header.unreachable", { machine: away });
+    return { kind: "failed", message, tip: message, buttons: ["save"] };
+  }
   const problem = barOf(edits, file, tr);
   if (!problem) {
     const edited = wordsOf(tr)("header.edited");

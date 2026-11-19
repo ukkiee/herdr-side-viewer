@@ -74,6 +74,18 @@ test("a part that words a sentence, called without a translator, throws instead 
   assert.equal(noticeFor("empty", translator("ko")), "이 파일은 비어 있습니다.");
 });
 
+test("the path picker's status lines are the spec's sentences in Korean and are English otherwise", () => {
+  const ko = translator("ko"), en = translator("en");
+  // Searching, no candidates, the focus not on a conversation.
+  assert.equal(ko("picker.finding"), "찾는 중");
+  assert.equal(ko("picker.none"), "이 대화에 열 수 있는 파일 경로가 없어요");
+  assert.equal(ko("picker.elsewhere"), "대화 터미널을 누른 뒤 다시 눌러 주세요");
+  for (const key of ["picker.finding", "picker.none", "picker.elsewhere"]) {
+    assert.notEqual(en(key), key);
+    assert.doesNotMatch(en(key), /[가-힣]/);
+  }
+});
+
 // Every message table in the folder, found rather than listed.
 const here = path.dirname(fileURLToPath(import.meta.url));
 const tableFiles = fs.readdirSync(here).filter((name) => /^messages-[a-z0-9-]+\.js$/.test(name)).sort();

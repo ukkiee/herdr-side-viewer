@@ -11,10 +11,39 @@ import assert from "node:assert/strict";
 const here = dirname(fileURLToPath(import.meta.url));
 const HERDR_FRONT = "/Users/someone/Applications/Herdr.app";
 
-// Stands in for herdr-app: logs one argument per line and an empty line after each call, then
-// answers as the scene says. `side-viewer.show` wakes the scene's showing viewers before it
-// answers, unless the scene keeps them asleep for the test to wake.
+// The space of this Mac that has focus in the scenes, and a remote one on the machine
+// mac-box, in the shape `herdr-app ls` shows them.
+const SPACE = "spfcbfd8b278fa8d8e02972c005e05b6ea";
+const REMOTE_SPACE = "mac-box/spa386c8aedeec27b60120366586cddf4b";
+
+// What `herdr-app status` prints, with the focused space put in.
+const status = (space) => `{
+  "zoom": 1.0,
+  "font_size": 12.0,
+  "ui_font_size": 13.0,
+  "space": ${JSON.stringify(space)},
+  "tab": "tbca4cf9795325cd722ebb026fd1dc3d96",
+  "focused_pane": "p23db72f74892a7f5384d6d59c613df75",
+  "layout": "main-git",
+  "agent": "t2s5",
+  "floats": {},
+  "overlays": [],
+  "errors": []
+}
+`;
+
+// Stands in for herdr-app. `status` answers with the scene's status (a space of this Mac by
+// default) and is counted apart from the commands. A command logs one argument per line and
+// an empty line after each call, then answers as the scene says. `side-viewer.show` wakes the
+// scene's showing viewers before it answers, unless the scene keeps them asleep for the test
+// to wake.
 const FAKE_HERDR = `#!/bin/sh
+if [ "$1" = status ]; then
+  echo status >> "$FAKE_STATE/status.log"
+  [ -e "$FAKE_STATE/status-sleep" ] && sleep "$(cat "$FAKE_STATE/status-sleep")"
+  cat "$FAKE_STATE/status-out"
+  exit "$(cat "$FAKE_STATE/status-exit" 2>/dev/null || echo 0)"
+fi
 { for a in "$@"; do printf '%s\\n' "$a"; done; echo; } >> "$FAKE_STATE/herdr.log"
 if [ "$2" = side-viewer.show ] && [ -e "$FAKE_STATE/viewers" ] && [ ! -e "$FAKE_STATE/viewers-asleep" ]; then
   "$FAKE_NODE" "$FAKE_STATE/viewers.mjs"
@@ -67,6 +96,7 @@ function world({ herdr = true, installed = true, record } = {}) {
     chmodSync(herdrApp, 0o755);
   }
   if (record) writeFileSync(join(data, "original-apps.tsv"), record);
+  writeFileSync(join(state, "status-out"), status(SPACE));
   const env = {
     PATH: `${bin}:/usr/bin:/bin`,
     FAKE_STATE: state,
@@ -86,6 +116,14 @@ function world({ herdr = true, installed = true, record } = {}) {
       writeFileSync(join(state, "herdr-exit"), String(code));
     },
     herdrHangs: (seconds) => writeFileSync(join(state, "herdr-sleep"), String(seconds)),
+    // What `herdr-app status` prints and how it exits.
+    statusSays: (out, code = 0) => {
+      writeFileSync(join(state, "status-out"), out);
+      writeFileSync(join(state, "status-exit"), String(code));
+    },
+    statusHangs: (seconds) => writeFileSync(join(state, "status-sleep"), String(seconds)),
+    // How many times `herdr-app status` was asked.
+    statusAsked: () => lines("status.log").length,
     // Side viewers showing in the current tab. `asleep` ones are not woken by the show command,
     // only by wakeViewers(), so a scene can wake them after open.sh has finished.
     viewersShowing: (count = 1, { asleep = false } = {}) => {
@@ -123,7 +161,7 @@ test("with Herdr in front, the file opens in a side viewer pane split to the rig
   const w = world();
   const r = w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(w.splitArgs(), ["do", "pane.split", "--direction", "right", "--mod", "side-viewer", "--props", '{"file":"/work/notes/plan.md"}']);
+  assert.deepEqual(w.splitArgs(), ["do", "pane.split", "--direction", "right", "--mod", "side-viewer", "--props", `{"file":"/work/notes/plan.md","space":"${SPACE}"}`]);
   assert.deepEqual(w.openArgs(), []);
 });
 
@@ -294,7 +332,7 @@ test("a path with spaces, quotes, a backslash and Korean reaches the viewer and 
   w.open(file, HERDR_FRONT);
   const args = w.splitArgs();
   assert.equal(args.length, 8);
-  assert.deepEqual(JSON.parse(args[7]), { file });
+  assert.deepEqual(JSON.parse(args[7]), { file, space: SPACE });
 
   const showing = world();
   showing.viewersShowing();
@@ -311,4 +349,60 @@ test("with no app known to be in front, the file goes to its original app", () =
   w.open("/work/notes/plan.md", "");
   assert.deepEqual(w.openArgs(), ["-b", "com.apple.TextEdit", "/work/notes/plan.md"]);
   assert.deepEqual(w.herdrCalls(), []);
+});
+
+test("with a remote space in focus, the file goes to its original app and no viewer opens", () => {
+  const w = world({ record: "md\tcom.example.Notes\n" });
+  w.viewersShowing();
+  w.statusSays(status(REMOTE_SPACE));
+  const r = w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(w.openArgs(), ["-b", "com.example.Notes", "/work/notes/plan.md"]);
+  assert.deepEqual(w.herdrCalls(), []);
+  assert.deepEqual(w.shownInViewer(), []);
+});
+
+test("when Herdr's status cannot be read, the file goes to its original app", () => {
+  for (const [out, code] of [
+    ["herdr-app: no Herdr window at /x/herdr-app.sock: No such file or directory (os error 2)\n", 2],
+    [status(SPACE), 1],
+    ['{ "zoom": 1.0, "errors": [] }\n', 0],
+    ["", 0],
+  ]) {
+    const w = world();
+    w.statusSays(out, code);
+    const r = w.open("/work/notes/plan.md", HERDR_FRONT);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(w.openArgs(), ["-b", "com.apple.TextEdit", "/work/notes/plan.md"], out);
+    assert.deepEqual(w.herdrCalls(), [], out);
+  }
+});
+
+test("when Herdr's status does not come in time, the file goes to its original app", () => {
+  const w = world();
+  w.statusHangs(5);
+  const started = Date.now();
+  const r = w.open("/work/notes/plan.md", HERDR_FRONT, { SIDE_VIEWER_TIMEOUT: "1" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(Date.now() - started < 4000, "gave up before herdr-app finished");
+  assert.deepEqual(w.openArgs(), ["-b", "com.apple.TextEdit", "/work/notes/plan.md"]);
+  assert.deepEqual(w.herdrCalls(), []);
+});
+
+test("errors from files and mods in Herdr's status do not stop the viewer from opening", () => {
+  const w = world();
+  w.statusSays(status(SPACE).replace('"errors": []', '"errors": ["mods/other/main.js: error: boom"]'));
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.ok(w.splitArgs());
+  assert.deepEqual(w.openArgs(), []);
+});
+
+test("a new pane and a waiting request both carry the focused space", () => {
+  const w = world();
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.equal(w.statusAsked(), 1);
+  assert.deepEqual(JSON.parse(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE });
+  const request = JSON.parse(readFileSync(join(w.env.SIDE_VIEWER_DATA, "request.json"), "utf8"));
+  assert.equal(request.space, SPACE);
+  assert.equal(request.file, "/work/notes/plan.md");
 });

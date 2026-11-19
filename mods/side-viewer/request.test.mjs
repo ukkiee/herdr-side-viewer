@@ -72,6 +72,63 @@ test("a request without a time is ignored", () => {
   assert.equal(requestFrom(text({ id: "a1", file: "/a.md", at: "soon" }), fresh), null);
 });
 
+// Spaces as spaces() gives them: two of this Mac's, bare, and a
+// remote one with its `<machine>/` prefix. A viewer's space value is the id without it.
+const HERE = "spfcbfd8b278fa8d8e02972c005e05b6ea";
+const OTHER_HERE = "sp9f0a3f5d62c03718f911c1c8acd35d53";
+const REMOTE = "spa386c8aedeec27b60120366586cddf4b";
+const SPACES = [
+  { id: HERE, machine: null, name: "work", tabs: [] },
+  { id: OTHER_HERE, machine: null, name: "home", tabs: [] },
+  { id: `mac-box/${REMOTE}`, machine: "mac-box", name: "imac", tabs: [] },
+];
+const asked = (space) => text({ id: "a1", file: "/a.md", at: AT, ...(space === undefined ? {} : { space }) });
+const viewerIn = (space) => ({ ...fresh, space, spaces: SPACES });
+const TAKEN = { id: "a1", file: "/a.md" };
+
+test("a viewer takes a request for its own space and leaves one for another space", () => {
+  assert.deepEqual(requestFrom(asked(HERE), viewerIn(HERE)), TAKEN);
+  assert.deepEqual(requestFrom(asked(REMOTE), viewerIn(REMOTE)), TAKEN);
+  assert.equal(requestFrom(asked(OTHER_HERE), viewerIn(HERE)), null);
+  assert.equal(requestFrom(asked(HERE), viewerIn(REMOTE)), null);
+  assert.equal(requestFrom(asked(REMOTE), viewerIn(HERE)), null);
+});
+
+test("a request without a space value is for this Mac, so a remote space's viewer leaves it", () => {
+  assert.deepEqual(requestFrom(asked(undefined), viewerIn(HERE)), TAKEN);
+  assert.deepEqual(requestFrom(asked(null), viewerIn(HERE)), TAKEN);
+  assert.deepEqual(requestFrom(asked(undefined), viewerIn(null)), TAKEN);
+  assert.equal(requestFrom(asked(undefined), viewerIn(REMOTE)), null);
+});
+
+test("a viewer opened without a space value is on this Mac, so it leaves a remote space's request", () => {
+  assert.deepEqual(requestFrom(asked(HERE), viewerIn(null)), TAKEN);
+  assert.deepEqual(requestFrom(asked(HERE), viewerIn(undefined)), TAKEN);
+  assert.equal(requestFrom(asked(REMOTE), viewerIn(null)), null);
+});
+
+test("a viewer whose space is not listed yet leaves a request without a space value", () => {
+  // As after a restart, before Herdr lists a remote space: the viewer's space may be another
+  // machine's, so a request for this Mac is not its to take.
+  const UNLISTED = "sp0d6a4b1e9c7f2a3b5d8e0f1a2b3c4d5e";
+  assert.equal(requestFrom(asked(undefined), viewerIn(UNLISTED)), null);
+  assert.equal(requestFrom(asked(null), viewerIn(UNLISTED)), null);
+  // A request for its own space is still its own.
+  assert.deepEqual(requestFrom(asked(UNLISTED), viewerIn(UNLISTED)), TAKEN);
+});
+
+test("a request whose space value is no text is ignored", () => {
+  for (const space of [7, {}, ["x"]]) assert.equal(requestFrom(asked(space), viewerIn(HERE)), null, String(space));
+});
+
+test("a viewer takes its own space's request from the data folder, and leaves another's unanswered", async () => {
+  const data = folder({ "/data/request.json": asked(HERE) });
+  assert.equal(await takeRequest(data.files, { ...here, space: REMOTE, spaces: SPACES }), null);
+  assert.equal(data.held.has("/data/answer-a1"), false);
+  assert.deepEqual(await takeRequest(data.files, { ...here, space: HERE, spaces: SPACES }), TAKEN);
+  assert.ok(data.held.has("/data/answer-a1"));
+});
+
 // A data folder in memory. `create` refuses a name that is taken, as the real one does.
 function folder(files = {}) {
   const held = new Map(Object.entries(files));

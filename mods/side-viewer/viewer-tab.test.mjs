@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab, unplacedNotice } from "./viewer-tab.js";
 import { translator } from "./i18n.js";
+import { machineOf } from "./machine.js";
 
 const NOW = 1_800_000_000_000;
 const FILE = "/work/notes/plan.md";
@@ -42,6 +43,20 @@ test("a handoff for another tab is not taken", () => {
 test("a viewer tab's props name its file and its handoff, and say it is a viewer tab", () => {
   assert.deepEqual(viewerTabOf(tabProps({ file: FILE, handoff: "a1" })), { file: FILE, handoff: "a1" });
   assert.deepEqual(viewerTabOf(tabProps({ file: FILE, handoff: null })), { file: FILE, handoff: null });
+});
+
+test("a viewer tab opened from a remote space's viewer reads from the same machine", () => {
+  const spaces = [{ id: "sp1", machine: null, tabs: [] }, { id: "linux-box/sp2", machine: "linux-box", tabs: [] }];
+  for (const handoff of ["a1", null]) {
+    const props = tabProps({ file: "/home/me/a.md", handoff, space: "sp2" });
+    assert.equal(props.space, "sp2");
+    assert.deepEqual(machineOf(props, spaces), { machine: "linux-box", remote: true });
+  }
+});
+
+test("a viewer tab opened from a viewer without a space value has none either", () => {
+  assert.equal("space" in tabProps({ file: FILE, handoff: null, space: null }), false);
+  assert.equal("space" in tabProps({ file: FILE, handoff: "a1" }), false);
 });
 
 test("the props of a viewer beside a conversation are not a viewer tab's", () => {

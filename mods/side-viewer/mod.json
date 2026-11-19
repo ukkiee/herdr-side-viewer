@@ -1,1 +1,1 @@
-{ "place": "none", "title": "Side Viewer", "focusable": true }
+{ "place": "none", "title": "Side Viewer", "focusable": true, "overlay": { "kind": "popup", "at": "top", "offset": 0, "width": 1, "height": 1, "frame": "none" } }
