@@ -212,7 +212,8 @@ export function zshOf(stdout) {
 // a conversation, that conversation terminal's live folder: the viewer was split off it, so it
 // is a terminal pane in the viewer's own tab, an agent's before a plain shell's, and never the
 // shell this viewer opened. Home when there is none.
-//   viewer: the viewer's pane id or null; panes: herdr panes(); shell: { pane, terminal } or null
+//   viewer: the viewer's pane id or null; panes: herdr panes(); shell: { pane, terminal } or null;
+//   home: the home folder of the viewer's machine, another machine's when the shell opens there
 export function shellFolder({ viewerTab, file, viewer, panes, shell, home }) {
   if (viewerTab) {
     if (!file) return home;
