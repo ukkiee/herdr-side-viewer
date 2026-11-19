@@ -952,9 +952,11 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
       `herdr-app do pane.split --direction right --mod side-viewer --props '{"file":"/etc/hosts"}'`
       shows `The viewer can't open this kind of file.`;
     - in `docs/samples/code-sample.md` the card labels are still `Shell`, `JavaScript` and
-      so on. Run `sleep 30` in the shell pane and click `>_`: the notification reads
-      `Not inserted into the terminal` and
-      `Another program (sleep) is running in the shell. Press again when it ends.`, whole.
+      so on. Run `sleep 30` in the shell pane and click `>_`: the notification's title
+      `Not inserted into the terminal` shows whole. Its body is
+      `Another program (sleep) is running in the shell. Press again when it ends.`, which
+      Herdr draws on one line and may cut with `…` at the notification's width; on screen
+      it starts `Another program (sleep) is running in the shell.`.
 46. Korean again, and the router. Put Korean first again and open a new viewer: every
     viewer turns Korean, with the words quoted in the steps above. Quit Herdr and open it
     again: the viewers come back in Korean (a moment of English first is the gap in Watch
