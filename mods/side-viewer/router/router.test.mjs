@@ -228,6 +228,36 @@ test("make-default says, right before each request, which window it is, its exte
   assert.equal(w.requests().length, 4);
 });
 
+test("make-default shows - for an extension that has no default app yet", () => {
+  const w = world({ extensions: { markdown: ["md", "mdx"], image: [], code: [] }, defaults: { md: "com.example.Notes" } });
+  w.name(ROUTER_ID, "Side Viewer Router");
+  const r = w.takeover("make-default");
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.stdout.split("\n").filter((line) => line.startsWith("확인 창 ")), [
+    "확인 창 1/2: md (지금 com.example.Notes → Side Viewer Router)",
+    "확인 창 2/2: mdx (지금 - → Side Viewer Router)",
+  ]);
+});
+
+test("restore says, right before each request, which window it is and the original app it goes back to", () => {
+  const w = world({ extensions: { markdown: ["md"], image: ["png", "jpg", "jpeg"], code: [] }, defaults: { md: ROUTER_ID, png: ROUTER_ID, jpg: ROUTER_ID }, sameType: { jpeg: "jpg" }, record: "md\tcom.example.Notes\npng\tcom.apple.Preview\njpg\tcom.apple.Preview\njpeg\tcom.apple.Preview\n" });
+  w.name("com.example.Notes", "Notes");
+  w.name("com.apple.Preview", "미리보기");
+  w.name(ROUTER_ID, "Side Viewer Router");
+  w.keep("png");
+  const r = w.takeover("restore");
+  assert.equal(r.status, 3);
+  assert.equal(
+    r.stdout,
+    "macOS 확인 창이 3번 뜹니다. 창마다 원래 앱으로 바꾸는 쪽을 고르세요.\n" +
+      "확인 창 1/3: md (지금 Side Viewer Router → Notes)\n" +
+      "확인 창 2/3: png (지금 Side Viewer Router → 미리보기)\n" +
+      "확인 창 3/3: jpg jpeg (지금 Side Viewer Router → 미리보기)\n" +
+      "바뀜: md jpg jpeg\n유지를 선택함: png\n",
+  );
+  assert.equal(r.stderr, "");
+});
+
 test("make-default code takes html over with its siblings in one confirmation window, and restore gives them back in one", () => {
   // The shipped list. macOS files html, htm, shtml and shtm under one type (public.html).
   const extensions = JSON.parse(readFileSync(join(here, "..", "extensions.json"), "utf8"));
