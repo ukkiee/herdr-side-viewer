@@ -7,8 +7,9 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { insertFileOf, insertFolderOf, handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
+import { insertFileOf, insertFolderOf, handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, cutOff, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
 import { translator } from "./i18n.js";
+import { en as alertsEn, ko as alertsKo } from "./messages-alerts.js";
 
 // The notices as a Korean system shows them.
 const ko = translator("ko");
@@ -202,17 +203,65 @@ test("a prepare line that has not taken the handoff file in time sends no key, s
   });
 });
 
-test("the notices for a shell that did not take the command and for another machine's shell", () => {
+test("the notice for a shell that did not take the command", () => {
   assert.deepEqual(noticeOf({ state: "unprepared" }, ko), {
     title: "터미널에 넣지 못했습니다",
     body: "셸이 명령을 받지 않았습니다(exec zsh 등으로 다시 시작됨). 입력 칸에 ;7~가 남았다면 지우고 다시 누르세요.",
     level: "error",
   });
-  assert.deepEqual(noticeOf({ state: "remote" }, ko), {
+});
+
+test("there is no notice refusing another machine's shell any more", () => {
+  assert.ok(!Object.keys(alertsEn).includes("alerts.remote"));
+  assert.ok(!Object.keys(alertsKo).includes("alerts.remote"));
+});
+
+test("no zsh on that machine: the notice says so and points to the copy button", () => {
+  assert.deepEqual(noticeOf({ state: "noZsh" }, ko), {
     title: "터미널에 넣지 못했습니다",
-    body: "다른 기계의 셸에는 넣을 수 없습니다. 복사 버튼으로 붙여 넣으세요.",
+    body: "그 기계에 zsh가 없어 넣을 수 없습니다. 복사 버튼으로 붙여 넣으세요.",
     level: "error",
   });
+  assert.deepEqual(noticeOf({ state: "noZsh" }, translator("en")), {
+    title: "Couldn't insert into the terminal",
+    body: "There's no zsh on that machine, so it can't be inserted. Use the copy button and paste it.",
+    level: "error",
+  });
+});
+
+test("a machine that can't be reached: the notice names it, in the viewer's words", () => {
+  assert.deepEqual(noticeOf({ state: "unreachable", machine: "nuc-pro" }, ko), {
+    title: "터미널에 넣지 못했습니다",
+    body: "nuc-pro 기계에 연결할 수 없어요",
+    level: "error",
+  });
+  assert.deepEqual(noticeOf({ state: "unreachable", machine: "nuc-pro" }, translator("en")), {
+    title: "Couldn't insert into the terminal",
+    body: "Can't reach the machine nuc-pro",
+    level: "error",
+  });
+});
+
+// Herdr's machines(), with nuc-pro cut off.
+const OFFLINE = [{ name: null, layout: "ready" }, { name: "imac-i7", layout: "ready" }, { name: "nuc-pro", layout: "unavailable" }];
+
+test("a machine Herdr lists as unavailable is cut off before anything is sent", () => {
+  assert.equal(cutOff({ machine: "nuc-pro", machines: OFFLINE }), true);
+  assert.equal(cutOff({ machine: "imac-i7", machines: OFFLINE }), false);
+  assert.equal(cutOff({ machine: null, machines: OFFLINE }), false);
+});
+
+test("a remote command refused for the connection means the machine is cut off; any other refusal does not", () => {
+  // Herdr's words for exec (herdr.d.ts), and hc machine ls's `why` for a machine it lost.
+  assert.equal(cutOff({ machine: "nuc-pro", failure: new Error("`herdr.exec`: the machine is unreachable") }), true);
+  assert.equal(cutOff({ machine: "nuc-pro", failure: new Error("cannot reach mac-m1-max: ssh: connect to host 100.90.90.10 port 22: Operation timed out") }), true);
+  // A nonzero hc answer, its JSON error on stderr.
+  const answer = (message) => ({ code: 1, stdout: "", stderr: JSON.stringify({ error: { kind: "x", message } }) });
+  assert.equal(cutOff({ machine: "nuc-pro", failure: answer("request timed out after 10000 ms") }), true);
+  assert.equal(cutOff({ machine: "nuc-pro", failure: answer("unknown machine \"no-such-machine\"") }), false);
+  assert.equal(cutOff({ machine: "nuc-pro", failure: { code: 1, stdout: "", stderr: "sh: 1: cannot create /x: Permission denied" } }), false);
+  // This Mac's own failures are never a lost connection.
+  assert.equal(cutOff({ machine: null, failure: new Error("the machine is unreachable") }), false);
 });
 
 test("a busy shell gets nothing, only a notice", () => {
@@ -270,7 +319,6 @@ test("the notices in English, the program's name kept as it is", () => {
     level: "error",
   });
   assert.deepEqual(noticeOf({ state: "unready" }, en), { title: failed, body: "The shell isn't ready for commands yet. Press again in a moment.", level: "error" });
-  assert.deepEqual(noticeOf({ state: "remote" }, en), { title: failed, body: "Can't insert into a shell on another machine. Use the copy button and paste it.", level: "error" });
   assert.deepEqual(noticeOf({ state: "failed" }, en), { title: failed, body: "Couldn't open or find the shell pane.", level: "error" });
   // The plan and the press word their notices in the language they are given, and throw without one.
   const busy = { state: "busy", program: "sleep" };

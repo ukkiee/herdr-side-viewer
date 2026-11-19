@@ -8,6 +8,7 @@
 // press that key. No line is left to run, nothing stays on screen, and a draft is pushed
 // aside in any keymap.
 import { wordsOf } from "./i18n.js";
+import { saveFailureOf, unavailable } from "./remote-results.js";
 
 // The folder that holds the handoff files, under the app's folder `app` (appHome()).
 export const insertFolderOf = (app) => `${app}/data/side-viewer/shell`;
@@ -225,9 +226,20 @@ export function shellFolder({ viewerTab, file, viewer, panes, shell, home }) {
   return conversation?.cwd ?? home;
 }
 
+// Whether machine `machine` (null: this Mac, never cut off) can't be reached now: Herdr's
+// machines() lists it unavailable, or `failure` says so. `failure` is a rejection of exec or
+// readTextFile, or a nonzero answer { code, stdout, stderr } of a command run there or of an
+// `hc` command for its terminal; remote-results.js reads both. Any other failure is not the
+// connection's.
+export function cutOff({ machine, machines = [], failure = null }) {
+  if (machine == null) return false;
+  if (unavailable(machines, machine)) return true;
+  return failure != null && saveFailureOf(failure).reason === "unreachable";
+}
+
 // The notification (herdr notify) for a line that was not put in, in tr's language (i18n.js).
 //   reason: { state: "busy", program } | { state: "unprepared" } | { state: "unready" }
-//     | { state: "remote" } | { state: "failed" }
+//     | { state: "noZsh" } | { state: "unreachable", machine } | { state: "failed" }
 export function noticeOf(reason, tr) {
   const words = wordsOf(tr);
   if (reason.state === "busy") {
@@ -236,6 +248,7 @@ export function noticeOf(reason, tr) {
   const title = words("alerts.insertFailed");
   if (reason.state === "unprepared") return { title, body: words("alerts.unprepared"), level: "error" };
   if (reason.state === "unready") return { title, body: words("alerts.unready"), level: "error" };
-  if (reason.state === "remote") return { title, body: words("alerts.remote"), level: "error" };
+  if (reason.state === "noZsh") return { title, body: words("alerts.noZsh"), level: "error" };
+  if (reason.state === "unreachable") return { title, body: words("alerts.unreachable", { machine: reason.machine }), level: "error" };
   return { title, body: words("alerts.failed"), level: "error" };
 }
