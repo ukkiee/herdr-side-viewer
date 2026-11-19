@@ -1140,8 +1140,9 @@ echo 'docs/samples/code-sample.md:12 and `box.svg`'
       on one line and may cut with `…` at the notification's width; on screen it starts
       `셸에서 다른 프로그램(sleep)이 실행 중입니다.`. Nothing is typed. When `sleep` ends,
       click `>_` again: the command goes into the same pane;
-    - type `echo draft` without Enter, click `>_`: the input line holds the command; clear
-      it (ctrl+U) and press Enter on the empty line: `echo draft` comes back;
+    - clear the line (ctrl+U), type `echo draft` without Enter, click `>_`: the input line
+      holds the command; clear it (ctrl+U) and press Enter on the empty line: `echo draft`
+      comes back;
     - clear the line and run `ls -la ~/.cache/side-viewer/shell/` in that shell: the folder
       is `drwx------` and holds no file. On this Mac
       `ls ~/.config/herdr-app/data/side-viewer/shell/` lists no file starting with
@@ -1158,13 +1159,18 @@ echo 'docs/samples/code-sample.md:12 and `box.svg`'
     `markdown-sample.md` with nothing unsaved and cut it again: within a few seconds the
     viewer shows `<machine> 기계에 연결할 수 없어요.` Reconnect: the document comes back by
     itself within a few seconds.
-66. `herdr-app status` reports no mod error. Clean up that machine and check it is gone:
+66. `herdr-app status` reports no mod error. Clean up that machine and check it is gone.
+    The handoff files go only for the shells 64 opened (their terminals as `hc ls` shows
+    them, `<machine>/t…`); the folders go only when nothing else is left in them:
 
     ```sh
     hc exec --on "$m" sh -c 'chmod 755 "$1/ro"; rm -rf "$1"' sh /tmp/side-viewer-remote
     hc exec --on "$m" ls /tmp/side-viewer-remote   # No such file or directory
-    hc exec --on "$m" sh -c 'rm -rf "$HOME/.cache/side-viewer"'
-    hc exec --on "$m" sh -c 'ls "$HOME/.cache/side-viewer"'   # No such file or directory
+    for t in <shell terminal> <new tab's shell terminal>; do
+      hc exec --on "$m" sh -c 'rm -f -- "$HOME/.cache/side-viewer/shell/$1.txt"' sh "$(printf %s "$t" | tr -c 'A-Za-z0-9_-' _)"
+    done
+    hc exec --on "$m" sh -c 'cd "$HOME/.cache" && rmdir side-viewer/shell side-viewer 2>/dev/null; ls -A side-viewer/shell'
+    # No such file or directory, or only other terminals' files
     ```
 
 ### Giving the extensions back
