@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { insertFileOf, insertFolderOf, handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, cutOff, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf, stateOfGet, handoffLook } from "./terminal-insert.js";
+import { insertFileOf, insertFolderOf, handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, cutOff, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf, stateOfGet, handoffLook, handoffTaken } from "./terminal-insert.js";
 import { translator } from "./i18n.js";
 import { en as alertsEn, ko as alertsKo } from "./messages-alerts.js";
 
@@ -305,6 +305,49 @@ test("a look at the handoff file: gone is taken, still there is left, a read ref
   // Any other refusal, and every refusal here, counts as taken.
   assert.equal(handoffLook({ machine: "nuc-pro", failure: new Error("file too large") }), "taken");
   assert.equal(handoffLook({ machine: null, failure: new Error("the machine is unreachable") }), "taken");
+});
+
+// handoffTaken on a clock that moves only when a look takes `readMs` or a sleep runs. `looks`
+// gives each look's answer in turn, the last one repeated. Returns what it said and when.
+async function timed({ wait, step, readMs, looks = ["left"] }) {
+  let clock = 0;
+  let n = 0;
+  const said = await handoffTaken({
+    look: async () => {
+      clock += readMs;
+      return looks[Math.min(n++, looks.length - 1)];
+    },
+    sleep: async (ms) => {
+      clock += ms;
+    },
+    now: () => clock,
+    wait,
+    step,
+  });
+  return { said, at: clock };
+}
+
+test("a file left on another machine is given up once the wait is over by the clock, however long each read takes", async () => {
+  const { key, prepare, step } = waitsOf("nuc-pro");
+  // 100 ms a read there, as a slow link gives.
+  const keyed = await timed({ wait: key, step, readMs: 100 });
+  assert.equal(keyed.said, "left");
+  assert.ok(keyed.at >= 1500 && keyed.at <= 1600, `gave up at ${keyed.at} ms`);
+  const prepared = await timed({ wait: prepare, step, readMs: 100 });
+  assert.equal(prepared.said, "left");
+  assert.ok(prepared.at >= 5000 && prepared.at <= 5100, `gave up at ${prepared.at} ms`);
+});
+
+test("a file left here is given up after 0.5 s after the key and 3 s after the prepare line", async () => {
+  const { key, prepare, step } = waitsOf(null);
+  assert.deepEqual(await timed({ wait: key, step, readMs: 0 }), { said: "left", at: 500 });
+  assert.deepEqual(await timed({ wait: prepare, step, readMs: 0 }), { said: "left", at: 3000 });
+});
+
+test("the wait ends at the first look that finds the file taken, or a look refused for the connection", async () => {
+  const { key, step } = waitsOf("nuc-pro");
+  assert.deepEqual(await timed({ wait: key, step, readMs: 100, looks: ["left", "left", "taken"] }), { said: "taken", at: 500 });
+  assert.deepEqual(await timed({ wait: key, step, readMs: 100, looks: ["left", "unreachable"] }), { said: "unreachable", at: 300 });
 });
 
 test("a busy shell gets nothing, only a notice", () => {

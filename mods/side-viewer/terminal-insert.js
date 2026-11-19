@@ -166,6 +166,21 @@ export function handoffLook({ machine, text = null, failure = null }) {
   return text == null ? "taken" : "left";
 }
 
+// Looks at the handoff file until it is taken or `wait` ms have passed on the clock `now`
+// (Date.now), a look every `step` ms or less: "taken", "left", or "unreachable" (handoffLook).
+// The time a look takes counts, so a slow link does not stretch the wait; the last sleep is cut
+// so the last look falls at the end of the wait.
+//   look(): Promise of one handoffLook; sleep(ms): Promise that resolves after `ms`
+export async function handoffTaken({ look, sleep, now, wait, step }) {
+  const started = now();
+  for (;;) {
+    const seen = await look();
+    const rest = wait - (now() - started);
+    if (seen !== "left" || rest <= 0) return seen;
+    await sleep(Math.min(step, rest));
+  }
+}
+
 const MOD = "side-viewer";
 const ZSH = "/bin/zsh";
 

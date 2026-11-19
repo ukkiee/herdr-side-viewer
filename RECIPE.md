@@ -307,8 +307,9 @@ The mod shows files, not agents, so it has no agent statuses.
   another pid or argv in the same pane, or one that left an earlier file, is prepared again
   after `hc keys <terminal> alt+q`. Then the viewer waits for the file to go (500 ms after
   the key, 3 s after the prepare line, looking every 50 ms; for a shell on another machine
-  1500 ms, 5000 ms and every 100 ms, each look a file read there). A file still there is
-  removed (`rm -f` on its machine),
+  1500 ms, 5000 ms and every 100 ms, each look a file read there; the waits are clock time,
+  the reads included). A file still there is removed (`rm -f` on its machine, also when an
+  `hc` command after the write fails),
   the zsh is forgotten, and a notification says `터미널에 넣지 못했습니다` with, after the key,
   `셸이 명령을 받지 않았습니다(exec zsh 등으로 다시 시작됨). 입력 칸에 ;7~가 남았다면 지우고
   다시 누르세요.`, or after the prepare line (no key was sent) `셸이 아직 명령을 받을 준비가

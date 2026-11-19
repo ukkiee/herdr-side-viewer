@@ -6,7 +6,7 @@
 // The shell is on the viewer's machine: a split of a viewer in another machine's space opens
 // it there, so the handoff file, the zsh and the home are that machine's (file-access.js).
 import { hc, run, panes, focused, props, appHome, notify, machines, writeTextFile } from "herdr";
-import { handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, insertText, insertPlan, pressOutcome, waitsOf, machineOfAddress, cutOff, stateOfGet, handoffLook, noticeOf, viewerPaneOf, liveShell, openedShell, splitOf, shellFolder } from "./terminal-insert.js";
+import { handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, insertText, insertPlan, pressOutcome, waitsOf, machineOfAddress, cutOff, stateOfGet, handoffLook, handoffTaken, noticeOf, viewerPaneOf, liveShell, openedShell, splitOf, shellFolder } from "./terminal-insert.js";
 import { accessOf } from "./file-access.js";
 
 // How long a new pane may take to show up in panes(), and a new shell to reach its prompt.
@@ -125,6 +125,7 @@ export class ShellPane {
   // in) or presses the key, waits for the file to be taken, then gives the shell pane the
   // keyboard so Enter runs it. A file still there means that zsh did not take it: it is
   // removed, so it cannot turn up at a later prompt, and the next press prepares the shell.
+  // A failed step after the write removes it too, as far as the machine can still be reached.
   // The file is on the shell's machine, read, written and removed through `access`.
   //   state: the shell's ready state (shellState), remembered once the shell took a command.
   //   trouble(failure): the notice for a failed step, the connection's or not.
@@ -135,13 +136,17 @@ export class ShellPane {
     if (plan.notice) return plan.notice;
     const written = await this.write(access, folder, file, insertText(command));
     if (written !== true) return trouble(written);
-    for (const args of plan.commands) {
-      const result = await hc(args);
-      if (result.code !== 0) return trouble(result);
-    }
     const waits = waitsOf(access.machine);
-    const look = await this.untaken(access, file, plan.wait, waits.step, cx);
-    if (look !== "taken") await access.run("rm", ["-f", "--", file]).catch(() => null);
+    let look = "left";
+    try {
+      for (const args of plan.commands) {
+        const result = await hc(args);
+        if (result.code !== 0) return trouble(result);
+      }
+      look = await this.untaken(access, file, plan.wait, waits.step, cx);
+    } finally {
+      if (look !== "taken") await access.run("rm", ["-f", "--", file]).catch(() => null);
+    }
     if (look === "unreachable") return noticeOf({ state: "unreachable", machine: access.machine }, tr);
     const outcome = pressOutcome({ left: look === "left", state, keyed: plan.wait === waits.key, tr });
     shell.prepared = outcome.prepared;
@@ -150,15 +155,17 @@ export class ShellPane {
     return null;
   }
 
-  // Whether the handoff file was taken within `wait` ms, looking every `step` ms: "taken",
-  // "left", or "unreachable" when a look was refused for the connection (handoffLook).
-  async untaken(access, file, wait, step, cx) {
+  // Whether the handoff file was taken within `wait` ms of the clock, looking every `step` ms:
+  // "taken", "left", or "unreachable" when a look was refused for the connection (handoffTaken).
+  untaken(access, file, wait, step, cx) {
     const { machine } = access;
-    for (let waited = 0; ; waited += step) {
-      const look = handoffLook(await access.read(file).then((text) => ({ machine, text }), (failure) => ({ machine, failure })));
-      if (look !== "left" || waited >= wait) return look;
-      await cx.sleep(step);
-    }
+    return handoffTaken({
+      look: () => access.read(file).then((text) => handoffLook({ machine, text }), (failure) => handoffLook({ machine, failure })),
+      sleep: (ms) => cx.sleep(ms),
+      now: () => Date.now(),
+      wait,
+      step,
+    });
   }
 
   // Writes `text` to the handoff file, whether or not an earlier one is still there: true, or
