@@ -431,12 +431,16 @@ test("no zsh there: no login answer and none of the four paths", () => {
 });
 
 test("the zsh lookup answers with the login shell's zsh only when it is a program file", () => {
-  // Run here with a PATH whose zsh is a folder, and one whose zsh is a program.
+  // Run here with PATH only `bin`, from the folder `cwd`, after `profile` (what a login profile
+  // may have set up).
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "find-zsh-"));
   try {
-    const run = (bin) => execFileSync("/bin/sh", ["-c", FIND_ZSH, "sh"], { encoding: "utf8", env: { PATH: bin } });
-    fs.mkdirSync(path.join(scratch, "a/zsh"), { recursive: true });
-    assert.match(run(path.join(scratch, "a")), /^login \n/);
+    const run = (bin, profile = "") =>
+      execFileSync("/bin/sh", ["-c", `${profile}${FIND_ZSH}`, "sh"], { encoding: "utf8", cwd: scratch, env: { PATH: bin } });
+    // A profile's zsh function: `command -v` answers with the bare name, which here is a folder.
+    fs.mkdirSync(path.join(scratch, "zsh"));
+    fs.mkdirSync(path.join(scratch, "a"));
+    assert.match(run(path.join(scratch, "a"), "zsh() { :; }; "), /^login \n/);
     fs.mkdirSync(path.join(scratch, "b"));
     fs.writeFileSync(path.join(scratch, "b/zsh"), "#!/bin/sh\n", { mode: 0o755 });
     assert.match(run(path.join(scratch, "b")), new RegExp(`^login ${scratch}/b/zsh\n`));
