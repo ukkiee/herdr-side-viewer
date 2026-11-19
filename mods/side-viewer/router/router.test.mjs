@@ -2,7 +2,7 @@
 // and a throwaway data folder, and build.sh against a compiler that fails. Nothing here
 // touches the real default apps or the real router app.
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,7 +19,8 @@ const ROUTER_ID = "test.side-viewer-router";
 // `only-<ext>` gives one extension a default app of its own inside a shared file type, and
 // `gone` lists the bundle ids of apps that are no longer installed. `name-<id>` holds the
 // display name `--app-name` answers; without it the answer is an empty line, as for an app
-// macOS cannot find.
+// macOS cannot find. Each request also logs the last line takeover.sh had printed by then
+// (`stdout`, where takeover() sends its output), so a line's place among the requests shows.
 const FAKE_ROUTER = `#!/bin/sh
 key() { cat "$FAKE_STATE/type-$1" 2>/dev/null || printf '%s' "$1"; }
 case "$1" in
@@ -27,7 +28,10 @@ case "$1" in
   --app-name) cat "$FAKE_STATE/name-$2" 2>/dev/null || echo; exit 0 ;;
   --type-of) printf 'type.%s\\n' "$(key "$2")"; exit 0 ;;
   --set-default-app)
-    [ -e "$FAKE_STATE/quiet" ] || printf '%s %s\\n' "$2" "$3" >> "$FAKE_STATE/requests.log"
+    [ -e "$FAKE_STATE/quiet" ] || {
+      printf '%s %s\\n' "$2" "$3" >> "$FAKE_STATE/requests.log"
+      printf '%s\\n' "$(tail -n 1 "$FAKE_STATE/stdout" 2>/dev/null)" >> "$FAKE_STATE/before.log"
+    }
     [ -e "$FAKE_STATE/keep-$2" ] && { echo "The file couldn't be opened." >&2; exit 1; }
     [ -e "$FAKE_STATE/fail-$2" ] && exit "$(cat "$FAKE_STATE/fail-$2")"
     grep -qx "$3" "$FAKE_STATE/gone" 2>/dev/null && exit 3
@@ -93,9 +97,21 @@ function world({ extensions, defaults = {}, sameType = {}, record, languages = K
     defaultOf: (ext) => execFileSync(join(dir, "router"), ["--default-app", ext], { env, encoding: "utf8" }).trim(),
     record: () => (existsSync(recordFile) ? readFileSync(recordFile, "utf8") : ""),
     dataFiles: () => readdirSync(data).sort(),
-    takeover: (...args) => spawnSync("/bin/sh", [join(here, "takeover.sh"), ...args], { env, encoding: "utf8" }),
+    // Its output goes to a file as it is printed, which the fake router reads at each request.
+    takeover: (...args) => {
+      const out = join(state, "stdout");
+      const fd = openSync(out, "w");
+      try {
+        const r = spawnSync("/bin/sh", [join(here, "takeover.sh"), ...args], { env, encoding: "utf8", stdio: ["pipe", fd, "pipe"] });
+        return { ...r, stdout: readFileSync(out, "utf8") };
+      } finally {
+        closeSync(fd);
+      }
+    },
     // The confirmation windows asked for: one line per request sent to macOS.
     requests: () => (existsSync(join(state, "requests.log")) ? readFileSync(join(state, "requests.log"), "utf8").trim().split("\n") : []),
+    // For each request, in order, the last line printed before it was sent.
+    linesBefore: () => (existsSync(join(state, "before.log")) ? readFileSync(join(state, "before.log"), "utf8").replace(/\n$/, "").split("\n") : []),
     keep: (ext) => writeFileSync(join(state, `keep-${ext}`), ""),
     fail: (ext, code) => writeFileSync(join(state, `fail-${ext}`), String(code)),
     only: (ext, id) => writeFileSync(join(state, `only-${ext}`), `${id}\n`),
@@ -226,6 +242,12 @@ test("make-default says, right before each request, which window it is, its exte
       "바뀜: png jpg jpeg txt py\n",
   );
   assert.equal(w.requests().length, 4);
+  assert.deepEqual(w.linesBefore(), [
+    "확인 창 1/4: png (지금 미리보기 → Side Viewer Router)",
+    "확인 창 2/4: jpg jpeg (지금 미리보기 → Side Viewer Router)",
+    "확인 창 3/4: txt (지금 텍스트 편집기 → Side Viewer Router)",
+    "확인 창 4/4: py (지금 텍스트 편집기 → Side Viewer Router)",
+  ]);
 });
 
 test("make-default shows - for an extension that has no default app yet", () => {
@@ -256,6 +278,11 @@ test("restore says, right before each request, which window it is and the origin
       "바뀜: md jpg jpeg\n유지를 선택함: png\n",
   );
   assert.equal(r.stderr, "");
+  assert.deepEqual(w.linesBefore(), [
+    "확인 창 1/3: md (지금 Side Viewer Router → Notes)",
+    "확인 창 2/3: png (지금 Side Viewer Router → 미리보기)",
+    "확인 창 3/3: jpg jpeg (지금 Side Viewer Router → 미리보기)",
+  ]);
 });
 
 test("make-default code takes html over with its siblings in one confirmation window, and restore gives them back in one", () => {
@@ -421,7 +448,7 @@ test("restore asks for TextEdit or Preview when the recorded app is no longer in
   assert.match(r.stdout, /^md: 원래 앱 com\.example\.Gone 이 없어 com\.apple\.TextEdit 으로 돌립니다\.$/m);
   assert.deepEqual(w.requests(), ["md com.example.Gone", "md com.apple.TextEdit", "png com.example.Gone", "png com.apple.Preview"]);
   // Every request is preceded by its window line; the second request for a type keeps its i.
-  assert.deepEqual(r.stdout.split("\n").filter((line) => line.startsWith("확인 창 ")), [
+  assert.deepEqual(w.linesBefore(), [
     `확인 창 1/2: md (지금 ${ROUTER_ID} → com.example.Gone)`,
     `확인 창 1/2: md (지금 ${ROUTER_ID} → com.apple.TextEdit)`,
     `확인 창 2/2: png (지금 ${ROUTER_ID} → com.example.Gone)`,
