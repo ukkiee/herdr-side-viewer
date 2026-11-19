@@ -3,7 +3,11 @@
 // shell is too busy to take it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { insertFileOf, insertFolderOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { insertFileOf, insertFolderOf, handoffOf, HANDOFF_THERE, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
 import { translator } from "./i18n.js";
 
 // The notices as a Korean system shows them.
@@ -30,6 +34,39 @@ test("each shell has its own handoff file in the app's data folder", () => {
   assert.equal(insertFileOf(APP, "t7"), FILE);
   assert.equal(insertFileOf(APP, "mini/t12"), `${APP}/data/side-viewer/shell/mini_t12.txt`);
   assert.equal(insertFolderOf(APP), `${APP}/data/side-viewer/shell`);
+});
+
+test("a shell here uses the data folder's handoff file; a shell on another machine one in that machine's ~/.cache", () => {
+  assert.deepEqual(handoffOf({ terminal: "t7", app: APP, home: HOME }), { folder: `${APP}/data/side-viewer/shell`, file: FILE });
+  assert.deepEqual(handoffOf({ terminal: "nuc-pro/t1kb", app: APP, home: "/home/me" }), {
+    folder: "/home/me/.cache/side-viewer/shell",
+    file: "/home/me/.cache/side-viewer/shell/nuc-pro_t1kb.txt",
+  });
+});
+
+// HANDOFF_THERE as the other machine's sh runs it, here in a scratch folder.
+function handOff(folder, file, text) {
+  return execFileSync("sh", ["-c", HANDOFF_THERE, "sh", folder, file, text], { encoding: "utf8" });
+}
+
+test("the command that writes the handoff file there makes the folder the owner's only and writes the text as it is", () => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "handoff-"));
+  try {
+    const folder = path.join(scratch, ".cache/side-viewer/shell");
+    const file = path.join(folder, "nuc-pro_t1kb.txt");
+    const text = "echo 'q' \"a b\" | wc -c; printf '%s\\n' 한글 $HOME `pwd` a\\nb\n  -n second line";
+    handOff(folder, file, text);
+    assert.equal(fs.readFileSync(file, "utf8"), text);
+    assert.equal(fs.statSync(folder).mode & 0o777, 0o700);
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    // An earlier press's file, and a folder someone opened up, are written over.
+    fs.chmodSync(folder, 0o755);
+    handOff(folder, file, "-n");
+    assert.equal(fs.readFileSync(file, "utf8"), "-n");
+    assert.equal(fs.statSync(folder).mode & 0o777, 0o700);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 });
 
 // The prepare line for the handoff file `file` as zsh quotes it: the widget, its key in every

@@ -15,7 +15,23 @@ export const insertFolderOf = (app) => `${app}/data/side-viewer/shell`;
 // The handoff file of terminal `terminal`. One per terminal, so two viewers' shells never share
 // one; a remote address's "/" would make a subfolder.
 export const insertFileOf = (app, terminal) =>
-  `${insertFolderOf(app)}/${terminal.replace(/[^A-Za-z0-9_-]/g, "_")}.txt`;
+  `${insertFolderOf(app)}/${safeName(terminal)}.txt`;
+const safeName = (terminal) => terminal.replace(/[^A-Za-z0-9_-]/g, "_");
+
+// The handoff folder and file, { folder, file }, for the shell at hc address `terminal`. A zsh
+// reads the file on its own machine: here the app's data folder (`app`, appHome()), on another
+// machine `.cache/side-viewer/shell` in its home (`home`, that machine's home folder).
+export function handoffOf({ terminal, app, home }) {
+  if (!isRemote(terminal)) return { folder: insertFolderOf(app), file: insertFileOf(app, terminal) };
+  const folder = `${home}/.cache/side-viewer/shell`;
+  return { folder, file: `${folder}/${safeName(terminal)}.txt` };
+}
+
+// Run on the other machine as `sh -c HANDOFF_THERE sh <folder> <file> <text>`: the handoff file
+// written in one command, its folder readable by the owner alone, since the file holds what the
+// person is about to run. writeTextFile has no `on`, so the text goes as an argument; a code
+// block stays under Linux's 128 KiB limit for one. An earlier file is written over.
+export const HANDOFF_THERE = 'umask 077; mkdir -p "$1" && chmod 700 "$1" && printf %s "$3" > "$2"';
 
 // The key the widget is bound to: one `hc keys` can press (it names keys up to F12) that zsh
 // and terminal programs leave unbound. It reaches zsh as "\e[24;7~".
