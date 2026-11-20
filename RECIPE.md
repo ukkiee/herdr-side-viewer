@@ -510,8 +510,8 @@ The mod shows files, not agents, so it has no agent statuses.
   `focused_pane` when it is a plain id, else left out) into the data folder, runs
   `herdr-app do side-viewer.show`, waits 8 × 0.05 s for the viewer's `answer-<id>` file,
   and otherwise runs `herdr-app do pane.split --direction right --mod side-viewer --props
-  '{"file":"…","space":"…","at":<unix seconds>,"conversation":"…"}'` (`conversation` left out
-  the same way). Answer files older than a minute are deleted on the next run.
+  '{"file":"…","space":"…","id":"…","conversation":"…"}'` (`id` the request's id,
+  `conversation` left out the same way). Answer files older than a minute are deleted on the next run.
 - `mods/side-viewer/router/`: `main.swift` (the app: receives files, reads and sets one
   default app at a time), `takeover.sh` (make-default, restore, status; `system_lang` picks
   the language and `say` holds every line it prints in both), `open-original.sh`,
