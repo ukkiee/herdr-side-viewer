@@ -1,5 +1,5 @@
 // Side viewer: shows one file in a pane beside the conversation. open.sh opens it with
-// `pane.split {direction: "right", mod: "side-viewer", props: {file, space?, conversation?}}`.
+// `pane.split {direction: "right", mod: "side-viewer", props: {file, space?, at, conversation?}}`.
 // This file holds the viewer's state and most of its talk with Herdr: reading, saving,
 // taking requests from open.sh, watching and viewer tabs. The shown file is read on the
 // machine of the viewer's space (machine.js) through file-access.js. Two parts that keep their
@@ -40,8 +40,8 @@ import { MarkdownImages } from "./markdown-image-loader.js";
 import { LANGS, translator, systemLang, askAgainAfter } from "./i18n.js";
 import { machineOf } from "./machine.js";
 import { accessOf } from "./file-access.js";
-import { openTargetOf } from "./path-picker.js";
-import { CONVERSATIONS_KEY, rememberConversation, forgetConversation } from "./sent-conversation.js";
+import { openTargetOf, pickedRequest, pickedSplit } from "./path-picker.js";
+import { CONVERSATIONS_KEY, rememberConversation, forgetConversation, openedConversation } from "./sent-conversation.js";
 import { viewerPaneOf } from "./terminal-insert.js";
 import { PathPicker } from "./picker-view.js";
 
@@ -138,9 +138,10 @@ export default class SideViewer extends View {
     // The space value its opener gave (machine.js), which never changes. Without one the
     // viewer is on this Mac.
     this.space = props()?.space ?? given?.space ?? null;
-    // A viewer split off a conversation names it (open.sh, the path picker).
-    const sent = props()?.conversation ?? given?.conversation;
-    if (typeof sent === "string" && sent) this.keepSent(sent);
+    // A viewer split off a conversation names it (open.sh, the path picker). Only the copy
+    // started right after that split takes it (sent-conversation.js openedConversation).
+    const sent = openedConversation({ ...given, ...props() }, { now: Date.now(), spaces: spaces() });
+    if (sent) this.keepSent(sent);
     // A viewer tab starts with an empty history, as every new copy does: back only returns
     // to files opened in this tab.
     this.show(given?.file ?? props()?.file, cx);
@@ -323,7 +324,7 @@ export default class SideViewer extends View {
   openPicked({ file, conversation, space }, cx) {
     const split = () => {
       closeOverlay(props().overlay);
-      run("pane.split", { pane: conversation, direction: "right", mod: "side-viewer", props: { file, space, conversation } });
+      run("pane.split", pickedSplit({ file, space, conversation, at: Math.floor(Date.now() / 1000) }));
     };
     if (openTargetOf({ conversation, panes: panes() }).split) return split();
     cx.spawn(async (cx) => {
@@ -334,7 +335,7 @@ export default class SideViewer extends View {
       try {
         const request = `${folder}/${REQUEST_FILE}`;
         const before = await readTextFile(request).catch(() => null);
-        await writeTextFile(request, `${JSON.stringify({ id, file, at, space, conversation })}\n`, before);
+        await writeTextFile(request, `${JSON.stringify(pickedRequest({ id, file, at, space, conversation }))}\n`, before);
         run("side-viewer.show");
         for (let tries = 8; tries > 0; tries--) {
           await cx.sleep(50);

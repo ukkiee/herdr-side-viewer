@@ -24,6 +24,7 @@
 import { viewOf } from "./views.js";
 import { failureOf } from "./remote-results.js";
 import { sentConversation } from "./sent-conversation.js";
+import { spaceValue } from "./machine.js";
 
 // How many candidates go to the existence check at most. False ones ("Next.js", a path that
 // was only mentioned) drop out there, so this is larger than what the picker shows.
@@ -164,6 +165,21 @@ export function openTargetOf({ conversation, panes }) {
   const zoomed = inTab.find((p) => p.zoomed);
   const viewer = inTab.find((p) => p.mod === MOD && (!zoomed || zoomed === p));
   return viewer ? { viewer: viewer.pane } : { split: { pane: conversation, direction: "right" } };
+}
+
+// The request a pick writes for a side viewer showing in the conversation's tab (request.js).
+// Only viewers on this screen read it, so the conversation keeps its address here.
+//   conversation: the conversation's pane id; space: its space value (machine.js); at: unix seconds
+export function pickedRequest({ id, file, at, space, conversation }) {
+  return { id, file, at, space, conversation };
+}
+
+// The pane.split a pick asks for when no side viewer shows in the conversation's tab. Mod props
+// are stored as given, and a machine may have another name on another screen (ADR 0002), so the
+// props keep the conversation's id without its machine prefix, as the space value does, and
+// `at` for the viewer to tell its opening from a later restart (sent-conversation.js).
+export function pickedSplit({ file, space, conversation, at }) {
+  return { pane: conversation, direction: "right", mod: MOD, props: { file, space, conversation: spaceValue(conversation), at } };
 }
 
 // The paths written in one line, in order. A code span with spaces is also tried whole, for

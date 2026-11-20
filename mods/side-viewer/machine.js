@@ -31,6 +31,20 @@ export function machineOf(props, spaces) {
   return { machine, remote: machine !== null };
 }
 
+// The address on this screen of `value`, a pane id the viewer whose props are `props` keeps
+// without its machine prefix (spaceValue does the same to pane ids): this Mac's as it is, a
+// remote one under the prefix this screen gives that machine, which the viewer's space id
+// shows. Null when `value` is none or the space is not listed yet.
+//   spaces: Herdr's spaces()
+export function addressOf(value, props, spaces) {
+  if (typeof value !== "string" || !value) return null;
+  const space = props?.space;
+  if (typeof space !== "string" || !space) return value;
+  const listed = (spaces ?? []).find((s) => s.id === space || s.id.endsWith(`/${space}`));
+  if (!listed) return null;
+  return `${listed.id.slice(0, listed.id.length - space.length)}${value}`;
+}
+
 // Run as `sh -c EXISTS sh <path>...` on the machine. It answers with the 1-based places of
 // the paths that are files (symbolic links followed), one per line, so no path has to be
 // printed back, whatever characters it holds.
