@@ -358,3 +358,29 @@ for (const [name, conversation, kept] of [["B's request", "p2", "p2"], ["a reque
     if (conversation) assert.deepEqual(shellAndPicker(again.conversations, T_PANES), { shell: "/work/b", picker: "p2" });
   });
 }
+
+for (const [name, conversation, kept] of [["B's request", "p2", "p2"], ["a request that names none", null, undefined]]) {
+  test(`an opening whose first start saw no panes gets T when the same copy takes ${name} with A showing, which then outlives more closed tabs than are kept`, () => {
+    const first = restart({ conversations: undefined, openings: undefined }, { panes: [], focused: null });
+    assert.deepEqual(first.openings, [{ id: "1800000000-41", tab: null }]);
+    const requested = sent(first, conversation, T_PANES);
+    assert.deepEqual(requested.openings, [{ id: "1800000000-41", tab: "tab1" }]);
+    assert.equal(requested.conversations.tab1, kept);
+    const crowded = openTemporaryTabs(requested, OPENINGS_KEPT + 2, T_PANES);
+    const again = restart(crowded, { panes: T_PANES, focused: { tab: "tab1", pane: "p3" } });
+    assert.equal(again.conversations.tab1, kept);
+    if (conversation) assert.deepEqual(shellAndPicker(again.conversations, T_PANES), { shell: "/work/b", picker: "p2" });
+  });
+}
+
+test("a copy whose opening is still without a tab fills it on the first request that sees A, only that opening, and not again", () => {
+  const others = [{ id: "1700000000-1", tab: null }];
+  const first = restart({ conversations: {}, openings: others }, { panes: [], focused: null });
+  const unseen = sent(first, "p2", [modPane("p3", "tab1"), terminalPane("p2", "tab1", "t2", "/work/b")]);
+  assert.deepEqual(unseen.openings, [...others, { id: "1800000000-41", tab: null }]);
+  const seen = sent(unseen, "p2", T_PANES);
+  assert.deepEqual(seen.openings, [...others, { id: "1800000000-41", tab: "tab1" }]);
+  assert.deepEqual(seen.conversations, { tab1: "p2" });
+  const moved = [terminalPane("p1", "tab2", "t1", "/work/a"), ...T_PANES.slice(1)];
+  assert.deepEqual(sent(seen, "p2", moved).openings, seen.openings);
+});

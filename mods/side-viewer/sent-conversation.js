@@ -3,7 +3,7 @@
 //
 // Herdr's shared state keeps it under CONVERSATIONS_KEY as { <tab id>: <pane id> }. A viewer
 // writes it when it takes a request that names its conversation, or first starts with an
-// opening that names one (takeOpening), and takes its tab out on a request or an opening
+// opening that names one (afterRequest, afterStart), and takes its tab out on a request or an opening
 // without one. The shell pane's folder (terminal-insert.js shellFolder) and the path picker's
 // conversation (path-picker.js conversationOf) follow it while that pane is still a terminal
 // in the tab, and fall back to the tab's first agent terminal otherwise.
@@ -15,12 +15,13 @@ import { viewerPaneOf } from "./terminal-insert.js";
 export const CONVERSATIONS_KEY = "side-viewer.conversations";
 
 // The openings viewers took, latest last, under OPENINGS_KEY, each as { id, tab }: the tab
-// whose memory it changed, or null while that tab is not known; a later start of the same
-// opening fills it in once it is sure (takeOpening). A copy starts again with the same
-// props when a mod file is saved, when the app restarts and its tab shows, and first starts
-// when its tab first shows, which may be long after the split. Only the first start of an
-// opening may change the memory: a later one would put back a conversation that requests
-// since replaced or took out.
+// whose memory it changed, or null while that tab is not known; it is filled in with the tab
+// of the conversation the opening named, once panes() lists that pane, on a later start of
+// the same opening (takeOpening) or on a request the same copy takes (afterRequest). A copy
+// starts again with the same props when a mod file is saved, when the app restarts and its
+// tab shows, and first starts when its tab first shows, which may be long after the split.
+// Only the first start of an opening may change the memory: a later one would put back a
+// conversation that requests since replaced or took out.
 export const OPENINGS_KEY = "side-viewer.openings";
 
 // How many openings of tabs panes() does not list, or of no tab, are kept. An opening pushed
@@ -38,8 +39,8 @@ const OPENING_ID = /^[A-Za-z0-9_-]+$/;
 // addressOf). An id not taken yet is added to the openings; its conversation is remembered
 // for its tab (nothing when the space or the pane is not listed), and an opening without one
 // forgets the viewer's tab (forgottenTabOf). An id already taken changes no memory; if it was
-// kept with no tab, it gets the tab once that is sure (sureTabOf), so it is kept like any
-// opening of a tab on screen. Props without an id, an older router's or a viewer tab's, change
+// kept with no tab, it gets its conversation's tab once panes() lists that pane (sureTabOf),
+// so it is kept like any opening of a tab on screen. Props without an id, an older router's or a viewer tab's, change
 // nothing.
 //   conversations: shared(CONVERSATIONS_KEY); openings: shared(OPENINGS_KEY); spaces: Herdr's
 //   spaces(); panes: herdr panes(); viewer: the viewer's pane id or null; focused: herdr focused()
@@ -66,18 +67,26 @@ export function takeOpening({ conversations, openings, props, spaces, panes, vie
 }
 
 // What a copy's start does to the shared state, from Herdr's own values: { conversations,
-// openings }, as takeOpening decides for the opening in its props.
+// openings, unfilled }, as takeOpening decides for the opening in its props. `unfilled` is that
+// opening, { id, conversation, space } as its props name them, while it is kept with no tab and
+// names a conversation; else null. The copy keeps it and hands it to afterRequest, so the tab is
+// filled as soon as a request shows the conversation, without waiting for another start.
 //   given: the props init got; props: herdr props(); focused: herdr focused(); panes: herdr
 //   panes(); spaces: herdr spaces(); conversations, openings: the two shared values
 export function afterStart({ given, props, focused, panes, spaces, conversations, openings }) {
+  const opening = { ...given, ...props };
   const viewer = viewerPaneOf({ props, focused, panes });
-  const after = takeOpening({ conversations, openings, props: { ...given, ...props }, spaces, panes, viewer, focused });
-  return { conversations: after.conversations, openings: after.openings, unfilled: null };
+  const after = takeOpening({ conversations, openings, props: opening, spaces, panes, viewer, focused });
+  const tabless = openingsOf(after.openings).some((o) => o.id === opening.id && o.tab === null);
+  const unfilled = tabless && typeof opening.conversation === "string" ? { id: opening.id, conversation: opening.conversation, space: opening.space } : null;
+  return { conversations: after.conversations, openings: after.openings, unfilled };
 }
 
 // What a request from `conversation` (null: one that names none) does to the shared state, from
 // Herdr's own values: { conversations, openings, unfilled }. Its conversation is remembered for
-// its tab, or the viewer's tab forgotten (forgottenTabOf).
+// its tab, or the viewer's tab forgotten (forgottenTabOf). The copy's `unfilled` opening
+// (afterStart) gets the tab of the conversation its props named once panes() lists it, and is
+// then dropped; that conversation is not remembered again.
 export function afterRequest({ conversation, unfilled, props, focused, panes, spaces, conversations, openings }) {
   let after;
   if (conversation) {
@@ -86,7 +95,13 @@ export function afterRequest({ conversation, unfilled, props, focused, panes, sp
     const viewer = viewerPaneOf({ props, focused, panes });
     after = forgetConversation(conversations, forgottenTabOf({ viewer, focused, panes }), panes);
   }
-  return { conversations: after, openings, unfilled };
+  if (!unfilled) return { conversations: after, openings, unfilled: null };
+  const tab = sureTabOf({ props: unfilled, spaces, panes });
+  if (!tab) return { conversations: after, openings, unfilled };
+  const taken = openingsOf(openings);
+  if (!taken.some((o) => o.id === unfilled.id && o.tab === null)) return { conversations: after, openings, unfilled: null };
+  const filled = taken.map((o) => (o.id === unfilled.id && o.tab === null ? { id: o.id, tab } : o));
+  return { conversations: after, openings: filled, unfilled: null };
 }
 
 // The tab of the conversation an opening's `props` name, as panes() lists it; else null. A

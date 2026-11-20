@@ -303,8 +303,9 @@ export default class SideViewer extends View {
 
   // The sent conversation (sent-conversation.js afterRequest): `conversation`, the pane that
   // sent this viewer a file, is remembered for its tab; null, a request that names none, takes
-  // this viewer's tab out. Setting shared state draws every mod again, so each value is set
-  // only when it changes.
+  // this viewer's tab out. This copy's opening still kept with no tab (this.unfilled) gets the
+  // tab of the conversation its props named once that pane shows. Setting shared state draws
+  // every mod again, so each value is set only when it changes.
   keepSent(conversation) {
     const conversations = shared(CONVERSATIONS_KEY);
     const openings = shared(OPENINGS_KEY);
@@ -315,7 +316,8 @@ export default class SideViewer extends View {
   }
 
   // The opening in this copy's props, taken on its first start only (sent-conversation.js
-  // afterStart): its conversation remembered for the tab, or the viewer's tab forgotten.
+  // afterStart): its conversation remembered for the tab, or the viewer's tab forgotten. An
+  // opening left with no tab is kept in this.unfilled for the requests this copy takes.
   takeOpened(given) {
     const conversations = shared(CONVERSATIONS_KEY);
     const openings = shared(OPENINGS_KEY);
