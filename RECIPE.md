@@ -766,7 +766,7 @@ Limits and assumptions:
 
 Each step is one check, done by hand in the app; nothing drives the Herdr window. The
 words on screen and the command output are as a Korean screen shows them (macOS's first
-preferred language Korean); steps 45 and 46 check English. Step 67 gives the extensions
+preferred language Korean); steps 45 and 46 check English. Step 68 gives the extensions
 back, so it comes last.
 
 ### Install, router and viewing
@@ -1196,10 +1196,10 @@ echo 'docs/samples/code-sample.md:12 and `box.svg`'
 
 ### Shell pane keymaps
 
-Step 68 is in a space on this Mac, in the shell pane below the side viewer beside the
+Step 67 is in a space on this Mac, in the shell pane below the side viewer beside the
 conversation (step 35).
 
-68. A new zsh is prepared by the keymap of the one prepared before it. Clear the line
+67. A new zsh is prepared by the keymap of the one prepared before it. Clear the line
     (ctrl+C) here and below.
     - Run `zsh -f` and click `>_` with the line empty: the command goes in.
       `ls ~/.config/herdr-app/data/side-viewer/shell/` lists no `.keymap` file. Clear the
@@ -1216,7 +1216,7 @@ conversation (step 35).
 
 ### Giving the extensions back
 
-67. `router --restore` announces its windows, and exactly that many follow, each just after
+68. `router --restore` announces its windows, and exactly that many follow, each just after
     its line `확인 창 i/N: <extensions> (지금 Side Viewer Router → <original app>)` (i from 1
     to N in order, N the first line's, the extensions that window's); pick the original
     app in each (the button that names the other app, not the router). `바뀜` lists only
