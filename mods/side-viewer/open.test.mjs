@@ -16,14 +16,18 @@ const HERDR_FRONT = "/Users/someone/Applications/Herdr.app";
 const SPACE = "spfcbfd8b278fa8d8e02972c005e05b6ea";
 const REMOTE_SPACE = "mac-box/spa386c8aedeec27b60120366586cddf4b";
 
-// What `herdr-app status` prints, with the focused space put in.
-const status = (space) => `{
+// The conversation pane in focus in the scenes, as `herdr-app status` names it.
+const FOCUSED = "p23db72f74892a7f5384d6d59c613df75";
+
+// What `herdr-app status` prints, with the focused space and pane put in. A layout's terminal
+// block in focus is no pane, so focused_pane is null then.
+const status = (space, focused = FOCUSED) => `{
   "zoom": 1.0,
   "font_size": 12.0,
   "ui_font_size": 13.0,
   "space": ${JSON.stringify(space)},
   "tab": "tbca4cf9795325cd722ebb026fd1dc3d96",
-  "focused_pane": "p23db72f74892a7f5384d6d59c613df75",
+  "focused_pane": ${JSON.stringify(focused)},
   "layout": "main-git",
   "agent": "t2s5",
   "floats": {},
@@ -161,7 +165,7 @@ test("with Herdr in front, the file opens in a side viewer pane split to the rig
   const w = world();
   const r = w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(w.splitArgs(), ["do", "pane.split", "--direction", "right", "--mod", "side-viewer", "--props", `{"file":"/work/notes/plan.md","space":"${SPACE}"}`]);
+  assert.deepEqual(w.splitArgs(), ["do", "pane.split", "--direction", "right", "--mod", "side-viewer", "--props", `{"file":"/work/notes/plan.md","space":"${SPACE}","conversation":"${FOCUSED}"}`]);
   assert.deepEqual(w.openArgs(), []);
 });
 
@@ -332,7 +336,7 @@ test("a path with spaces, quotes, a backslash and Korean reaches the viewer and 
   w.open(file, HERDR_FRONT);
   const args = w.splitArgs();
   assert.equal(args.length, 8);
-  assert.deepEqual(JSON.parse(args[7]), { file, space: SPACE });
+  assert.deepEqual(JSON.parse(args[7]), { file, space: SPACE, conversation: FOCUSED });
 
   const showing = world();
   showing.viewersShowing();
@@ -401,8 +405,39 @@ test("a new pane and a waiting request both carry the focused space", () => {
   const w = world();
   w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.equal(w.statusAsked(), 1);
-  assert.deepEqual(JSON.parse(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE });
+  assert.deepEqual(JSON.parse(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE, conversation: FOCUSED });
   const request = JSON.parse(readFileSync(join(w.env.SIDE_VIEWER_DATA, "request.json"), "utf8"));
   assert.equal(request.space, SPACE);
   assert.equal(request.file, "/work/notes/plan.md");
+});
+
+test("a new pane and a waiting request both carry the focused pane as the conversation", () => {
+  const w = world();
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.equal(JSON.parse(w.splitArgs()[7]).conversation, FOCUSED);
+  const request = JSON.parse(readFileSync(join(w.env.SIDE_VIEWER_DATA, "request.json"), "utf8"));
+  assert.equal(request.conversation, FOCUSED);
+});
+
+test("a showing viewer takes the request with its conversation", () => {
+  const w = world();
+  w.viewersShowing();
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.deepEqual(w.shownInViewer(), ["/work/notes/plan.md"]);
+  const request = JSON.parse(readFileSync(join(w.env.SIDE_VIEWER_DATA, "request.json"), "utf8"));
+  assert.equal(request.conversation, FOCUSED);
+});
+
+test("without a plain focused pane, the file opens as before with no conversation", () => {
+  const noLine = status(SPACE).replace(/^.*"focused_pane".*\n/m, "");
+  for (const out of [status(SPACE, null), status(SPACE, ""), status(SPACE, "p1/../x"), status(SPACE, "p 1"), status(SPACE, 'p1","x":"y'), noLine]) {
+    const w = world();
+    w.statusSays(out);
+    const r = w.open("/work/notes/plan.md", HERDR_FRONT);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(JSON.parse(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE }, out);
+    const request = JSON.parse(readFileSync(join(w.env.SIDE_VIEWER_DATA, "request.json"), "utf8"));
+    assert.equal("conversation" in request, false, out);
+    assert.deepEqual(w.openArgs(), [], out);
+  }
 });

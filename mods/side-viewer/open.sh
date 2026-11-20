@@ -75,6 +75,15 @@ case "$space" in
   */*) original ;;
   ''|*[!A-Za-z0-9_-]*) original ;;
 esac
+# The focused pane is the conversation the file was clicked in. The viewer remembers it for the
+# tab (sent-conversation.js). None (a layout's terminal block in focus) or one that is not a
+# plain id leaves it out, and the file opens all the same.
+focused=$(printf '%s\n' "$said" | sed -n 's/^[[:space:]]*"focused_pane"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+conversation=
+case "$focused" in
+  ''|*[!A-Za-z0-9_-]*) ;;
+  *) conversation=",\"conversation\":\"$focused\"" ;;
+esac
 
 # A side viewer already showing in this tab takes the file, so no pane is added. The command
 # reaches showing viewers only, which is why an answer is waited for: none within about 0.4 s
@@ -87,7 +96,7 @@ mkdir -p "$data" 2>/dev/null
 # Answers are left behind so a second viewer cannot take a request twice. Old ones go here.
 find "$data" -name 'answer-*' -mmin +1 -exec rm -f {} + 2>/dev/null
 # Written beside and moved in, so a viewer never reads half a request.
-if printf '{"id":"%s","file":"%s","at":%s,"space":"%s"}\n' "$id" "$json_file" "$asked" "$space" > "$data/request.json.$$" 2>/dev/null &&
+if printf '{"id":"%s","file":"%s","at":%s,"space":"%s"%s}\n' "$id" "$json_file" "$asked" "$space" "$conversation" > "$data/request.json.$$" 2>/dev/null &&
   mv -f "$data/request.json.$$" "$data/request.json" 2>/dev/null; then
   if herdr_do side-viewer.show; then
     tries=8
@@ -105,5 +114,5 @@ if printf '{"id":"%s","file":"%s","at":%s,"space":"%s"}\n' "$id" "$json_file" "$
   claim || exit 0
 fi
 
-herdr_do pane.split --direction right --mod side-viewer --props "{\"file\":\"$json_file\",\"space\":\"$space\"}" || original
+herdr_do pane.split --direction right --mod side-viewer --props "{\"file\":\"$json_file\",\"space\":\"$space\"$conversation}" || original
 exit 0
