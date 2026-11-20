@@ -135,15 +135,22 @@ const quoted = (text) => `'${text.replaceAll("'", "'\\''")}'`;
 // only zsh has zle widgets. A ready shell's pid and arguments tell one zsh from another in the
 // same terminal (shellOf).
 // A shell from splitOf is "starting" until its short zsh has become the login shell, and so
-// is a terminal hc has no foreground for yet.
+// is a terminal hc has no foreground for yet. Only splitOf's exact argv counts as that short
+// zsh (any folder): any other `-c` run, a zsh one too, is a program the person started, and a
+// line sent to it would be read by that program.
 //   { state: "ready", pid, argv } | { state: "busy", program } | { state: "starting" } | { state: "gone" }
 export function shellState(info) {
   if (info?.state !== "live") return { state: "gone" };
   const foreground = info.foreground;
-  if (!foreground || foreground.argv?.[1] === "-c") return { state: "starting" };
+  if (!foreground || isStartingZsh(foreground.argv)) return { state: "starting" };
   const program = String(foreground.name ?? "").split("/").pop();
-  return /^-?zsh$/.test(program) ? { state: "ready", pid: foreground.pid, argv: foreground.argv } : { state: "busy", program };
+  const runsLine = (foreground.argv ?? []).slice(1).includes("-c");
+  return /^-?zsh$/.test(program) && !runsLine ? { state: "ready", pid: foreground.pid, argv: foreground.argv } : { state: "busy", program };
 }
+
+// splitOf's argv: [zsh, "-c", START_SCRIPT, "zsh", folder, zsh].
+const isStartingZsh = (argv) =>
+  Array.isArray(argv) && argv.length === 6 && argv[1] === "-c" && argv[2] === START_SCRIPT && argv[3] === "zsh" && argv[5] === argv[0];
 
 // The state of the terminal on machine `machine` (null: this Mac) from `hc get <t> --json`'s
 // answer `answer` ({ code, stdout, stderr }): shellState of what it printed, or, when it failed,
@@ -221,9 +228,13 @@ export function splitOf(viewer, folder, zsh = ZSH) {
   return {
     direction: "down",
     pane: viewer,
-    argv: [zsh, "-c", 'cd -- "$1" 2>/dev/null; exec "$2" -l', "zsh", folder, zsh],
+    argv: [zsh, "-c", START_SCRIPT, "zsh", folder, zsh],
   };
 }
+
+// The short zsh's line in splitOf. shellState tells that zsh by this exact text, so the two
+// must share it.
+const START_SCRIPT = 'cd -- "$1" 2>/dev/null; exec "$2" -l';
 
 // Where a zsh may be when the login shell's PATH has none, in the order they are taken.
 const ZSH_PATHS = ["/bin/zsh", "/usr/bin/zsh", "/usr/local/bin/zsh", "/opt/homebrew/bin/zsh"];

@@ -107,8 +107,42 @@ test("a handoff file path with a quote stays one word for zsh", () => {
 test("a shell still starting is neither ready nor busy", () => {
   const live = terminal("zsh");
   assert.deepEqual(shellState({ ...live, foreground: undefined }), { state: "starting" });
-  assert.deepEqual(shellState(terminal("zsh", ["/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec /bin/zsh -l", "zsh", "/w"])),
-    { state: "starting" });
+  assert.deepEqual(shellState({ ...live, foreground: null }), { state: "starting" });
+});
+
+test("only the short zsh that opens the shell pane is starting, in whatever folder", () => {
+  // As seen on a Linux machine while the shell pane opened there.
+  const linux = ["/usr/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec \"$2\" -l", "zsh", "/tmp/side-viewer-remote", "/usr/bin/zsh"];
+  assert.deepEqual(shellState(running({ argv: linux, name: "zsh" })), { state: "starting" });
+  assert.deepEqual(shellState(running({ argv: splitOf("p2", "/work/it's here").argv, name: "zsh" })), { state: "starting" });
+  const elsewhere = [...linux];
+  elsewhere[4] = "/home/me/other folder";
+  assert.deepEqual(shellState(running({ argv: elsewhere, name: "zsh" })), { state: "starting" });
+});
+
+test("a -c run shaped almost like the shell pane's short zsh is busy", () => {
+  const split = ["/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec \"$2\" -l", "zsh", "/w", "/bin/zsh"];
+  const differing = (at, value) => split.map((word, i) => (i === at ? value : word));
+  const busy = { state: "busy", program: "zsh" };
+  assert.deepEqual(shellState(running({ argv: differing(3, "sh"), name: "zsh" })), busy);
+  assert.deepEqual(shellState(running({ argv: differing(5, "/usr/bin/zsh"), name: "zsh" })), busy);
+  assert.deepEqual(shellState(running({ argv: differing(2, "cd -- \"$1\"; exec \"$2\" -l"), name: "zsh" })), busy);
+  assert.deepEqual(shellState(running({ argv: [...split, "more"], name: "zsh" })), busy);
+  assert.deepEqual(shellState(running({ argv: split.slice(0, 5), name: "zsh" })), busy);
+});
+
+// `hc get --json` of a live terminal whose foreground is `foreground`, as measured on this Mac
+// (cwd and pid aside).
+const running = (foreground) => ({ address: "t7", state: "live", argv: ["/bin/zsh", "-l"], status: null, foreground: { ...foreground, pid: 2 } });
+
+test("a program started with -c in the shell pane is busy and named, even when it is zsh", () => {
+  const python = running({
+    argv: ["/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python", "-c", "import time; time.sleep(3)"],
+    name: "Python",
+  });
+  assert.deepEqual(shellState(python), { state: "busy", program: "Python" });
+  assert.deepEqual(shellState(running({ argv: ["sh", "-c", "sleep 3; true"], name: "bash" })), { state: "busy", program: "bash" });
+  assert.deepEqual(shellState(running({ argv: ["zsh", "-c", "sleep 3; true"], name: "zsh" })), { state: "busy", program: "zsh" });
 });
 
 test("single quotes, Korean, symbols and backslashes go into the handoff file as they are", () => {
@@ -362,6 +396,11 @@ test("a busy shell gets nothing, only a notice", () => {
 test("a shell waiting at its prompt is ready; zsh is told by its foreground process, whose pid names it", () => {
   assert.deepEqual(shellState(terminal("zsh", ["/bin/zsh", "-l"])), { state: "ready", pid: 2, argv: ["/bin/zsh", "-l"] });
   assert.deepEqual(shellState(terminal("-zsh", ["-zsh"])), { state: "ready", pid: 2, argv: ["-zsh"] });
+  assert.deepEqual(shellState(running({ argv: ["/bin/zsh", "-f"], name: "zsh" })), { state: "ready", pid: 2, argv: ["/bin/zsh", "-f"] });
+});
+
+test("a zsh with -c anywhere among its arguments runs a line, not a prompt, so it is busy", () => {
+  assert.deepEqual(shellState(running({ argv: ["zsh", "-l", "-c", "sleep 3; true"], name: "zsh" })), { state: "busy", program: "zsh" });
 });
 
 test("a shell running another program is busy, and the program is named", () => {
