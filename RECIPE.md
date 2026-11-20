@@ -132,8 +132,8 @@ The mod shows files, not agents, so it has no agent statuses.
   new pane splits off to the right of the focused pane about 0.4 s later. A viewer takes
   only a request for its own space (request.js): the request
   (`{"id","file","at","space","conversation"}`) and the new pane's props
-  (`{file, space, at, conversation}`, `at` the unix seconds of the split) carry the space
-  value, and a side without one (a viewer
+  (`{file, space, id, conversation}`, `id` the request's id, naming this opening) carry the
+  space value, and a side without one (a viewer
   opened before spaces were sent) counts as this Mac. `conversation` is the focused pane,
   sent only when it is a plain id (`[A-Za-z0-9_-]`); with none (a layout's terminal block has
   focus, `focused_pane` null) it is left out and the file opens all the same. A request
@@ -141,15 +141,18 @@ The mod shows files, not agents, so it has no agent statuses.
 - **Sent conversation** (sent-conversation.js). Herdr's shared state
   `side-viewer.conversations` is `{ <tab id>: <pane id> }`: per tab, the conversation pane
   that last sent a file to its viewers. A viewer that takes a request naming a conversation,
-  or starts within 30 s of its props' `at` with one in its props (`openedConversation`),
-  writes that pane under the tab `panes()` puts it in (nothing when `panes()` does not list
-  it). Props carry the pane id without its `<machine>/` prefix (ADR 0002); the viewer puts
-  back the prefix its space id has on this screen, and takes none while its space is not
-  listed. A copy started later with the same props (the app restarted and its tab shows, or
-  a mod file was saved) has an older `at`, or none, and neither writes nor takes out
-  anything. A request naming none takes out the viewer's tab (`forgottenTabOf`: its pane by
-  `viewerPaneOf`, else the focused tab). Each write also drops tabs `panes()`
-  no longer has, and the map is set only when it changes, since `setShared` draws every mod
+  or first starts with an opening naming one (`takeOpening`), writes that pane under the tab
+  `panes()` puts it in (nothing when `panes()` does not list it). Props carry the pane id
+  without its `<machine>/` prefix (ADR 0002); the viewer puts back the prefix its space id has
+  on this screen, and takes none while its space is not listed. A request naming none, or a
+  first start with an opening naming none, takes out the viewer's tab (`forgottenTabOf`: its
+  pane by `viewerPaneOf`, else the focused tab). Each opening counts once, whenever its copy
+  first starts (its tab may first show long after the split): the viewer adds its `id` to
+  shared state `side-viewer.openings` (a list, the latest 50 kept), and a copy that starts
+  again with an id already there (a mod file was saved, the app restarted and its tab shows)
+  neither writes nor takes out anything. Props without an `id` (an older router's) change
+  nothing. Each write also drops tabs `panes()`
+  no longer has, and the map and the list are set only when they change, since `setShared` draws every mod
   again. The picker popup never writes it. The shell pane's folder and the picker's
   conversation follow the tab's entry while that pane is a terminal in the tab; a pane that
   closed or moved to another tab falls back to the tab's first agent terminal. One tab with
@@ -179,11 +182,11 @@ The mod shows files, not agents, so it has no agent statuses.
 - **Opening a pick** (main.js `openPicked`). With no viewer showing in the conversation's
   tab (`openTargetOf`; one behind another pane's zoom doesn't count), the popup closes and
   `pane.split {pane: <conversation>, direction: "right", mod: "side-viewer", props: {file,
-  space, conversation, at}}` runs (path-picker.js `pickedSplit`): `pane` is the
+  space, conversation, id}}` runs (path-picker.js `pickedSplit`): `pane` is the
   conversation's address on this screen, the props' `conversation` its id without the
-  `<machine>/` prefix, and `at` the unix seconds of the split. Otherwise the picker writes the
+  `<machine>/` prefix, and `id` the opening's id. Otherwise the picker writes the
   same request as `open.sh` (`pickedRequest`, `{"id","file","at","space","conversation"}`, id
-  `<seconds>-picker-<random>`, `conversation` the conversation's address on this screen, read
+  `<seconds>-picker-<random>`, also the split's `id`, `conversation` the conversation's address on this screen, read
   only by viewers on this screen), runs
   `side-viewer.show`, looks for `answer-<id>` 8 times every 50 ms, and closes once it is
   there. No answer: it takes the answer's name itself and splits as above. A failed request
@@ -449,9 +452,9 @@ The mod shows files, not agents, so it has no agent statuses.
   "frame": "none" } }` (focusable for cmd+S; the overlay is the path picker, the whole
   window, with the card drawn by the mod: a popup's `width` in px doesn't shrink with the
   window). Opened with `pane.split {direction: "right", mod: "side-viewer", props:
-  {file, space, at, conversation?}}`; `props.file` is the absolute path to show, `props.space`
-  the space id without its `<machine>/` prefix (no machine name, ADR 0002), `props.at` the
-  unix seconds it was opened, `props.conversation` the pane id of the conversation that sent
+  {file, space, id, conversation?}}`; `props.file` is the absolute path to show, `props.space`
+  the space id without its `<machine>/` prefix (no machine name, ADR 0002), `props.id` the
+  opening's id (`[A-Za-z0-9_-]`, the request's id), `props.conversation` the pane id of the conversation that sent
   it, also without its `<machine>/` prefix. A viewer tab's props are
   `{file, viewerTab: true, handoff?, space?}`.
 - `keys.json` (repository root): `{"global": {"cmd-o": "mod.open:side-viewer"}}`, the key
@@ -474,9 +477,9 @@ The mod shows files, not agents, so it has no agent statuses.
   `markdown-blocks.js` (markdown → blocks), `code-blocks.js` (fence language → label,
   colors, shell; wrapped rows and editor height; card fill), `markdown-images.js` (picture
   paths and sizes), `svg-preview.js` (edited svg previews), `terminal-insert.js` (`>_`'s
-  folder, shell state, commands, notices), `sent-conversation.js` (the shared-state key
-  `side-viewer.conversations`; remembering, forgetting and finding a tab's sent
-  conversation), `viewer-tab.js` (props, handoff file, tab
+  folder, shell state, commands, notices), `sent-conversation.js` (the shared-state keys
+  `side-viewer.conversations` and `side-viewer.openings`; taking an opening once,
+  remembering, forgetting and finding a tab's sent conversation), `viewer-tab.js` (props, handoff file, tab
   placement and name), `checkbox.js` (turning over a task line), `i18n.js` (the language
   from `AppleLanguages`, the asking-again delays, the translator `tr`), `machine.js` (the
   space value, the viewer's machine, the existence and home commands and their answers,
@@ -692,6 +695,9 @@ Platform:
 - `setShared` redraws every mod, which is how one viewer's language read reaches all of
   them; there is no per-copy language. Whether `side-viewer.lang` survives an app restart
   was not seen: if it doesn't, a viewer can show English for a moment until its own read.
+- `side-viewer.openings` is kept in Herdr's `shared.json` (persisted, `herdr.d.ts`). When
+  Herdr starts with it empty (a broken file it set aside), each viewer copy that starts again
+  takes its opening once more, and the tab's sent conversation can go back to it.
   The English header (`Changed on disk` with `Reload` and `Overwrite`) in a narrow pane and
   the English notifications at Herdr's notification width were not seen either.
 

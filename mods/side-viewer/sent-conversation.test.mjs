@@ -1,7 +1,7 @@
 // node --test: the sent conversation each tab remembers, without Herdr.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CONVERSATIONS_KEY, rememberConversation, forgetConversation, sentConversation, openedConversation, forgottenTabOf } from "./sent-conversation.js";
+import { CONVERSATIONS_KEY, OPENINGS_KEY, OPENINGS_KEPT, rememberConversation, forgetConversation, sentConversation, takeOpening, forgottenTabOf } from "./sent-conversation.js";
 
 // Herdr's panes(): a terminal pane, or a mod pane (terminal null).
 const terminalPane = (pane, tab, terminal, cwd) => ({ pane, tab, terminal, cwd, status: null, program: { key: "shell", agent: false, shell: true } });
@@ -68,41 +68,108 @@ test("a remembered mod pane or the pane left out is not a conversation", () => {
   assert.equal(sentConversation({ tab1: "p2" }, "tab1", PANES, "p1"), PANES[1]);
 });
 
-// A viewer's props as open.sh or the path picker split it off, opened at AT (unix seconds).
-const AT = 1800000000;
-const opened = (more) => ({ file: "/work/a/plan.md", space: "s1", conversation: "p2", at: AT, ...more });
+// A viewer's props as open.sh or the path picker split it off, with the opening's id.
+const opened = (more) => ({ file: "/work/a/plan.md", space: "s1", conversation: "p2", id: "1800000000-41", ...more });
 // spaces(): this Mac's space s1, and the space s3 of a machine this screen calls studio.
 const SPACES = [{ id: "s1", machine: null }, { id: "studio/s3", machine: "studio" }];
+// A viewer p3 of tab1 starting with `props`, with the focus in tab2, against the shared state `state`.
+const start = (state, props, { panes = PANES, spaces = SPACES, viewer = "p3" } = {}) =>
+  takeOpening({ ...state, props, spaces, panes, viewer, focused: { tab: "tab2", pane: "p4" } });
+// The memory after a request as main.js keeps it: its conversation remembered, or the viewer's tab forgotten.
+const request = (state, conversation) => ({
+  ...state,
+  conversations: conversation ? rememberConversation(state.conversations, conversation, PANES) : forgetConversation(state.conversations, "tab1", PANES),
+});
+const EMPTY = { conversations: undefined, openings: undefined };
 
-test("a viewer opened just now takes the conversation its props name", () => {
-  assert.equal(openedConversation(opened(), { now: AT * 1000 + 2000, spaces: SPACES }), "p2");
-  assert.equal(openedConversation(opened(), { now: (AT + 30) * 1000, spaces: SPACES }), "p2");
+test("the openings taken live in Herdr's shared state under their own key", () => {
+  assert.equal(OPENINGS_KEY, "side-viewer.openings");
 });
 
-test("a copy started again later, or props without the time they were opened, take no conversation", () => {
-  assert.equal(openedConversation(opened(), { now: (AT + 31) * 1000, spaces: SPACES }), null);
-  assert.equal(openedConversation(opened({ at: undefined }), { now: AT * 1000, spaces: SPACES }), null);
-  assert.equal(openedConversation(opened({ at: String(AT) }), { now: AT * 1000, spaces: SPACES }), null);
-  assert.equal(openedConversation(opened({ conversation: undefined }), { now: AT * 1000, spaces: SPACES }), null);
-  assert.equal(openedConversation(undefined, { now: AT * 1000, spaces: SPACES }), null);
+test("a viewer's first start remembers the conversation its opening names, and keeps the opening's id", () => {
+  assert.deepEqual(start(EMPTY, opened({ conversation: "p1" })), { conversations: { tab1: "p1" }, openings: ["1800000000-41"] });
+});
+
+test("an opening taken once, then a request from another conversation: the copy starting again keeps the request's", () => {
+  const a = start(EMPTY, opened({ conversation: "p1" }));
+  const b = request(a, "p2");
+  assert.deepEqual(b.conversations, { tab1: "p2" });
+  const again = start(b, opened({ conversation: "p1" }));
+  assert.deepEqual(again, b);
+  assert.deepEqual(start(again, opened({ conversation: "p1" })), b);
+});
+
+test("an opening taken once, then a request without a conversation: starting again leaves the tab forgotten", () => {
+  const a = start(EMPTY, opened({ conversation: "p1" }));
+  const gone = request(a, null);
+  assert.deepEqual(gone.conversations, {});
+  assert.deepEqual(start(gone, opened({ conversation: "p1" })), gone);
+});
+
+test("an opening first shown long after it was made is still taken", () => {
+  const before = { conversations: { tab1: "p1" }, openings: ["1700000000-7"] };
+  const late = start(before, opened({ conversation: "p2", id: "1800000000-99" }));
+  assert.deepEqual(late, { conversations: { tab1: "p2" }, openings: ["1700000000-7", "1800000000-99"] });
+});
+
+test("a new opening without a conversation forgets the viewer's own tab once", () => {
+  const before = { conversations: { tab1: "p2", tab2: "p4" }, openings: [] };
+  const taken = start(before, opened({ conversation: undefined }));
+  assert.deepEqual(taken, { conversations: { tab2: "p4" }, openings: ["1800000000-41"] });
+  const b = request(taken, "p1");
+  assert.deepEqual(start(b, opened({ conversation: undefined })), b);
+});
+
+test("a viewer not found among the panes forgets the focused tab for an opening without a conversation", () => {
+  const before = { conversations: { tab1: "p2", tab2: "p4" }, openings: [] };
+  assert.deepEqual(start(before, opened({ conversation: undefined }), { viewer: null }).conversations, { tab1: "p2" });
+});
+
+test("props without an opening id, as an older router's, leave the memory as it was", () => {
+  const before = { conversations: { tab1: "p2" }, openings: ["1700000000-7"] };
+  for (const props of [opened({ id: undefined }), opened({ id: undefined, conversation: undefined }), opened({ id: 7 }), opened({ id: "" }), opened({ id: "a b" }), undefined]) {
+    assert.deepEqual(start(before, props), before, JSON.stringify(props));
+  }
+});
+
+test("a viewer tab's props name no opening and change nothing", () => {
+  const before = { conversations: { tab1: "p2" }, openings: [] };
+  assert.deepEqual(start(before, { file: "/work/a/plan.md", viewerTab: true, space: "s1" }), before);
+});
+
+test("only the latest openings are kept", () => {
+  const many = Array.from({ length: OPENINGS_KEPT }, (_, n) => `1700000000-${n}`);
+  const taken = start({ conversations: {}, openings: many }, opened({ id: "1800000000-new" }));
+  assert.equal(taken.openings.length, OPENINGS_KEPT);
+  assert.equal(taken.openings[0], "1700000000-1");
+  assert.equal(taken.openings.at(-1), "1800000000-new");
+});
+
+test("a broken list of openings starts as none taken", () => {
+  for (const broken of [null, "x", 7, { a: 1 }, [7, null]]) {
+    const taken = start({ conversations: {}, openings: broken }, opened());
+    assert.deepEqual(taken.conversations, { tab1: "p2" }, JSON.stringify(broken));
+  }
+});
+
+test("an opening whose conversation is not on screen yet is taken without changing the memory", () => {
+  const before = { conversations: { tab1: "p1" }, openings: [] };
+  const unlisted = start(before, opened({ space: "s9" }));
+  assert.deepEqual(unlisted, { conversations: { tab1: "p1" }, openings: ["1800000000-41"] });
+  assert.deepEqual(start(unlisted, opened({ space: "s9" }), { spaces: [...SPACES, { id: "s9", machine: null }] }), unlisted);
 });
 
 test("a remote viewer finds its conversation under the prefix this screen gives the machine", () => {
   const props = opened({ space: "s3", conversation: "p7" });
-  assert.equal(openedConversation(props, { now: AT * 1000, spaces: SPACES }), "studio/p7");
-  const mini = [{ id: "mini/s3", machine: "mini" }];
-  assert.equal(openedConversation(props, { now: AT * 1000, spaces: mini }), "mini/p7");
   const panes = [terminalPane("studio/p7", "studio/tab5", "studio/t7", "/b"), modPane("studio/p8", "studio/tab5")];
-  const found = openedConversation(props, { now: AT * 1000, spaces: SPACES });
-  assert.deepEqual(rememberConversation({}, found, panes), { "studio/tab5": "studio/p7" });
-});
-
-test("a viewer whose space is not listed yet takes no conversation", () => {
-  assert.equal(openedConversation(opened({ space: "s9" }), { now: AT * 1000, spaces: SPACES }), null);
+  assert.deepEqual(start(EMPTY, props, { panes, viewer: "studio/p8" }).conversations, { "studio/tab5": "studio/p7" });
+  const mini = [{ id: "mini/s3", machine: "mini" }];
+  const miniPanes = [terminalPane("mini/p7", "mini/tab5", "mini/t7", "/b")];
+  assert.deepEqual(start(EMPTY, props, { panes: miniPanes, spaces: mini }).conversations, { "mini/tab5": "mini/p7" });
 });
 
 test("a viewer without a space value is on this Mac and takes the id as it is", () => {
-  assert.equal(openedConversation(opened({ space: undefined }), { now: AT * 1000, spaces: [] }), "p2");
+  assert.deepEqual(start(EMPTY, opened({ space: undefined }), { spaces: [] }).conversations, { tab1: "p2" });
 });
 
 test("a request without a conversation forgets the viewer's own tab, even with the focus in another", () => {

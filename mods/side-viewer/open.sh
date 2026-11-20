@@ -114,7 +114,7 @@ if printf '{"id":"%s","file":"%s","at":%s,"space":"%s"%s}\n' "$id" "$json_file" 
   claim || exit 0
 fi
 
-# `at` lets the new viewer tell this opening from a later restart of its copy with the same
-# props, which must not take the conversation again (sent-conversation.js).
-herdr_do pane.split --direction right --mod side-viewer --props "{\"file\":\"$json_file\",\"space\":\"$space\",\"at\":$(date +%s)$conversation}" || original
+# `id`, the request's id, names this opening: the new viewer takes its conversation on its
+# first start only, not when its copy starts again with the same props (sent-conversation.js).
+herdr_do pane.split --direction right --mod side-viewer --props "{\"file\":\"$json_file\",\"space\":\"$space\",\"id\":\"$id\"$conversation}" || original
 exit 0

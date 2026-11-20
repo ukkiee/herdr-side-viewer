@@ -259,7 +259,10 @@ There is no switch.
 - **Herdr's shared state**: the viewer keeps the language last read under
   `side-viewer.lang` (`"en"` or `"ko"`), which every viewer reads, and the conversation pane
   that last sent a file to each tab under `side-viewer.conversations`
-  (`{ "<tab id>": "<pane id>" }`), with tabs that are gone taken out.
+  (`{ "<tab id>": "<pane id>" }`), with tabs that are gone taken out. The ids of the latest
+  50 new viewers it opened are under `side-viewer.openings`, so a viewer that starts again
+  (after a mod file is saved or the app restarts) does not put back a conversation another
+  file was sent from since.
 - **Your files**: the mod writes a file when you save it or click a checkbox in it, on the
   machine of the viewer's space.
 - **Another machine's home**: `>_` in a remote space writes its command to

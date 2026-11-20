@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { openedConversation } from "./sent-conversation.js";
+import { takeOpening } from "./sent-conversation.js";
 import { pathCandidates, existingPaths, filterPaths, listHeightOf, pickerWidthOf, PICKER_MIN_WIDTH, conversationOf, openTargetOf, pickedRequest, pickedSplit, readFailureOf, pickerFailureOf } from "./path-picker.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
@@ -244,22 +244,25 @@ test("without a shown side viewer in its tab a pick splits the conversation to t
 
 // A pick of /b/plan.md in the conversation studio/p7 of the remote space studio/s3, at AT.
 const AT = 1800000000;
-const PICK = { file: "/b/plan.md", space: "s3", conversation: "studio/p7", at: AT };
+const PICK = { file: "/b/plan.md", space: "s3", conversation: "studio/p7" };
+const ID = `${AT}-picker-ab12`;
 
 test("a pick's request names the conversation as this screen does, for the viewers on this screen", () => {
-  assert.deepEqual(pickedRequest({ id: `${AT}-picker-ab12`, ...PICK }), { id: `${AT}-picker-ab12`, file: "/b/plan.md", at: AT, space: "s3", conversation: "studio/p7" });
-  assert.deepEqual(pickedRequest({ id: `${AT}-picker-ab12`, ...PICK, space: "s1", conversation: "p1" }).conversation, "p1");
+  assert.deepEqual(pickedRequest({ id: ID, at: AT, ...PICK }), { id: `${AT}-picker-ab12`, file: "/b/plan.md", at: AT, space: "s3", conversation: "studio/p7" });
+  assert.deepEqual(pickedRequest({ id: ID, at: AT, ...PICK, space: "s1", conversation: "p1" }).conversation, "p1");
 });
 
-test("a pick's new viewer splits off the conversation, and its props keep the conversation without the machine and the time it opened", () => {
-  assert.deepEqual(pickedSplit(PICK), { pane: "studio/p7", direction: "right", mod: "side-viewer", props: { file: "/b/plan.md", space: "s3", conversation: "p7", at: AT } });
-  assert.deepEqual(pickedSplit({ ...PICK, space: "s1", conversation: "p1" }).props, { file: "/b/plan.md", space: "s1", conversation: "p1", at: AT });
+test("a pick's new viewer splits off the conversation, and its props keep the conversation without the machine and the opening's id", () => {
+  assert.deepEqual(pickedSplit({ ...PICK, id: ID }), { pane: "studio/p7", direction: "right", mod: "side-viewer", props: { file: "/b/plan.md", space: "s3", conversation: "p7", id: ID } });
+  assert.deepEqual(pickedSplit({ ...PICK, id: ID, space: "s1", conversation: "p1" }).props, { file: "/b/plan.md", space: "s1", conversation: "p1", id: ID });
 });
 
 test("the new viewer finds the picked conversation on a screen that calls the machine by another name", () => {
-  const { props } = pickedSplit(PICK);
-  assert.equal(openedConversation(props, { now: AT * 1000, spaces: [{ id: "mini/s3", machine: "mini" }] }), "mini/p7");
-  assert.equal(openedConversation(props, { now: AT * 1000, spaces: [{ id: "studio/s3", machine: "studio" }] }), "studio/p7");
+  const { props } = pickedSplit({ ...PICK, id: ID });
+  const start = (machine) =>
+    takeOpening({ conversations: {}, openings: [], props, spaces: [{ id: `${machine}/s3`, machine }], panes: [{ pane: `${machine}/p7`, tab: `${machine}/tab5`, terminal: `${machine}/t7` }], viewer: null, focused: null });
+  assert.deepEqual(start("mini").conversations, { "mini/tab5": "mini/p7" });
+  assert.deepEqual(start("studio").conversations, { "studio/tab5": "studio/p7" });
 });
 
 // `hc read t9999 --lines 1` for a terminal that is gone: exit 3, on stderr.
