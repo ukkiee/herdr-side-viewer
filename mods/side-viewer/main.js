@@ -1,5 +1,5 @@
 // Side viewer: shows one file in a pane beside the conversation. open.sh opens it with
-// `pane.split {direction: "right", mod: "side-viewer", props: {file, space?}}`.
+// `pane.split {direction: "right", mod: "side-viewer", props: {file, space?, conversation?}}`.
 // This file holds the viewer's state and most of its talk with Herdr: reading, saving,
 // taking requests from open.sh, watching and viewer tabs. The shown file is read on the
 // machine of the viewer's space (machine.js) through file-access.js. Two parts that keep their
@@ -10,7 +10,8 @@
 // The decisions live in modules without Herdr imports, each with its own tests: document.js,
 // views.js, image-copies.js, svg-preview.js, history.js, request.js, links.js, original.js,
 // edit-state.js, viewer-tab.js, checkbox.js, markdown-blocks.js, code-blocks.js,
-// markdown-images.js, terminal-insert.js, machine.js and remote-results.js.
+// markdown-images.js, terminal-insert.js, sent-conversation.js, machine.js and
+// remote-results.js.
 import { View } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
 import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes, notify, shared, setShared, machines, closeOverlay } from "herdr";
@@ -40,6 +41,8 @@ import { LANGS, translator, systemLang, askAgainAfter } from "./i18n.js";
 import { machineOf } from "./machine.js";
 import { accessOf } from "./file-access.js";
 import { openTargetOf } from "./path-picker.js";
+import { CONVERSATIONS_KEY, rememberConversation, forgetConversation } from "./sent-conversation.js";
+import { viewerPaneOf } from "./terminal-insert.js";
 import { PathPicker } from "./picker-view.js";
 
 // Where the system's language is remembered in Herdr's shared state ("ko" | "en").
@@ -135,6 +138,9 @@ export default class SideViewer extends View {
     // The space value its opener gave (machine.js), which never changes. Without one the
     // viewer is on this Mac.
     this.space = props()?.space ?? given?.space ?? null;
+    // A viewer split off a conversation names it (open.sh, the path picker).
+    const sent = props()?.conversation ?? given?.conversation;
+    if (typeof sent === "string" && sent) this.keepSent(sent);
     // A viewer tab starts with an empty history, as every new copy does: back only returns
     // to files opened in this tab.
     this.show(given?.file ?? props()?.file, cx);
@@ -281,6 +287,7 @@ export default class SideViewer extends View {
         const request = await takeRequest(files, { folder, answered: this.answered, now: Date.now(), space: this.space, spaces: spaces() });
         if (!request) continue;
         this.answered = request.id;
+        this.keepSent(request.conversation);
         this.show(request.file, cx);
         this.nameTab();
         this.watch(cx);
@@ -288,16 +295,35 @@ export default class SideViewer extends View {
     });
   }
 
+  // The sent conversation (sent-conversation.js): `conversation`, the pane that sent this viewer
+  // a file, is remembered for its tab; null, a request that names none, takes this viewer's tab
+  // out, found by its pane (viewerPaneOf) or else the focused tab. Setting shared state draws
+  // every mod again, so it is set only when the map changes.
+  keepSent(conversation) {
+    const all = panes();
+    const before = shared(CONVERSATIONS_KEY);
+    let after;
+    if (conversation) {
+      after = rememberConversation(before, conversation, all);
+    } else {
+      const here = focused();
+      const viewer = viewerPaneOf({ props: props(), focused: here, panes: all });
+      after = forgetConversation(before, all.find((p) => p.pane === viewer)?.tab ?? here?.tab, all);
+    }
+    if (JSON.stringify(after) !== JSON.stringify(before ?? {})) setShared(CONVERSATIONS_KEY, after);
+  }
+
   // The path picker's pick, opened the way open.sh opens a cmd-clicked file: a side viewer
   // showing in the conversation's tab takes it as a request (request.js) within about 0.4 s,
   // else a new viewer splits off right of the conversation pane. Both carry the space value,
-  // so only a viewer of the conversation's space takes the file. The popup closes only once
+  // so only a viewer of the conversation's space takes the file, and the conversation, which
+  // that viewer remembers as the tab's sent conversation. The popup closes only once
   // that is settled: a closed copy's tasks are cancelled, and the wait would end with them.
   //   conversation: the conversation's pane id; space: its space value (machine.js)
   openPicked({ file, conversation, space }, cx) {
     const split = () => {
       closeOverlay(props().overlay);
-      run("pane.split", { pane: conversation, direction: "right", mod: "side-viewer", props: { file, space } });
+      run("pane.split", { pane: conversation, direction: "right", mod: "side-viewer", props: { file, space, conversation } });
     };
     if (openTargetOf({ conversation, panes: panes() }).split) return split();
     cx.spawn(async (cx) => {
@@ -308,7 +334,7 @@ export default class SideViewer extends View {
       try {
         const request = `${folder}/${REQUEST_FILE}`;
         const before = await readTextFile(request).catch(() => null);
-        await writeTextFile(request, `${JSON.stringify({ id, file, at, space })}\n`, before);
+        await writeTextFile(request, `${JSON.stringify({ id, file, at, space, conversation })}\n`, before);
         run("side-viewer.show");
         for (let tries = 8; tries > 0; tries--) {
           await cx.sleep(50);
@@ -846,7 +872,8 @@ export default class SideViewer extends View {
   }
 
   // A shell code block's `>_`: into the shell pane below this viewer, which starts in the
-  // conversation's folder, or in the document's folder when the viewer is a tab of its own.
+  // folder of the conversation that sent the file (else the tab's agent), or in the document's
+  // folder when the viewer is a tab of its own.
   insertIntoTerminal(command, cx) {
     this.shellPane.insert(command, { file: this.file, viewerTab: this.viewerTab === true, tr: this.words() }, cx);
   }
