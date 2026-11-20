@@ -281,12 +281,13 @@ export function zshOf(stdout) {
 }
 
 // The folder a new shell pane starts in. In a viewer tab, the shown document's folder. Beside
-// a conversation, that conversation terminal's live folder: the viewer was split off it, so it
-// is a terminal pane in the viewer's own tab, an agent's before a plain shell's, and never the
-// shell this viewer opened. Home when there is none.
+// a conversation, that conversation terminal's live folder: a terminal pane with a folder in the
+// viewer's own tab, never the shell this viewer opened. Of those, the sent conversation
+// (sent-conversation.js) first, then an agent's before a plain shell's. Home when there is none.
 //   viewer: the viewer's pane id or null; panes: herdr panes(); shell: { pane, terminal } or null;
+//   conversation: the sent conversation's pane id or null;
 //   home: the home folder of the viewer's machine, another machine's when the shell opens there
-export function shellFolder({ viewerTab, file, viewer, panes, shell, home }) {
+export function shellFolder({ viewerTab, file, viewer, panes, shell, conversation: sent = null, home }) {
   if (viewerTab) {
     if (!file) return home;
     const folder = file.slice(0, file.lastIndexOf("/"));
@@ -295,7 +296,7 @@ export function shellFolder({ viewerTab, file, viewer, panes, shell, home }) {
   const tab = panes.find((p) => p.pane === viewer)?.tab;
   if (!tab) return home;
   const terminals = panes.filter((p) => p.tab === tab && p.terminal && p.cwd && p.pane !== shell?.pane);
-  const conversation = terminals.find((p) => p.program?.agent || p.status) ?? terminals[0];
+  const conversation = terminals.find((p) => p.pane === sent) ?? terminals.find((p) => p.program?.agent || p.status) ?? terminals[0];
   return conversation?.cwd ?? home;
 }
 

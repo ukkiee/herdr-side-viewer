@@ -5,9 +5,10 @@
 // while that pane still shows the same terminal, and which zsh there it has prepared.
 // The shell is on the viewer's machine: a split of a viewer in another machine's space opens
 // it there, so the handoff file, the zsh and the home are that machine's (file-access.js).
-import { hc, run, panes, focused, props, appHome, notify, machines, writeTextFile } from "herdr";
+import { hc, run, panes, focused, props, appHome, notify, machines, writeTextFile, shared } from "herdr";
 import { handoffOf, keymapOf, HANDOFF_THERE, FIND_ZSH, zshOf, insertText, insertPlan, pressOutcome, waitsOf, machineOfAddress, cutOff, stateOfGet, handoffLook, handoffTaken, noticeOf, viewerPaneOf, liveShell, openedShell, splitOf, shellFolder } from "./terminal-insert.js";
 import { accessOf } from "./file-access.js";
+import { CONVERSATIONS_KEY, sentConversation } from "./sent-conversation.js";
 
 // How long a new pane may take to show up in panes(), and a new shell to reach its prompt.
 const WAIT_MS = 5000;
@@ -77,7 +78,10 @@ export class ShellPane {
     const { zsh, failure } = await this.zshOn(access);
     if (failure) return trouble(failure);
     if (zsh === null) return noticeOf({ state: "noZsh" }, tr);
-    const folder = shellFolder({ viewerTab, file, viewer, panes: all, shell: this.shell, home: await access.home() });
+    // Beside two conversations the shell starts with the one that sent the file.
+    const tab = all.find((p) => p.pane === viewer)?.tab;
+    const conversation = sentConversation(shared(CONVERSATIONS_KEY), tab, all)?.pane ?? null;
+    const folder = shellFolder({ viewerTab, file, viewer, panes: all, shell: this.shell, conversation, home: await access.home() });
     run("pane.split", splitOf(viewer, folder, zsh));
     const opened = await this.appeared(all, viewer, cx);
     if (!opened) return noticeOf({ state: "failed" }, tr);

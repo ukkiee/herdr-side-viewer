@@ -543,6 +543,35 @@ test("the conversation is the agent's terminal, not a plain shell or the viewer'
   assert.equal(shellFolder({ viewerTab: false, file: "/notes/a.md", viewer: "p3", panes: plain, shell, home: HOME }), "/work/logs");
 });
 
+test("beside two conversations the shell starts in the folder of the one that sent the file", () => {
+  const panes = [
+    agentPane("p1", "tab1", "t1", "/work/a"),
+    agentPane("p2", "tab1", "t2", "/work/b"),
+    viewerPane("p3", "tab1"),
+  ];
+  assert.equal(shellFolder({ viewerTab: false, file: "/notes/a.md", viewer: "p3", panes, shell: null, conversation: "p2", home: HOME }), "/work/b");
+  assert.equal(shellFolder({ viewerTab: false, file: "/notes/a.md", viewer: "p3", panes, shell: null, conversation: null, home: HOME }), "/work/a");
+});
+
+test("a sent conversation that cannot start the shell gives way to the tab's agent", () => {
+  const panes = [
+    agentPane("p1", "tab1", "t1", "/work/a"),
+    pane("p2", "tab1", { terminal: "t2", cwd: null }),
+    viewerPane("p3", "tab1"),
+    shellPane("p4", "tab1", "t4", "/work/a/sub"),
+    agentPane("p5", "tab2", "t5", "/work/c"),
+  ];
+  const shell = { pane: "p4", terminal: "t4" };
+  const folder = (conversation) => shellFolder({ viewerTab: false, file: "/notes/a.md", viewer: "p3", panes, shell, conversation, home: HOME });
+  // Without a folder, the viewer's own shell pane, in another tab, closed, or a mod pane.
+  for (const conversation of ["p2", "p4", "p5", "p8", "p3"]) assert.equal(folder(conversation), "/work/a", conversation);
+});
+
+test("in a viewer tab the shell starts in the document's folder even with a sent conversation", () => {
+  const panes = [agentPane("p1", "tab1", "t1", "/work/api"), viewerPane("p2", "tab1")];
+  assert.equal(shellFolder({ viewerTab: true, file: "/notes/plans/a.md", viewer: "p2", panes, shell: null, conversation: "p1", home: HOME }), "/notes/plans");
+});
+
 test("in a viewer tab the shell starts in the document's folder", () => {
   const panes = [agentPane("p1", "tab1", "t1", "/work/api"), viewerPane("p2", "tab2")];
   assert.equal(shellFolder({ viewerTab: true, file: "/notes/plans/a.md", viewer: "p2", panes, shell: null, home: HOME }), "/notes/plans");
