@@ -31,6 +31,9 @@ const terminal = (name, argv = [`/bin/${name}`]) =>
 const APP = "/Users/me/.config/herdr-app";
 const FILE = `${APP}/data/side-viewer/shell/t7.txt`;
 const KEYMAP = `${APP}/data/side-viewer/shell/t7.keymap`;
+// Two presses' marks.
+const MARK = "m1a2b3-x9";
+const OLD_MARK = "m0a0b0-y8";
 
 test("each shell has its own handoff file, named after its address with a remote one's \"/\" made \"_\"", () => {
   assert.equal(handoffOf({ terminal: "t7", app: APP, home: HOME }).file, FILE);
@@ -89,37 +92,43 @@ test("a handoff file already there that others could read is the owner's only on
 });
 
 // The prepare line for the handoff file `file` and the keymap file `keymap` as zsh quotes
-// them: the widget, its key in every keymap, the main keymap written over the keymap file, the
-// handoff file's text put on the buffer stack for the next prompt, then clear.
-const widget = (file, keymap) =>
+// them, and the press's mark: the widget, its key in every keymap, the mark and then the main
+// keymap written over the keymap file, the handoff file's text put on the buffer stack for the
+// next prompt, then clear.
+const widget = (file, keymap, mark = MARK) =>
   ` _side_viewer_insert() { local f=${file}; [[ -r "$f" ]] || return 0; [[ -n $BUFFER ]] && zle push-line;` +
   ' BUFFER="$(<"$f")"; command rm -f -- "$f"; CURSOR=$#BUFFER };' +
   " zle -N _side_viewer_insert;" +
   " bindkey -M emacs '\\e[24;7~' _side_viewer_insert; bindkey -M viins '\\e[24;7~' _side_viewer_insert;" +
   " bindkey -M vicmd '\\e[24;7~' _side_viewer_insert;" +
-  ` command rm -f -- ${keymap}; bindkey -lL main >| ${keymap} 2>/dev/null;` +
+  ` command rm -f -- ${keymap}; { print -r -- '${mark}'; bindkey -lL main } >| ${keymap} 2>/dev/null;` +
   ` [[ -r ${file} ]] && print -rz -- "$(<${file})"; command rm -f -- ${file}; clear`;
 
-test("the prepare line binds ctrl+alt+F12 in every keymap, leaves the main keymap in the keymap file, puts the handoff file's text in itself, then clears", () => {
-  assert.equal(prepareLine(FILE, KEYMAP), widget(`'${FILE}'`, `'${KEYMAP}'`));
+test("the prepare line binds ctrl+alt+F12 in every keymap, leaves this press's mark and the main keymap in the keymap file, puts the handoff file's text in itself, then clears", () => {
+  assert.equal(prepareLine(FILE, KEYMAP, MARK), widget(`'${FILE}'`, `'${KEYMAP}'`));
+});
+
+test("each press's prepare line writes its own mark first in the keymap file", () => {
+  assert.equal(prepareLine(FILE, KEYMAP, OLD_MARK), widget(`'${FILE}'`, `'${KEYMAP}'`, OLD_MARK));
+  assert.notEqual(prepareLine(FILE, KEYMAP, OLD_MARK), prepareLine(FILE, KEYMAP, MARK));
 });
 
 test("the prepare line writes the keymap file over one already there, before it removes the handoff file", () => {
-  const line = prepareLine(FILE, KEYMAP);
-  const written = line.indexOf(`bindkey -lL main >| '${KEYMAP}'`);
+  const line = prepareLine(FILE, KEYMAP, MARK);
+  const written = line.indexOf(`>| '${KEYMAP}'`);
   assert.ok(written > line.indexOf("bindkey -M vicmd"));
   assert.ok(written < line.indexOf(`command rm -f -- '${FILE}'`));
 });
 
 test("the prepare line removes the keymap file before it writes it, so an old one it can't write over is never read as this zsh's", () => {
-  const line = prepareLine(FILE, KEYMAP);
+  const line = prepareLine(FILE, KEYMAP, MARK);
   const removed = line.indexOf(`command rm -f -- '${KEYMAP}'`);
   assert.ok(removed > line.indexOf("bindkey -M vicmd"));
-  assert.ok(removed < line.indexOf(`bindkey -lL main >| '${KEYMAP}'`));
+  assert.ok(removed < line.indexOf(`>| '${KEYMAP}'`));
 });
 
 test("handoff and keymap file paths with a quote stay one word for zsh", () => {
-  assert.equal(prepareLine("/Users/it's me/t7.txt", "/Users/it's me/t7.keymap"),
+  assert.equal(prepareLine("/Users/it's me/t7.txt", "/Users/it's me/t7.keymap", MARK),
     widget("'/Users/it'\\''s me/t7.txt'", "'/Users/it'\\''s me/t7.keymap'"));
 });
 
@@ -171,35 +180,61 @@ test("single quotes, Korean, symbols and backslashes go into the handoff file as
 
 // A zsh waiting at its prompt, as splitOf starts it.
 const ready = (pid) => ({ state: "ready", pid, argv: ["/bin/zsh", "-l"] });
-// `bindkey -lL main` as zsh prints it: `zsh -f` and a login zsh, then after `bindkey -v`.
-test("the keymap file of an emacs zsh says emacs", () => {
-  assert.equal(keymapOf("bindkey -A emacs main\n"), "emacs");
+// A keymap file as a prepare line leaves it: this press's mark on its first
+// line, then `bindkey -lL main` as zsh prints it (`zsh -f` and a login zsh, then after
+// `bindkey -v`).
+const left = (text, mark = MARK) => `${mark}\n${text}`;
+
+test("the keymap file of an emacs zsh, marked by this press, says emacs", () => {
+  assert.equal(keymapOf(left("bindkey -A emacs main\n"), MARK), "emacs");
 });
 
-test("the keymap file of a vi zsh says vi, in insert or command mode", () => {
-  assert.equal(keymapOf("bindkey -A viins main\n"), "vi");
-  assert.equal(keymapOf("bindkey -A vicmd main\n"), "vi");
+test("the keymap file of a vi zsh, marked by this press, says vi, in insert or command mode", () => {
+  assert.equal(keymapOf(left("bindkey -A viins main\n"), MARK), "vi");
+  assert.equal(keymapOf(left("bindkey -A vicmd main\n"), MARK), "vi");
 });
 
 test("an empty keymap file, none, or another keymap is not known", () => {
-  assert.equal(keymapOf(""), null);
-  assert.equal(keymapOf(null), null);
-  assert.equal(keymapOf("bindkey -A mykeys main\n"), null);
-  assert.equal(keymapOf("emacs"), null);
+  assert.equal(keymapOf("", MARK), null);
+  assert.equal(keymapOf(null, MARK), null);
+  assert.equal(keymapOf(left(""), MARK), null);
+  assert.equal(keymapOf(left("bindkey -A mykeys main\n"), MARK), null);
+  assert.equal(keymapOf(left("emacs"), MARK), null);
 });
 
-test("a keymap file with more than one line, even two keymaps, is not known", () => {
-  assert.equal(keymapOf("bindkey -A emacs main\nbindkey -A viins main\n"), null);
-  assert.equal(keymapOf("zsh: something\nbindkey -A emacs main\n"), null);
-  assert.equal(keymapOf("bindkey -A viins main\nmore\n"), null);
-  assert.equal(keymapOf("bindkey -A emacs main"), "emacs");
+test("a keymap file with more than one line after the mark, even two keymaps, is not known", () => {
+  assert.equal(keymapOf(left("bindkey -A emacs main\nbindkey -A viins main\n"), MARK), null);
+  assert.equal(keymapOf(left("zsh: something\nbindkey -A emacs main\n"), MARK), null);
+  assert.equal(keymapOf(left("bindkey -A viins main\nmore\n"), MARK), null);
+  assert.equal(keymapOf(left("bindkey -A emacs main"), MARK), "emacs");
+});
+
+test("a keymap file an earlier press left, which this one could neither remove nor write over, is not known", () => {
+  assert.equal(keymapOf(left("bindkey -A emacs main\n", OLD_MARK), MARK), null);
+  assert.equal(keymapOf(left("bindkey -A viins main\n", OLD_MARK), MARK), null);
+});
+
+test("a keymap file without a mark, as an older prepare line wrote it, is not known", () => {
+  assert.equal(keymapOf("bindkey -A emacs main\n", MARK), null);
+  assert.equal(keymapOf("bindkey -A vicmd main\n", MARK), null);
+});
+
+test("without this press's mark nothing is known, even from a file that carries one", () => {
+  assert.equal(keymapOf(left("bindkey -A emacs main\n"), undefined), null);
+  assert.equal(keymapOf(left("bindkey -A emacs main\n", ""), ""), null);
+});
+
+test("a vi zsh whose keymap file an earlier emacs press left is prepared again with ctrl+c, not alt+q", () => {
+  const keymap = keymapOf(left("bindkey -A emacs main\n", OLD_MARK), MARK);
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: ready(41), prepared: shellOf(ready(40)), keymap, fresh: false, stale: false, tr: ko }).commands,
+    [["keys", "t7", "ctrl+c"], ["send", "t7", prepareLine(FILE, KEYMAP, MARK)]]);
 });
 
 const KEY = ["keys", "t7", "ctrl+alt+f12"];
 
 test("a shell just opened is prepared, and the prepare line itself puts the command in; no key, no Enter", () => {
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(40), prepared: null, fresh: true, stale: false, tr: ko }), {
-    commands: [["send", "t7", prepareLine(FILE, KEYMAP)]],
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: ready(40), prepared: null, fresh: true, stale: false, tr: ko }), {
+    commands: [["send", "t7", prepareLine(FILE, KEYMAP, MARK)]],
     notice: null,
     wait: PREPARE_WAIT_MS,
     kind: "prepare",
@@ -207,7 +242,7 @@ test("a shell just opened is prepared, and the prepare line itself puts the comm
 });
 
 test("a shell already prepared only gets the key", () => {
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(40), prepared: shellOf(ready(40)), fresh: false, stale: false, tr: ko }), {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: ready(40), prepared: shellOf(ready(40)), fresh: false, stale: false, tr: ko }), {
     commands: [KEY],
     notice: null,
     wait: KEY_WAIT_MS,
@@ -216,8 +251,8 @@ test("a shell already prepared only gets the key", () => {
 });
 
 test("a shell that is now another emacs zsh is prepared again, its draft pushed aside first", () => {
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(41), prepared: shellOf(ready(40)), keymap: "emacs", fresh: false, stale: false, tr: ko }), {
-    commands: [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE, KEYMAP)]],
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: ready(41), prepared: shellOf(ready(40)), keymap: "emacs", fresh: false, stale: false, tr: ko }), {
+    commands: [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE, KEYMAP, MARK)]],
     notice: null,
     wait: PREPARE_WAIT_MS,
     kind: "prepare",
@@ -226,18 +261,18 @@ test("a shell that is now another emacs zsh is prepared again, its draft pushed 
 
 test("after exec zsh, which keeps the pid, a zsh started with other arguments is prepared again", () => {
   const exec = { state: "ready", pid: 40, argv: ["zsh"] };
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: exec, prepared: shellOf(ready(40)), keymap: "emacs", fresh: false, stale: false, tr: ko }).commands,
-    [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE, KEYMAP)]]);
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: exec, prepared: shellOf(ready(40)), keymap: "emacs", fresh: false, stale: false, tr: ko }).commands,
+    [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE, KEYMAP, MARK)]]);
 });
 
 test("a handoff file the last press left behind means the zsh lacks the widget, so it is prepared again", () => {
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(40), prepared: shellOf(ready(40)), keymap: "emacs", fresh: false, stale: true, tr: ko }).commands,
-    [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE, KEYMAP)]]);
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: ready(40), prepared: shellOf(ready(40)), keymap: "emacs", fresh: false, stale: true, tr: ko }).commands,
+    [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE, KEYMAP, MARK)]]);
 });
 
 test("a shell prepared again whose zsh was vi gets ctrl+c, not alt+q, right before the prepare line", () => {
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(41), prepared: shellOf(ready(40)), keymap: "vi", fresh: false, stale: false, tr: ko }), {
-    commands: [["keys", "t7", "ctrl+c"], ["send", "t7", prepareLine(FILE, KEYMAP)]],
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: ready(41), prepared: shellOf(ready(40)), keymap: "vi", fresh: false, stale: false, tr: ko }), {
+    commands: [["keys", "t7", "ctrl+c"], ["send", "t7", prepareLine(FILE, KEYMAP, MARK)]],
     notice: null,
     wait: PREPARE_WAIT_MS,
     kind: "prepare",
@@ -245,19 +280,19 @@ test("a shell prepared again whose zsh was vi gets ctrl+c, not alt+q, right befo
 });
 
 test("a shell prepared again whose keymap is not known gets ctrl+c too", () => {
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(40), prepared: shellOf(ready(40)), keymap: null, fresh: false, stale: true, tr: ko }).commands,
-    [["keys", "t7", "ctrl+c"], ["send", "t7", prepareLine(FILE, KEYMAP)]]);
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: ready(40), prepared: shellOf(ready(40)), keymap: null, fresh: false, stale: true, tr: ko }).commands,
+    [["keys", "t7", "ctrl+c"], ["send", "t7", prepareLine(FILE, KEYMAP, MARK)]]);
 });
 
 test("a shell just opened gets only the prepare line, whatever the keymap", () => {
   for (const keymap of ["emacs", "vi", null]) {
-    assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(40), prepared: null, keymap, fresh: true, stale: false, tr: ko }).commands,
-      [["send", "t7", prepareLine(FILE, KEYMAP)]]);
+    assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: ready(40), prepared: null, keymap, fresh: true, stale: false, tr: ko }).commands,
+      [["send", "t7", prepareLine(FILE, KEYMAP, MARK)]]);
   }
 });
 
 test("a prepared vi zsh only gets the key; its widget pushes the draft aside", () => {
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(40), prepared: shellOf(ready(40)), keymap: "vi", fresh: false, stale: false, tr: ko }), {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: ready(40), prepared: shellOf(ready(40)), keymap: "vi", fresh: false, stale: false, tr: ko }), {
     commands: [KEY],
     notice: null,
     wait: KEY_WAIT_MS,
@@ -266,7 +301,7 @@ test("a prepared vi zsh only gets the key; its widget pushes the draft aside", (
 });
 
 test("a plan names what it does, the key or the prepare line, apart from how long it waits", () => {
-  const plan = (more) => insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(40), prepared: shellOf(ready(40)), keymap: "emacs", fresh: false, stale: false, tr: ko, ...more }).kind;
+  const plan = (more) => insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: ready(40), prepared: shellOf(ready(40)), keymap: "emacs", fresh: false, stale: false, tr: ko, ...more }).kind;
   assert.equal(plan({}), "key");
   assert.equal(plan({ stale: true }), "prepare");
   assert.equal(plan({ prepared: null, fresh: true }), "prepare");
@@ -280,20 +315,20 @@ const FILE_THERE = "/home/me/.cache/side-viewer/shell/mini_t7.txt";
 const KEYMAP_THERE = "/home/me/.cache/side-viewer/shell/mini_t7.keymap";
 
 test("a shell on another machine is prepared like one here, and gets more time to take the handoff file", () => {
-  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, state: readyThere(40), prepared: null, fresh: true, stale: false, tr: ko }), {
-    commands: [["send", THERE, prepareLine(FILE_THERE, KEYMAP_THERE)]],
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, mark: MARK, state: readyThere(40), prepared: null, fresh: true, stale: false, tr: ko }), {
+    commands: [["send", THERE, prepareLine(FILE_THERE, KEYMAP_THERE, MARK)]],
     notice: null,
     wait: 5000,
     kind: "prepare",
   });
-  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, state: readyThere(40), prepared: shellOf(readyThere(40)), fresh: false, stale: false, tr: ko }), {
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, mark: MARK, state: readyThere(40), prepared: shellOf(readyThere(40)), fresh: false, stale: false, tr: ko }), {
     commands: [["keys", THERE, "ctrl+alt+f12"]],
     notice: null,
     wait: 1500,
     kind: "key",
   });
-  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, state: readyThere(41), prepared: shellOf(readyThere(40)), keymap: "emacs", fresh: false, stale: false, tr: ko }), {
-    commands: [["keys", THERE, "alt+q"], ["send", THERE, prepareLine(FILE_THERE, KEYMAP_THERE)]],
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, mark: MARK, state: readyThere(41), prepared: shellOf(readyThere(40)), keymap: "emacs", fresh: false, stale: false, tr: ko }), {
+    commands: [["keys", THERE, "alt+q"], ["send", THERE, prepareLine(FILE_THERE, KEYMAP_THERE, MARK)]],
     notice: null,
     wait: 5000,
     kind: "prepare",
@@ -301,8 +336,8 @@ test("a shell on another machine is prepared like one here, and gets more time t
 });
 
 test("a shell on another machine prepared again whose keymap is not known gets ctrl+c, with that machine's wait", () => {
-  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, state: readyThere(41), prepared: shellOf(readyThere(40)), keymap: null, fresh: false, stale: false, tr: ko }), {
-    commands: [["keys", THERE, "ctrl+c"], ["send", THERE, prepareLine(FILE_THERE, KEYMAP_THERE)]],
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, mark: MARK, state: readyThere(41), prepared: shellOf(readyThere(40)), keymap: null, fresh: false, stale: false, tr: ko }), {
+    commands: [["keys", THERE, "ctrl+c"], ["send", THERE, prepareLine(FILE_THERE, KEYMAP_THERE, MARK)]],
     notice: null,
     wait: 5000,
     kind: "prepare",
@@ -311,7 +346,7 @@ test("a shell on another machine prepared again whose keymap is not known gets c
 
 test("a busy shell on another machine gets nothing, only the same notice as here", () => {
   const busy = { state: "busy", program: "sleep" };
-  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, state: busy, prepared: null, fresh: false, stale: false, tr: ko }), {
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, mark: MARK, state: busy, prepared: null, fresh: false, stale: false, tr: ko }), {
     commands: [],
     notice: { title: "터미널에 넣지 않았습니다", body: "셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.", level: "warning" },
     wait: 0,
@@ -484,7 +519,7 @@ test("the wait ends at the first look that finds the file taken, or a look refus
 
 test("a busy shell gets nothing, only a notice", () => {
   const busy = { state: "busy", program: "sleep" };
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: busy, prepared: shellOf(ready(40)), fresh: false, stale: false, tr: ko }), {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: busy, prepared: shellOf(ready(40)), fresh: false, stale: false, tr: ko }), {
     commands: [],
     notice: noticeOf(busy, ko),
     wait: 0,
@@ -542,7 +577,7 @@ test("a zsh running a line or a script gets neither a key nor a prepare line", (
     const state = shellState(running({ argv, name: "zsh" }));
     for (const prepared of [null, { pid: 2, argv }]) {
       for (const keymap of ["vi", "emacs", null]) {
-        const plan = insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state, prepared, keymap, fresh: false, stale: false, tr: ko });
+        const plan = insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state, prepared, keymap, fresh: false, stale: false, tr: ko });
         assert.deepEqual(plan.commands, [], argv.join(" "));
         assert.equal(plan.kind, null);
       }
@@ -594,10 +629,10 @@ test("the notices in English, the program's name kept as it is", () => {
   assert.deepEqual(noticeOf({ state: "failed" }, en), { title: failed, body: "Couldn't open or find the shell pane.", level: "error" });
   // The plan and the press word their notices in the language they are given, and throw without one.
   const busy = { state: "busy", program: "sleep" };
-  assert.equal(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: busy, prepared: null, fresh: false, stale: false, tr: en }).notice.title,
+  assert.equal(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: busy, prepared: null, fresh: false, stale: false, tr: en }).notice.title,
     "Not inserted into the terminal");
   assert.equal(pressOutcome({ left: true, state: ready(40), keyed: false, tr: en }).notice.title, failed);
-  assert.throws(() => insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: busy, prepared: null, fresh: false, stale: false }), /translator/);
+  assert.throws(() => insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, mark: MARK, state: busy, prepared: null, fresh: false, stale: false }), /translator/);
   assert.throws(() => pressOutcome({ left: true, state: ready(40), keyed: false }), /translator/);
 });
 

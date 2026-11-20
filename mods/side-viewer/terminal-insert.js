@@ -40,35 +40,45 @@ const WIDGET = "_side_viewer_insert";
 // draft aside with push-line (zsh brings it back at the next prompt), puts the file's text in
 // the input line with the cursor at its end, and removes the file so a stray press puts nothing
 // in. It is bound in the vi keymaps too, so a draft there is never run.
-// It writes the zsh's main keymap (`bindkey -lL main`) to `keymapFile`, even
-// under noclobber, so the viewer knows how to clear a draft the next time it prepares a zsh
-// there (keymapOf). It removes the old keymap file first: an old one it can't write over (left
-// read-only) would otherwise be read as this zsh's keymap. It does that before it removes the
-// handoff file, since the viewer reads the keymap file once the handoff file is gone.
+// It writes this press's mark `mark` and then the zsh's main keymap (`bindkey -lL main`) to
+// `keymapFile`, even under noclobber, so the viewer knows how to clear a draft the next time it
+// prepares a zsh there (keymapOf). It removes the old keymap file first, so a read-only one is
+// written anew; one it can neither remove nor write over keeps an earlier press's mark, and the
+// viewer takes its keymap as not known. It does that before it removes the handoff file, since
+// the viewer reads the keymap file once the handoff file is gone.
 // The line then puts this press's text in itself with `print -z`, which zle shows at the next
 // prompt: a key sent right after the line could reach the shell before zle reads again and be
 // echoed as "^[[24;7~". A draft pushed aside before the line sits under it on the buffer stack,
 // so it comes back after the command. `clear` wipes the line from the screen; the leading
 // space keeps it out of the history where histignorespace is on.
-export function prepareLine(file, keymapFile) {
+export function prepareLine(file, keymapFile, mark) {
   const bind = (name) => `bindkey -M ${name} '\\e[24;7~' ${WIDGET};`;
   const path = quoted(file);
   return ` ${WIDGET}() { local f=${path}; [[ -r "$f" ]] || return 0; [[ -n $BUFFER ]] && zle push-line;` +
     ` BUFFER="$(<"$f")"; command rm -f -- "$f"; CURSOR=$#BUFFER }; zle -N ${WIDGET};` +
     ` ${bind("emacs")} ${bind("viins")} ${bind("vicmd")}` +
-    ` command rm -f -- ${quoted(keymapFile)}; bindkey -lL main >| ${quoted(keymapFile)} 2>/dev/null;` +
+    ` command rm -f -- ${quoted(keymapFile)}; { print -r -- ${quoted(mark)}; bindkey -lL main } >| ${quoted(keymapFile)} 2>/dev/null;` +
     ` [[ -r ${path} ]] && print -rz -- "$(<${path})"; command rm -f -- ${path}; clear`;
 }
 
-// The keymap a prepare line left in the keymap file, from its text `text` (null: no file):
-// "emacs", "vi" (insert or command mode), or null when it can't be told. `bindkey -lL main`
-// prints the keymap main is linked to as one line, `bindkey -A <name> main`; any other text,
-// more lines included, is not known.
-export function keymapOf(text) {
-  const name = /^bindkey -A (\S+) main\n?$/.exec(String(text ?? ""))?.[1];
+// The keymap this press's prepare line left in the keymap file, from its text `text` (null:
+// no file) and the press's mark `mark` (prepareLine): "emacs", "vi" (insert or command mode),
+// or null when it can't be told. The file's first line must be `mark`: a file an earlier press
+// left, one this line could neither remove nor write over, carries another mark or none, and
+// its keymap may be another zsh's. Then `bindkey -lL main` prints the keymap main is linked to
+// as one line, `bindkey -A <name> main`; any other text, more lines included, is not known.
+export function keymapOf(text, mark) {
+  if (typeof mark !== "string" || !MARK.test(mark)) return null;
+  const head = `${mark}\n`;
+  const body = String(text ?? "");
+  if (!body.startsWith(head)) return null;
+  const name = /^bindkey -A (\S+) main\n?$/.exec(body.slice(head.length))?.[1];
   if (name === "emacs") return "emacs";
   return name === "viins" || name === "vicmd" ? "vi" : null;
 }
+
+// A press's mark: letters, digits, "_" and "-", so it stays one line of the keymap file.
+const MARK = /^[A-Za-z0-9_-]+$/;
 
 // What goes into the handoff file for `command`: the block as written, without its last newline.
 export const insertText = (command) => command.replace(/\n+$/, "");
@@ -107,7 +117,8 @@ export const machineOfAddress = (address) => (isRemote(address) ? address.slice(
 // { commands: hc argument lists in order, notice: what to tell instead, or null,
 //   wait: how long the handoff file may stay before the press counts as not taken (ms),
 //   kind: "key" (only the key), "prepare" (a prepare line), or null (nothing goes out) }.
-//   file, keymapFile: the shell's handoff and keymap files (handoffOf);
+//   file, keymapFile: the shell's handoff and keymap files (handoffOf); mark: this press's
+//   mark, which a prepare line writes in the keymap file (prepareLine), new for every press;
 //   state: shellState() of the terminal now; prepared: shellOf() the zsh last prepared there,
 //   or null; keymap: what the last prepare line there left (keymapOf), or null;
 //   fresh: the shell was just opened by this viewer, so it has no draft;
@@ -121,13 +132,13 @@ export const machineOfAddress = (address) => (isRemote(address) ? address.slice(
 // keys, alt+q would only show up on screen as "^[q". A shell on another machine (its address's
 // prefix) is treated the same, with that machine's waits (waitsOf); the files are then there.
 // tr: the translator the notice is worded with (i18n.js).
-export function insertPlan({ terminal, file, keymapFile, state, prepared, keymap, fresh, stale, tr }) {
+export function insertPlan({ terminal, file, keymapFile, mark, state, prepared, keymap, fresh, stale, tr }) {
   if (state.state === "busy") return { commands: [], notice: noticeOf(state, tr), wait: 0, kind: null };
   const waits = waitsOf(machineOfAddress(terminal));
   if (!stale && sameShell(prepared, state)) {
     return { commands: [["keys", terminal, INSERT_KEY]], notice: null, wait: waits.key, kind: "key" };
   }
-  const prepare = ["send", terminal, prepareLine(file, keymapFile)];
+  const prepare = ["send", terminal, prepareLine(file, keymapFile, mark)];
   if (fresh) return { commands: [prepare], notice: null, wait: waits.prepare, kind: "prepare" };
   const clear = keymap === "emacs" ? "alt+q" : "ctrl+c";
   return { commands: [["keys", terminal, clear], prepare], notice: null, wait: waits.prepare, kind: "prepare" };

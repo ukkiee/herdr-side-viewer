@@ -143,7 +143,9 @@ export class ShellPane {
   async send(shell, command, state, fresh, access, tr, trouble, cx) {
     const { folder, file, keymapFile } = handoffOf({ terminal: shell.terminal, app: appHome(), home: access.remote ? await access.home() : null });
     const stale = (await access.read(file).catch(() => null)) != null;
-    const plan = insertPlan({ terminal: shell.terminal, file, keymapFile, state, prepared: shell.prepared, keymap: shell.keymap, fresh, stale, tr });
+    // New for every press, so a keymap file an earlier press left is never read as this one's.
+    const mark = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    const plan = insertPlan({ terminal: shell.terminal, file, keymapFile, mark, state, prepared: shell.prepared, keymap: shell.keymap, fresh, stale, tr });
     if (plan.notice) return plan.notice;
     const written = await this.write(access, folder, file, insertText(command));
     if (written !== true) return trouble(written);
@@ -163,18 +165,18 @@ export class ShellPane {
     const outcome = pressOutcome({ left: look === "left", state, keyed, tr });
     shell.prepared = outcome.prepared;
     if (outcome.notice) return outcome.notice;
-    if (!keyed) shell.keymap = await this.keymapLeft(access, keymapFile);
+    if (!keyed) shell.keymap = await this.keymapLeft(access, keymapFile, mark);
     run("pane.focus", { pane: shell.pane });
     return null;
   }
 
-  // The keymap a taken prepare line left in `file` (keymapOf), the file then removed. A read
-  // that fails, the connection's too, gives null: the command already went in, and the next
-  // prepare line clears a draft the safe way.
-  async keymapLeft(access, file) {
+  // The keymap a taken prepare line marked `mark` left in `file` (keymapOf), the file then
+  // removed. A read that fails, the connection's too, or a file without this mark gives null:
+  // the command already went in, and the next prepare line clears a draft the safe way.
+  async keymapLeft(access, file, mark) {
     const text = await access.read(file).catch(() => null);
     await access.run("rm", ["-f", "--", file]).catch(() => null);
-    return keymapOf(text);
+    return keymapOf(text, mark);
   }
 
   // Whether the handoff file was taken within `wait` ms of the clock, looking every `step` ms:
