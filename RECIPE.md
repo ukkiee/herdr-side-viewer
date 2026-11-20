@@ -636,9 +636,7 @@ Platform:
   push-line in emacs but Esc then q in vi, which can run a draft with the prepare line, so
   alt+q goes only when the last prepare line there left emacs; vi or not known gets ctrl+c,
   which drops the draft without running it. `hc send` waits for the output to settle (about
-  200 ms) before it pastes, so the line after ctrl+c needs no wait of its own: with none, the
-  line ran and the draft did not in every try, here and on a Linux machine, in viins and
-  vicmd. The keymap is the last prepared zsh's, read when it was prepared: a new zsh with
+  200 ms) before it pastes, so the line after ctrl+c needs no wait of its own. The keymap is the last prepared zsh's, read when it was prepared: a new zsh with
   vi keys after one prepared with emacs keys (`bindkey -v` run after the prepare, or other
   settings) still gets alt+q (README, Limits). `exec` keeps the pid, so `exec zsh`
   with the same argv as the zsh prepared is only caught after its press: the unbound key

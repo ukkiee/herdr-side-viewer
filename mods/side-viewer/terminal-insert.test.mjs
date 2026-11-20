@@ -123,7 +123,7 @@ test("a shell still starting is neither ready nor busy", () => {
 });
 
 test("only the short zsh that opens the shell pane is starting, in whatever folder", () => {
-  // As seen on a Linux machine while the shell pane opened there.
+  // A Linux zsh lives at /usr/bin/zsh, and the folder is any machine's.
   const linux = ["/usr/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec \"$2\" -l", "zsh", "/tmp/side-viewer-remote", "/usr/bin/zsh"];
   assert.deepEqual(shellState(running({ argv: linux, name: "zsh" })), { state: "starting" });
   assert.deepEqual(shellState(running({ argv: splitOf("p2", "/work/it's here").argv, name: "zsh" })), { state: "starting" });
@@ -143,8 +143,8 @@ test("a -c run shaped almost like the shell pane's short zsh is busy", () => {
   assert.deepEqual(shellState(running({ argv: split.slice(0, 5), name: "zsh" })), busy);
 });
 
-// `hc get --json` of a live terminal whose foreground is `foreground`, as measured on this Mac
-// (cwd and pid aside).
+// `hc get --json` of a live terminal whose foreground is `foreground` ({ name, argv }), in the
+// shape macOS reports it, with a fixed pid.
 const running = (foreground) => ({ address: "t7", state: "live", argv: ["/bin/zsh", "-l"], status: null, foreground: { ...foreground, pid: 2 } });
 
 test("a program started with -c in the shell pane is busy and named, even when it is zsh", () => {
