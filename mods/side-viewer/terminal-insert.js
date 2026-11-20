@@ -40,10 +40,11 @@ const WIDGET = "_side_viewer_insert";
 // draft aside with push-line (zsh brings it back at the next prompt), puts the file's text in
 // the input line with the cursor at its end, and removes the file so a stray press puts nothing
 // in. It is bound in the vi keymaps too, so a draft there is never run.
-// It writes the zsh's main keymap (`bindkey -lL main`) over `keymapFile`, even
+// It writes the zsh's main keymap (`bindkey -lL main`) to `keymapFile`, even
 // under noclobber, so the viewer knows how to clear a draft the next time it prepares a zsh
-// there (keymapOf). It does that before it removes the handoff file, since the viewer reads
-// the keymap file once the handoff file is gone.
+// there (keymapOf). It removes the old keymap file first: an old one it can't write over (left
+// read-only) would otherwise be read as this zsh's keymap. It does that before it removes the
+// handoff file, since the viewer reads the keymap file once the handoff file is gone.
 // The line then puts this press's text in itself with `print -z`, which zle shows at the next
 // prompt: a key sent right after the line could reach the shell before zle reads again and be
 // echoed as "^[[24;7~". A draft pushed aside before the line sits under it on the buffer stack,
@@ -55,7 +56,7 @@ export function prepareLine(file, keymapFile) {
   return ` ${WIDGET}() { local f=${path}; [[ -r "$f" ]] || return 0; [[ -n $BUFFER ]] && zle push-line;` +
     ` BUFFER="$(<"$f")"; command rm -f -- "$f"; CURSOR=$#BUFFER }; zle -N ${WIDGET};` +
     ` ${bind("emacs")} ${bind("viins")} ${bind("vicmd")}` +
-    ` bindkey -lL main >| ${quoted(keymapFile)} 2>/dev/null;` +
+    ` command rm -f -- ${quoted(keymapFile)}; bindkey -lL main >| ${quoted(keymapFile)} 2>/dev/null;` +
     ` [[ -r ${path} ]] && print -rz -- "$(<${path})"; command rm -f -- ${path}; clear`;
 }
 

@@ -97,7 +97,7 @@ const widget = (file, keymap) =>
   " zle -N _side_viewer_insert;" +
   " bindkey -M emacs '\\e[24;7~' _side_viewer_insert; bindkey -M viins '\\e[24;7~' _side_viewer_insert;" +
   " bindkey -M vicmd '\\e[24;7~' _side_viewer_insert;" +
-  ` bindkey -lL main >| ${keymap} 2>/dev/null;` +
+  ` command rm -f -- ${keymap}; bindkey -lL main >| ${keymap} 2>/dev/null;` +
   ` [[ -r ${file} ]] && print -rz -- "$(<${file})"; command rm -f -- ${file}; clear`;
 
 test("the prepare line binds ctrl+alt+F12 in every keymap, leaves the main keymap in the keymap file, puts the handoff file's text in itself, then clears", () => {
@@ -109,6 +109,13 @@ test("the prepare line writes the keymap file over one already there, before it 
   const written = line.indexOf(`bindkey -lL main >| '${KEYMAP}'`);
   assert.ok(written > line.indexOf("bindkey -M vicmd"));
   assert.ok(written < line.indexOf(`command rm -f -- '${FILE}'`));
+});
+
+test("the prepare line removes the keymap file before it writes it, so an old one it can't write over is never read as this zsh's", () => {
+  const line = prepareLine(FILE, KEYMAP);
+  const removed = line.indexOf(`command rm -f -- '${KEYMAP}'`);
+  assert.ok(removed > line.indexOf("bindkey -M vicmd"));
+  assert.ok(removed < line.indexOf(`bindkey -lL main >| '${KEYMAP}'`));
 });
 
 test("handoff and keymap file paths with a quote stay one word for zsh", () => {
