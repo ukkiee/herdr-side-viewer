@@ -59,7 +59,8 @@ exit "$(cat "$FAKE_STATE/herdr-exit" 2>/dev/null || echo 0)"
 `;
 
 // Stands in for the side viewers showing in the tab: each takes the waiting request the way
-// main.js does, through request.js, and logs the file it would show. FAKE_NOW, when set, is
+// main.js does, through request.js, and logs the file it would show and the conversation it
+// would remember. FAKE_NOW, when set, is
 // the time in milliseconds the viewers believe it is.
 const FAKE_VIEWERS = `
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
@@ -72,7 +73,9 @@ const now = process.env.FAKE_NOW ? Number(process.env.FAKE_NOW) : Date.now();
 const count = Number(readFileSync(process.env.FAKE_STATE + "/viewers", "utf8"));
 for (let i = 0; i < count; i++) {
   const request = await takeRequest(files, { folder: process.env.SIDE_VIEWER_DATA, answered: null, now });
-  if (request) appendFileSync(process.env.FAKE_STATE + "/viewer.log", request.file + "\\n");
+  if (!request) continue;
+  appendFileSync(process.env.FAKE_STATE + "/viewer.log", request.file + "\\n");
+  appendFileSync(process.env.FAKE_STATE + "/conversation.log", String(request.conversation) + "\\n");
 }
 `;
 
@@ -162,6 +165,8 @@ function world({ herdr = true, installed = true, record } = {}) {
     },
     // The files the showing viewers took, in order.
     shownInViewer: () => lines("viewer.log"),
+    // The conversations the showing viewers took with those files, "null" for none.
+    conversationsInViewer: () => lines("conversation.log"),
     // What `open` was called with, one argument per entry.
     openArgs: () => lines("open.log"),
   };
@@ -441,8 +446,16 @@ test("a showing viewer takes the request with its conversation", () => {
   w.viewersShowing();
   w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.deepEqual(w.shownInViewer(), ["/work/notes/plan.md"]);
-  const request = JSON.parse(readFileSync(join(w.env.SIDE_VIEWER_DATA, "request.json"), "utf8"));
-  assert.equal(request.conversation, FOCUSED);
+  assert.deepEqual(w.conversationsInViewer(), [FOCUSED]);
+});
+
+test("a showing viewer takes a request without a plain focused pane as one with no conversation", () => {
+  const w = world();
+  w.statusSays(status(SPACE, null));
+  w.viewersShowing();
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.deepEqual(w.shownInViewer(), ["/work/notes/plan.md"]);
+  assert.deepEqual(w.conversationsInViewer(), ["null"]);
 });
 
 test("without a plain focused pane, the file opens as before with no conversation", () => {
