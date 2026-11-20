@@ -3,14 +3,19 @@
 //
 // A viewer keeps one ShellPane: it remembers the pane it opened and puts later blocks there
 // while that pane still shows the same terminal, and which zsh there it has prepared.
-import { hc, run, exec, panes, focused, props, home, appHome, notify, readTextFile, writeTextFile } from "herdr";
-import { insertFileOf, insertFolderOf, insertText, insertPlan, pressOutcome, KEY_WAIT_MS, isRemote, shellState, noticeOf, viewerPaneOf, liveShell, openedShell, splitOf, shellFolder } from "./terminal-insert.js";
+// The shell is on the viewer's machine: a split of a viewer in another machine's space opens
+// it there, so the handoff file, the zsh and the home are that machine's (file-access.js).
+import { hc, run, panes, focused, props, appHome, notify, machines, writeTextFile } from "herdr";
+import { handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, insertText, insertPlan, pressOutcome, waitsOf, machineOfAddress, cutOff, stateOfGet, handoffLook, handoffTaken, noticeOf, viewerPaneOf, liveShell, openedShell, splitOf, shellFolder } from "./terminal-insert.js";
+import { accessOf } from "./file-access.js";
 
 // How long a new pane may take to show up in panes(), and a new shell to reach its prompt.
 const WAIT_MS = 5000;
 const STEP_MS = 100;
-// How often to look whether the shell took the handoff file.
-const TAKE_STEP_MS = 50;
+
+// The zsh found on each other machine (zshOf), so it is looked for once. A machine where none
+// was found is asked again at the next press.
+const zshes = new Map();
 
 export class ShellPane {
   constructor() {
@@ -40,28 +45,58 @@ export class ShellPane {
     });
   }
 
-  // Returns the notice to show, or null when the command went in.
+  // Returns the notice to show, or null when the command went in. The machine is the kept
+  // shell's, else the viewer's (machineOfAddress); a machine Herdr already lists as unavailable
+  // gets nothing, and a remote step refused for the connection says so too.
   async put(command, file, viewerTab, tr, cx) {
     const all = panes();
     const kept = liveShell(this.shell, all);
-    if (kept) {
-      const state = await this.settled(kept.terminal, cx);
-      if (state.state === "busy") return noticeOf(state, tr);
-      if (state.state === "ready") return this.send(kept, command, state, false, tr, cx);
+    const viewer = kept ? null : viewerPaneOf({ props: props(), focused: focused(), panes: all });
+    if (!kept && !viewer) return noticeOf({ state: "failed" }, tr);
+    const machine = machineOfAddress(kept ? kept.terminal : viewer);
+    if (cutOff({ machine, machines: machines() })) return noticeOf({ state: "unreachable", machine }, tr);
+    const trouble = (failure) => noticeOf(cutOff({ machine, failure }) ? { state: "unreachable", machine } : { state: "failed" }, tr);
+    try {
+      return await this.putOn(machine, kept, viewer, all, command, file, viewerTab, tr, trouble, cx);
+    } catch (error) {
+      return trouble(error);
     }
-    const viewer = viewerPaneOf({ props: props(), focused: focused(), panes: all });
-    if (!viewer) return noticeOf({ state: "failed" }, tr);
-    // A split of another machine's viewer opens a shell there, which never sees the handoff file.
-    if (isRemote(viewer)) return noticeOf({ state: "remote" }, tr);
-    const folder = shellFolder({ viewerTab, file, viewer, panes: all, shell: this.shell, home: home() });
-    run("pane.split", splitOf(viewer, folder));
+  }
+
+  async putOn(machine, kept, viewer, all, command, file, viewerTab, tr, trouble, cx) {
+    const access = accessOf(machine);
+    if (kept) {
+      const state = await this.settled(kept.terminal, machine, cx);
+      if (state.state === "busy" || state.state === "unreachable") return noticeOf(state, tr);
+      if (state.state === "ready") return this.send(kept, command, state, false, access, tr, trouble, cx);
+    }
+    viewer ??= viewerPaneOf({ props: props(), focused: focused(), panes: all });
+    if (!viewer || machineOfAddress(viewer) !== machine) return noticeOf({ state: "failed" }, tr);
+    const { zsh, failure } = await this.zshOn(access);
+    if (failure) return trouble(failure);
+    if (zsh === null) return noticeOf({ state: "noZsh" }, tr);
+    const folder = shellFolder({ viewerTab, file, viewer, panes: all, shell: this.shell, home: await access.home() });
+    run("pane.split", splitOf(viewer, folder, zsh));
     const opened = await this.appeared(all, viewer, cx);
     if (!opened) return noticeOf({ state: "failed" }, tr);
     this.shell = { ...opened, prepared: null };
-    const state = await this.settled(opened.terminal, cx);
-    if (state.state === "busy") return noticeOf(state, tr);
+    const state = await this.settled(opened.terminal, machine, cx);
+    if (state.state === "busy" || state.state === "unreachable") return noticeOf(state, tr);
     if (state.state !== "ready") return noticeOf({ state: "failed" }, tr);
-    return this.send(this.shell, command, state, true, tr, cx);
+    return this.send(this.shell, command, state, true, access, tr, trouble, cx);
+  }
+
+  // The zsh to start on the access's machine, as { zsh }: undefined here (splitOf's own
+  // /bin/zsh), the one found there otherwise, null when there is none; or { failure } when the
+  // lookup did not run (a nonzero answer).
+  async zshOn(access) {
+    if (!access.remote) return { zsh: undefined };
+    if (zshes.has(access.machine)) return { zsh: zshes.get(access.machine) };
+    const answer = await access.run("sh", ["-l", "-c", FIND_ZSH, "sh"]);
+    if (answer.code !== 0) return { failure: answer };
+    const zsh = zshOf(answer.stdout);
+    if (zsh) zshes.set(access.machine, zsh);
+    return { zsh };
   }
 
   // The pane a split below `viewer` opened, once panes() shows it.
@@ -74,16 +109,12 @@ export class ShellPane {
     return null;
   }
 
-  // The terminal's state once it is no longer starting (terminal-insert.js, shellState).
-  async settled(terminal, cx) {
+  // The state of the terminal on `machine` once it is no longer starting (terminal-insert.js,
+  // stateOfGet): unreachable when `hc get` failed for the connection.
+  async settled(terminal, machine, cx) {
     let state = { state: "starting" };
     for (let waited = 0; waited <= WAIT_MS; waited += STEP_MS) {
-      const result = await hc(["get", terminal, "--json"]);
-      let info = null;
-      try {
-        info = result.code === 0 ? JSON.parse(result.stdout) : null;
-      } catch {}
-      state = shellState(info);
+      state = stateOfGet({ machine, answer: await hc(["get", terminal, "--json"]) });
       if (state.state !== "starting") return state;
       await cx.sleep(STEP_MS);
     }
@@ -94,48 +125,67 @@ export class ShellPane {
   // in) or presses the key, waits for the file to be taken, then gives the shell pane the
   // keyboard so Enter runs it. A file still there means that zsh did not take it: it is
   // removed, so it cannot turn up at a later prompt, and the next press prepares the shell.
+  // A failed step after the write removes it too, as far as the machine can still be reached.
+  // The file is on the shell's machine, read, written and removed through `access`.
   //   state: the shell's ready state (shellState), remembered once the shell took a command.
-  async send(shell, command, state, fresh, tr, cx) {
-    const app = appHome();
-    const file = insertFileOf(app, shell.terminal);
-    const stale = (await readTextFile(file).catch(() => null)) != null;
+  //   trouble(failure): the notice for a failed step, the connection's or not.
+  async send(shell, command, state, fresh, access, tr, trouble, cx) {
+    const { folder, file } = handoffOf({ terminal: shell.terminal, app: appHome(), home: access.remote ? await access.home() : null });
+    const stale = (await access.read(file).catch(() => null)) != null;
     const plan = insertPlan({ terminal: shell.terminal, file, state, prepared: shell.prepared, fresh, stale, tr });
     if (plan.notice) return plan.notice;
-    if (!(await this.write(insertFolderOf(app), file, insertText(command)))) return noticeOf({ state: "failed" }, tr);
-    for (const args of plan.commands) {
-      const result = await hc(args);
-      if (result.code !== 0) return noticeOf({ state: "failed" }, tr);
+    const written = await this.write(access, folder, file, insertText(command));
+    if (written !== true) return trouble(written);
+    const waits = waitsOf(access.machine);
+    let look = "left";
+    try {
+      for (const args of plan.commands) {
+        const result = await hc(args);
+        if (result.code !== 0) return trouble(result);
+      }
+      look = await this.untaken(access, file, plan.wait, waits.step, cx);
+    } finally {
+      if (look !== "taken") await access.run("rm", ["-f", "--", file]).catch(() => null);
     }
-    const left = await this.untaken(file, plan.wait, cx);
-    if (left) await exec("rm", ["-f", "--", file]).catch(() => null);
-    const outcome = pressOutcome({ left, state, keyed: plan.wait === KEY_WAIT_MS, tr });
+    if (look === "unreachable") return noticeOf({ state: "unreachable", machine: access.machine }, tr);
+    const outcome = pressOutcome({ left: look === "left", state, keyed: plan.wait === waits.key, tr });
     shell.prepared = outcome.prepared;
     if (outcome.notice) return outcome.notice;
     run("pane.focus", { pane: shell.pane });
     return null;
   }
 
-  // Whether the handoff file is still there after `wait` ms.
-  async untaken(file, wait, cx) {
-    for (let waited = 0; ; waited += TAKE_STEP_MS) {
-      if ((await readTextFile(file).catch(() => null)) == null) return false;
-      if (waited >= wait) return true;
-      await cx.sleep(TAKE_STEP_MS);
-    }
+  // Whether the handoff file was taken within `wait` ms of the clock, looking every `step` ms:
+  // "taken", "left", or "unreachable" when a look was refused for the connection (handoffTaken).
+  untaken(access, file, wait, step, cx) {
+    const { machine } = access;
+    return handoffTaken({
+      look: () => access.read(file).then((text) => handoffLook({ machine, text }), (failure) => handoffLook({ machine, failure })),
+      sleep: (ms) => cx.sleep(ms),
+      now: () => Date.now(),
+      wait,
+      step,
+    });
   }
 
-  // Writes `text` to the handoff file, whether or not an earlier one is still there. The folder
-  // is the owner's only, like the picture copies: the file holds what the person is about to run.
-  // A second try covers the widget removing the earlier file between the read and the write.
-  async write(folder, file, text) {
-    const made = await exec("sh", ["-c", 'umask 077; mkdir -p "$1"', "sh", folder]).catch(() => null);
-    if (made?.code !== 0) return false;
+  // Writes `text` to the handoff file, whether or not an earlier one is still there: true, or
+  // what failed (a nonzero answer, a rejection, or null). The folder is the owner's only, like
+  // the picture copies: the file holds what the person is about to run.
+  // Here writeTextFile writes it; a second try covers the widget removing the earlier file
+  // between the read and the write. Another machine's is one command there (HANDOFF_THERE).
+  async write(access, folder, file, text) {
+    if (access.remote) {
+      const answer = await access.run("sh", ["-c", HANDOFF_THERE, "sh", folder, file, text]);
+      return answer.code === 0 ? true : answer;
+    }
+    const made = await access.run("sh", ["-c", 'umask 077; mkdir -p "$1"', "sh", folder]).catch(() => null);
+    if (made?.code !== 0) return null;
     for (let tries = 0; tries < 2; tries++) {
       try {
-        await writeTextFile(file, text, await readTextFile(file));
+        await writeTextFile(file, text, await access.read(file));
         return true;
       } catch {}
     }
-    return false;
+    return null;
   }
 }

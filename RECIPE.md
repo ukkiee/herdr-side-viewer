@@ -97,7 +97,8 @@ Top to bottom:
 
 The **path picker** is a separate popup over the window, not a pane (mod.json `overlay`: a
 `popup` as large as the window with no frame of Herdr's, `frame: "none"`). It is clear, so the
-window shows through, and holds one card 40px below the window's top, centered across:
+window shows through, and holds one card about 49px below the window's top and about 8px
+right of the window's middle:
 640px wide, or the window's width less 16px each side when that is narrower (240px at the
 least), and at most 0.8 of the window's height. The card is drawn like Herdr's own popup,
 `popover` with a 1px `border`, radius 12 and a large shadow, 14px padding, 10px between its
@@ -283,12 +284,19 @@ The mod shows files, not agents, so it has no agent statuses.
   `sh shell bash zsh fish console`, `Mermaid` for `mermaid`, `Code` for anything else. Copy
   puts `block.text` on the clipboard.
 - **`>_`** (shell blocks only). Opens a shell pane below the viewer with `pane.split
-  {direction: "down", pane: <viewer>, argv: [/bin/zsh -c 'cd -- "$1" 2>/dev/null; exec
-  /bin/zsh -l' zsh <folder>]}` and finds it by comparing `panes()` (up to 5 s). The folder: in a viewer tab
+  {direction: "down", pane: <viewer>, argv: [<zsh> -c 'cd -- "$1" 2>/dev/null; exec
+  "$2" -l' zsh <folder> <zsh>]}` (`<zsh>` is `/bin/zsh` on this Mac) and finds it by comparing
+  `panes()` (up to 5 s). The folder: in a viewer tab
   the document's; beside a conversation the `cwd` of a terminal pane in the same tab, an
-  agent's first; else home. The command (without its last newline) is written to
+  agent's first; else the home of the viewer's machine. The command (without its last
+  newline) is written to the handoff file. On this Mac that is
   `data/side-viewer/shell/<terminal>.txt` (folder made with `umask 077`; `writeTextFile`
-  with the file's current text, or null, as `expected`, tried twice), then `hc keys
+  with the file's current text, or null, as `expected`, tried twice). On another machine it
+  is `~/.cache/side-viewer/shell/<terminal>.txt` there (`/` in the address becomes `_`,
+  so `mini_t7.txt`), written by one command there, `sh -c 'umask 077; mkdir -p "$1" &&
+  chmod 700 "$1" && { [ ! -e "$2" ] || chmod 600 "$2"; } && printf %s "$3" > "$2"' sh
+  <folder> <file> <text>`, with the text as an
+  argument. Then `hc keys
   <terminal> ctrl+alt+f12`. Instead of that key, a zsh not yet prepared gets the prepare line
   with `hc send`: a zle widget `_side_viewer_insert` that pushes a draft aside (`zle
   push-line`), reads the file into `BUFFER`, puts the cursor at its end and removes the file,
@@ -298,14 +306,27 @@ The mod shows files, not agents, so it has no agent statuses.
   `foreground` at the prompt); a shell just opened is prepared without alt+q, a zsh with
   another pid or argv in the same pane, or one that left an earlier file, is prepared again
   after `hc keys <terminal> alt+q`. Then the viewer waits for the file to go (500 ms after
-  the key, 3 s after the prepare line, looking every 50 ms). A file still there is removed,
+  the key, 3 s after the prepare line, looking every 50 ms; for a shell on another machine
+  1500 ms, 5000 ms and every 100 ms, each look a file read there; the waits are clock time,
+  the reads included). A file still there is removed (`rm -f` on its machine, also when an
+  `hc` command after the write fails),
   the zsh is forgotten, and a notification says `터미널에 넣지 못했습니다` with, after the key,
   `셸이 명령을 받지 않았습니다(exec zsh 등으로 다시 시작됨). 입력 칸에 ;7~가 남았다면 지우고
   다시 누르세요.`, or after the prepare line (no key was sent) `셸이 아직 명령을 받을 준비가
   되지 않았습니다. 잠시 뒤 다시 누르세요.`
-  A terminal (or a viewer) whose hc address has a machine prefix (`mini/t7`) gets nothing:
-  `다른 기계의 셸에는 넣을 수 없습니다. 복사 버튼으로 붙여 넣으세요.` Otherwise the viewer
-  gives that pane the keyboard.
+  Otherwise the viewer gives that pane the keyboard.
+  The machine is the prefix of an hc address (`mini/t7`): the kept shell's terminal,
+  else the viewer's pane, whatever space value its props hold. A machine `machines()` lists
+  as unavailable gets nothing, and a step there refused for the connection
+  (`remote-results.js`'s `unreachable`; the shell's `hc get` and each look at the handoff
+  file count) stops the press: `터미널에 넣지 못했습니다` / `<machine> 기계에 연결할 수
+  없어요`, with no pane opened after it and the keyboard left where it was. Before the split, another
+  machine is asked once for its zsh with `sh -l -c FIND_ZSH sh`: the login shell's
+  `command -v zsh` when that is a program file, else the first of `/bin/zsh`,
+  `/usr/bin/zsh`, `/usr/local/bin/zsh`, `/opt/homebrew/bin/zsh` there. A path found is
+  remembered for that machine. When none is found, no pane opens, the machine is asked again
+  at the next press, and the notification is `터미널에 넣지 못했습니다` / `그 기계에 zsh가 없어 넣을 수 없습니다. 복사 버튼으로 붙여
+  넣으세요.`
   The next `>_` uses the same pane while it shows the same terminal. When `hc get`'s `foreground` is not zsh, nothing is sent and a Herdr
   notification says `터미널에 넣지 않았습니다` / `셸에서 다른 프로그램(<name>)이 실행
   중입니다. 끝난 뒤 다시 누르세요.`; when no pane can be opened or found,
@@ -339,7 +360,13 @@ The mod shows files, not agents, so it has no agent statuses.
   `code` it covers the markdown and image extensions; with it, the code extensions too. It
   records each extension's original app, prints `macOS 확인 창이 N번 뜹니다.` (N = the
   number of file types to change), then sends one request per file type and waits up to
-  300 seconds for each confirmation window. Output: `바뀜: …` (changed), `유지를 선택함: …`
+  300 seconds for each confirmation window. Just before each request it prints
+  `확인 창 i/N: <extensions> (지금 <current app> → <new app>)` (English
+  `Window i/N: <extensions> (now <current app> → <new app>)`): i counts the requests from 1,
+  N is the count line's, the extensions are that file type's in list order. An app is
+  shown by `SideViewerRouter --app-name <bundle id>` (the name Finder shows, without a
+  trailing `.app`; an empty line for an app macOS can't find, then the bundle id), or `-`
+  when there is no default app. With nothing to change there is no such line. Output: `바뀜: …` (changed), `유지를 선택함: …`
   (the person kept the current app), `실패: … (reason)` on stderr, or `바꿀 것이
   없습니다.` (nothing to change). A second run never records the router as an original app.
 - **Restore** (`--restore`). Every extension the router still holds goes back to its
@@ -348,7 +375,9 @@ The mod shows files, not agents, so it has no agent statuses.
   first, then a sibling's record), because the request changes the whole file type; only
   without such a sibling does it go to TextEdit (Preview for images), and it says so. When
   the app asked for is no longer installed, the same choice is asked for once more
-  (sibling's app, else TextEdit or Preview) and printed. A file type whose extensions would
+  (sibling's app, else TextEdit or Preview) and printed
+  (`<extension>: 원래 앱 … 이 없어 … 으로 돌립니다.`), followed by the same i's window line
+  again with that app. A file type whose extensions would
   all go to the app it already opens in gets no request and is not counted. A file type
   that got a request ends one of three ways. When the request succeeds, every extension of
   the file type is read again: those that left the router are listed under `바뀜`, those
@@ -460,6 +489,8 @@ The mod shows files, not agents, so it has no agent statuses.
 - Programs the mod runs: `sh` (with `stat`, `head`, `od`, `cp`, `touch`, `mkdir`), `open`,
   `rm`, `mkdir`, `touch`, `sleep`, `defaults`, and `/bin/zsh` in the shell pane. For another
   machine it runs there `sh` (with `stat`, `head`, `od`, `uname`, `printf`) and `cksum`,
+  for `>_` also `sh -l -c` (the zsh lookup), `sh` with `mkdir`, `chmod`, `printf` (the
+  handoff file), `rm` and that machine's zsh in the shell pane,
   and on this Mac `sh` with `hc` (`hc file write --on`, `hc exec --on … cat`, the `hc` on
   `PATH`, else `~/.local/bin/hc`), `mkdir`, `chmod`, `find`, `mv`. The scripts
   also use `herdr-app`, `plutil`, `awk`, `sed`, `find`, `mktemp`, and `defaults` and `tr`
@@ -472,12 +503,14 @@ The mod shows files, not agents, so it has no agent statuses.
   `<copy>.<pid>.part` holds the bytes while they arrive; one a killed copy left is swept
   with the copies), `previews/` (edited svg sources, same names, folder mode
   700), `handoff-<id>.json` (`{"id","file","at","edit"}`, deleted by the tab that reads
-  it), `shell/<terminal>.txt` (the command for `>_`, folder mode 700, deleted by the
-  shell's widget as it reads it), and `remote-saves/<ms>-<random>.txt` (the text of a save
+  it), `shell/<terminal>.txt` (the command for `>_` to a shell on this Mac, folder mode
+  700, deleted by the shell's widget as it reads it), and `remote-saves/<ms>-<random>.txt` (the text of a save
   to another machine, folder mode 700, deleted when the write ends; one older than 10
   minutes, left by a quit, goes at the next remote save). A copy or preview is deleted when a newer one of the same file replaces it, or when
   not shown for 30 days. The viewer reads whichever file it is asked to show and writes the
-  file it saves, on its machine.
+  file it saves, on its machine. On another machine `>_` writes
+  `~/.cache/side-viewer/shell/<terminal>.txt` there instead (folder mode 700 and file mode
+  600, both set on every write, deleted the same way); nothing of it lands in this Mac's data folder.
 - `install.sh`: runs `herdr-app check` on the mod folder, runs `build.sh`, then copies the
   mod folder into the app home (`keys-merge.js` goes along, unused there). Then, under
   `Shortcut keys`, `node` runs `keys-merge.js` on the app home's `keys.json` and the
@@ -570,8 +603,14 @@ Platform:
   and `clear` wipes that shell's screen (README, Limits). `exec` keeps the pid, so `exec zsh`
   with the same argv as the zsh prepared is only caught after its press: the unbound key
   leaves `;7~` in the input line and the file stays, which the wait above turns into a
-  notification and a prepare on the next press. A shell on another machine never sees the
-  file (`writeTextFile` takes no machine), so it is refused before anything is sent.
+  notification and a prepare on the next press. A shell on another machine reads its file
+  there: `writeTextFile` takes no machine, so the file is written by one `sh` command there
+  with the text as an argument (a code block is far under Linux's 128 KiB for one), in
+  `~/.cache/side-viewer/shell/` of that machine's home. Its key and reads cross the network
+  (a read there took 27 to 151 ms), hence the longer waits (1.5 s after the key, 5 s after
+  the prepare line, looking every 100 ms); with the read time added the real wait is a little
+  longer. The zsh there is not always `/bin/zsh` (a Linux machine's login `command -v zsh`
+  can be `/usr/bin/zsh`), so it is looked for and the found path remembered.
 - zsh reports no hc status, so `hc get`'s `status` is always null; `foreground.name` (`zsh`
   at the prompt, `sleep` while it runs) tells a busy shell.
 - `pane.split` takes no folder, so the shell starts as a short zsh that `cd`s and becomes
@@ -684,8 +723,8 @@ Limits and assumptions:
 - Line numbers in a path (`app.ts:12`) are ignored; the file shows from the top.
 - No web addresses, no cmd-click in a remote space (the picker instead), no binary files
   (`pdf`, `zip`), no keyboard navigation between blocks, no cmd+E, no `{{placeholders}}`.
-- Remote spaces on Linux and macOS machines only; a Windows machine gets its notice. No
-  `>_` into a shell on another machine, no folder watch there (a 3-second check instead). A
+- Remote spaces on Linux and macOS machines only; a Windows machine gets its notice. `>_`
+  needs zsh on that machine. No folder watch there (a 3-second check instead). A
   viewer shows only the files of its own space's machine.
 - Not drawn: `mermaid` as a diagram, math, GitHub alert boxes, HTML tags, definition lists,
   `html` as a page, web pictures, pictures inside a paragraph. Code in a card can't be
@@ -728,10 +767,15 @@ and a path in code formatting.
 2. `router --status` prints one line per extension: extension, current default app, recorded
    original app or `-`.
 3. `router --make-default` first prints `macOS 확인 창이 N번 뜹니다.`, and exactly N windows
-   follow. Pick the router in every window but one, and keep the current app in that one:
+   follow. Just before each window one line comes,
+   `확인 창 i/N: <extensions> (지금 <current app> → Side Viewer Router)`: i goes from 1 to N
+   in order, N is the first line's, and the extensions are those of the window that follows.
+   Pick the router in every window but one, and keep the current app in that one:
    the output lists the kept extensions under `유지를 선택함`, the rest under `바뀜`, the
    exit code is 3, and `router --status` agrees. No code extension changed.
-4. `router --make-default` again asks only for what was kept; pick the router. Afterwards
+4. `router --make-default` again asks only for what was kept, each window again just after
+   its `확인 창 i/N` line (N the new first line's, the extensions that window's); pick the
+   router. Afterwards
    no line of `original-apps.tsv` names `dev.ukkiee.side-viewer-router`.
 5. `router --make-default code` announces its windows and takes over the code extensions,
    `html htm shtml shtm` among them in one window. Where the router held nothing before,
@@ -893,17 +937,21 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
     `pbpaste | shasum`. Click `>_` on `git status --short`: a shell pane opens below the
     viewer, with `git status --short` in its input line, not run, and no other line on its
     screen; its prompt is in the conversation terminal's folder; `pbpaste | shasum` is
-    unchanged. Clear the line
-    (ctrl+U), click `>_` on the first `Shell` card: the command goes into the same pane, no
-    new one.
-36. Busy shell, shown for real: in that shell pane clear the line and run `sleep 30`. While
-    it runs, click `>_`: a notification `터미널에 넣지 않았습니다` says
-    `셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.`, and nothing is
-    typed. When `sleep` ends, click `>_` again: the command goes into the same pane.
-37. In that shell type `echo draft` without Enter, click `>_`: the input line holds the
-    command; clear it (ctrl+U) and press Enter on the empty line: `echo draft` comes back.
-    The same after ` bindkey -v`: the draft is not run and comes back. Clear the line, run
-    `exec zsh` and click `>_`: the command goes in and no other line is left on the screen.
+    unchanged. Clear the line with ctrl+C, here and in the steps below: ctrl+U clears only
+    one line of a command that spans several, and the next Enter runs the rest. Click `>_`
+    on the first `Shell` card: the command goes into the same pane, no new one.
+36. Busy shell, shown for real: in that shell pane clear the line (ctrl+C) and run
+    `sleep 30`. While it runs, click `>_`: the notification's title `터미널에 넣지 않았습니다`
+    shows whole. Its body is
+    `셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.`, which Herdr draws
+    on one line and may cut with `…` at the notification's width; on screen it starts
+    `셸에서 다른 프로그램(sleep)이 실행 중입니다.`. Nothing is typed. When `sleep` ends,
+    click `>_` again: the command goes into the same pane.
+37. In that shell clear the line, type `echo draft` without Enter, click `>_`: the input
+    line holds the command; clear it (ctrl+C): nothing runs and `echo draft` comes back at
+    the next prompt. Clear the line, run ` bindkey -v` and do the same: the draft is not run
+    and comes back. Clear the line, run `exec zsh` and click `>_`: the command goes in and
+    no other line is left on the screen.
     Clear the line, run `exec zsh` again and click `>_`: a notification
     `터미널에 넣지 못했습니다` comes and the input line may hold `;7~`; clear it and click `>_`
     again: the command goes in.
@@ -1080,9 +1128,31 @@ echo 'docs/samples/code-sample.md:12 and `box.svg`'
     after the current one, in the same remote space, with the edit and `편집됨`, no
     `원래 앱으로 열기` or `Finder에서 보기`, and the picture drawn. Click in the tab, then
     cmd+S: `tail` in the terminal shows the edit.
-64. `>_`. In `code-sample.md`, click `>_` on a `Shell` card: a notification
-    `터미널에 넣지 못했습니다` with `다른 기계의 셸에는 넣을 수 없습니다. 복사 버튼으로 붙여
-    넣으세요.`, and no pane opens and nothing is typed. The copy button still copies.
+64. `>_`, on a Linux machine. Show `code-sample.md` beside that terminal (`cmd-o` there)
+    and click `>_` on `git status --short`: a shell pane opens below the viewer, with
+    `git status --short` in its input line, not run, and no other line on its screen. The
+    shell is on that machine: `hc get` on its terminal (the new one in `hc ls`) gives an
+    address that starts with `<machine>/`, and its prompt is in `/tmp/side-viewer-remote`,
+    the folder of the terminal beside the viewer there. Then:
+    - clear the line with ctrl+C, here and below (ctrl+U clears only one line of a command
+      that spans several, and the next Enter runs the rest), click `>_` on the first `Shell`
+      card: the command goes into the same pane, no new one;
+    - clear the line (ctrl+C), run `sleep 30` and click `>_` while it runs: the
+      notification's title `터미널에 넣지 않았습니다` shows whole. Its body is
+      `셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.`, which Herdr draws
+      on one line and may cut with `…` at the notification's width; on screen it starts
+      `셸에서 다른 프로그램(sleep)이 실행 중입니다.`. Nothing is typed. When `sleep` ends,
+      click `>_` again: the command goes into the same pane;
+    - clear the line, type `echo draft` without Enter, click `>_`: the input line holds the
+      command; clear it (ctrl+C): nothing runs and `echo draft` comes back at the next
+      prompt;
+    - clear the line and run `ls -la ~/.cache/side-viewer/shell/` in that shell: the folder
+      is `drwx------` and holds no file. On this Mac
+      `ls ~/.config/herdr-app/data/side-viewer/shell/` lists no file starting with
+      `<machine>_`;
+    - click `새 탭으로 열기`, then `>_` on a `Shell` card in that tab: a shell pane opens below
+      it on that machine, its prompt in `/tmp/side-viewer-remote/docs/samples`.
+    The copy button still copies.
 65. Out of reach, only with a way to cut that machine off that you choose (its network off,
     say); otherwise note it as not checked. Edit `main.js` without saving and cut it: the
     editor and the edit stay, and within a few seconds the status says
@@ -1092,16 +1162,25 @@ echo 'docs/samples/code-sample.md:12 and `box.svg`'
     `markdown-sample.md` with nothing unsaved and cut it again: within a few seconds the
     viewer shows `<machine> 기계에 연결할 수 없어요.` Reconnect: the document comes back by
     itself within a few seconds.
-66. `herdr-app status` reports no mod error. Clean up that machine and check it is gone:
+66. `herdr-app status` reports no mod error. Clean up that machine and check it is gone.
+    The handoff files go only for the shells 64 opened (their terminals as `hc ls` shows
+    them, `<machine>/t…`); the folders go only when nothing else is left in them:
 
     ```sh
     hc exec --on "$m" sh -c 'chmod 755 "$1/ro"; rm -rf "$1"' sh /tmp/side-viewer-remote
     hc exec --on "$m" ls /tmp/side-viewer-remote   # No such file or directory
+    for t in <shell terminal> <new tab's shell terminal>; do
+      hc exec --on "$m" sh -c 'rm -f -- "$HOME/.cache/side-viewer/shell/$1.txt"' sh "$(printf %s "$t" | tr -c 'A-Za-z0-9_-' _)"
+    done
+    hc exec --on "$m" sh -c 'cd "$HOME/.cache" && rmdir side-viewer/shell side-viewer 2>/dev/null; ls -A side-viewer/shell'
+    # No such file or directory, or only other terminals' files
     ```
 
 ### Giving the extensions back
 
-67. `router --restore` announces its windows, and exactly that many follow; pick the original
+67. `router --restore` announces its windows, and exactly that many follow, each just after
+    its line `확인 창 i/N: <extensions> (지금 Side Viewer Router → <original app>)` (i from 1
+    to N in order, N the first line's, the extensions that window's); pick the original
     app in each (the button that names the other app, not the router). `바뀜` lists only
     extensions that left the router; any that stay are under `라우터에 남음`, and
     `router --status` then shows the router for those and no others. An extension the

@@ -3,8 +3,13 @@
 // shell is too busy to take it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { insertFileOf, insertFolderOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf } from "./terminal-insert.js";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { insertFileOf, insertFolderOf, handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, cutOff, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf, stateOfGet, handoffLook, handoffTaken } from "./terminal-insert.js";
 import { translator } from "./i18n.js";
+import { en as alertsEn, ko as alertsKo } from "./messages-alerts.js";
 
 // The notices as a Korean system shows them.
 const ko = translator("ko");
@@ -30,6 +35,55 @@ test("each shell has its own handoff file in the app's data folder", () => {
   assert.equal(insertFileOf(APP, "t7"), FILE);
   assert.equal(insertFileOf(APP, "mini/t12"), `${APP}/data/side-viewer/shell/mini_t12.txt`);
   assert.equal(insertFolderOf(APP), `${APP}/data/side-viewer/shell`);
+});
+
+test("a shell here uses the data folder's handoff file; a shell on another machine one in that machine's ~/.cache", () => {
+  assert.deepEqual(handoffOf({ terminal: "t7", app: APP, home: HOME }), { folder: `${APP}/data/side-viewer/shell`, file: FILE });
+  assert.deepEqual(handoffOf({ terminal: "mini/t7", app: APP, home: "/home/me" }), {
+    folder: "/home/me/.cache/side-viewer/shell",
+    file: "/home/me/.cache/side-viewer/shell/mini_t7.txt",
+  });
+});
+
+// HANDOFF_THERE as the other machine's sh runs it, here in a scratch folder.
+function handOff(folder, file, text) {
+  return execFileSync("sh", ["-c", HANDOFF_THERE, "sh", folder, file, text], { encoding: "utf8" });
+}
+
+test("the command that writes the handoff file there makes the folder the owner's only and writes the text as it is", () => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "handoff-"));
+  try {
+    const folder = path.join(scratch, ".cache/side-viewer/shell");
+    const file = path.join(folder, "mini_t7.txt");
+    const text = "echo 'q' \"a b\" | wc -c; printf '%s\\n' 한글 $HOME `pwd` a\\nb\n  -n second line";
+    handOff(folder, file, text);
+    assert.equal(fs.readFileSync(file, "utf8"), text);
+    assert.equal(fs.statSync(folder).mode & 0o777, 0o700);
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    // An earlier press's file, and a folder someone opened up, are written over.
+    fs.chmodSync(folder, 0o755);
+    handOff(folder, file, "-n");
+    assert.equal(fs.readFileSync(file, "utf8"), "-n");
+    assert.equal(fs.statSync(folder).mode & 0o777, 0o700);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test("a handoff file already there that others could read is the owner's only once written over", () => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "handoff-"));
+  try {
+    const folder = path.join(scratch, ".cache/side-viewer/shell");
+    const file = path.join(folder, "mini_t7.txt");
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(file, "old");
+    fs.chmodSync(file, 0o644);
+    handOff(folder, file, "echo new");
+    assert.equal(fs.readFileSync(file, "utf8"), "echo new");
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 });
 
 // The prepare line for the handoff file `file` as zsh quotes it: the widget, its key in every
@@ -101,12 +155,49 @@ test("a handoff file the last press left behind means the zsh lacks the widget, 
     [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE)]]);
 });
 
-test("a shell on another machine gets nothing: the handoff file is on this one", () => {
-  assert.deepEqual(insertPlan({ terminal: "mini/t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false, tr: ko }), {
+// A Linux zsh at its prompt, as `hc get` shows one (`/usr/bin/zsh -l`).
+const readyThere = (pid) => ({ state: "ready", pid, argv: ["/usr/bin/zsh", "-l"] });
+const THERE = "mini/t7";
+const FILE_THERE = "/home/me/.cache/side-viewer/shell/mini_t7.txt";
+
+test("a shell on another machine is prepared like one here, and gets more time to take the handoff file", () => {
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, state: readyThere(40), prepared: null, fresh: true, stale: false, tr: ko }), {
+    commands: [["send", THERE, prepareLine(FILE_THERE)]],
+    notice: null,
+    wait: 5000,
+  });
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, state: readyThere(40), prepared: shellOf(readyThere(40)), fresh: false, stale: false, tr: ko }), {
+    commands: [["keys", THERE, "ctrl+alt+f12"]],
+    notice: null,
+    wait: 1500,
+  });
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, state: readyThere(41), prepared: shellOf(readyThere(40)), fresh: false, stale: false, tr: ko }), {
+    commands: [["keys", THERE, "alt+q"], ["send", THERE, prepareLine(FILE_THERE)]],
+    notice: null,
+    wait: 5000,
+  });
+});
+
+test("a busy shell on another machine gets nothing, only the same notice as here", () => {
+  const busy = { state: "busy", program: "sleep" };
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, state: busy, prepared: null, fresh: false, stale: false, tr: ko }), {
     commands: [],
-    notice: noticeOf({ state: "remote" }, ko),
+    notice: { title: "터미널에 넣지 않았습니다", body: "셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.", level: "warning" },
     wait: 0,
   });
+});
+
+test("the waits: 0.5 s after the key and 3 s after the prepare line here, looking every 50 ms; 1.5 s, 5 s and 100 ms on another machine", () => {
+  assert.deepEqual(waitsOf(null), { key: 500, prepare: 3000, step: 50 });
+  assert.deepEqual(waitsOf("mini"), { key: 1500, prepare: 5000, step: 100 });
+  assert.equal(KEY_WAIT_MS, 500);
+  assert.equal(PREPARE_WAIT_MS, 3000);
+});
+
+test("the machine of an hc address is its prefix; a bare address is this Mac", () => {
+  assert.equal(machineOfAddress("mini/t7"), "mini");
+  assert.equal(machineOfAddress("mini/p3"), "mini");
+  assert.equal(machineOfAddress("t7"), null);
   assert.equal(isRemote("mini/t7"), true);
   assert.equal(isRemote("t7"), false);
 });
@@ -128,17 +219,135 @@ test("a prepare line that has not taken the handoff file in time sends no key, s
   });
 });
 
-test("the notices for a shell that did not take the command and for another machine's shell", () => {
+test("the notice for a shell that did not take the command", () => {
   assert.deepEqual(noticeOf({ state: "unprepared" }, ko), {
     title: "터미널에 넣지 못했습니다",
     body: "셸이 명령을 받지 않았습니다(exec zsh 등으로 다시 시작됨). 입력 칸에 ;7~가 남았다면 지우고 다시 누르세요.",
     level: "error",
   });
-  assert.deepEqual(noticeOf({ state: "remote" }, ko), {
+});
+
+test("there is no notice refusing another machine's shell any more", () => {
+  assert.ok(!Object.keys(alertsEn).includes("alerts.remote"));
+  assert.ok(!Object.keys(alertsKo).includes("alerts.remote"));
+});
+
+test("no zsh on that machine: the notice says so and points to the copy button", () => {
+  assert.deepEqual(noticeOf({ state: "noZsh" }, ko), {
     title: "터미널에 넣지 못했습니다",
-    body: "다른 기계의 셸에는 넣을 수 없습니다. 복사 버튼으로 붙여 넣으세요.",
+    body: "그 기계에 zsh가 없어 넣을 수 없습니다. 복사 버튼으로 붙여 넣으세요.",
     level: "error",
   });
+  assert.deepEqual(noticeOf({ state: "noZsh" }, translator("en")), {
+    title: "Couldn't insert into the terminal",
+    body: "There's no zsh on that machine, so it can't be inserted. Use the copy button and paste it.",
+    level: "error",
+  });
+});
+
+test("a machine that can't be reached: the notice names it, in the viewer's words", () => {
+  assert.deepEqual(noticeOf({ state: "unreachable", machine: "mini" }, ko), {
+    title: "터미널에 넣지 못했습니다",
+    body: "mini 기계에 연결할 수 없어요",
+    level: "error",
+  });
+  assert.deepEqual(noticeOf({ state: "unreachable", machine: "mini" }, translator("en")), {
+    title: "Couldn't insert into the terminal",
+    body: "Can't reach the machine mini",
+    level: "error",
+  });
+});
+
+// Herdr's machines(), with mini cut off.
+const OFFLINE = [{ name: null, layout: "ready" }, { name: "studio", layout: "ready" }, { name: "mini", layout: "unavailable" }];
+
+test("a machine Herdr lists as unavailable is cut off before anything is sent", () => {
+  assert.equal(cutOff({ machine: "mini", machines: OFFLINE }), true);
+  assert.equal(cutOff({ machine: "studio", machines: OFFLINE }), false);
+  assert.equal(cutOff({ machine: null, machines: OFFLINE }), false);
+});
+
+test("a remote command refused for the connection means the machine is cut off; any other refusal does not", () => {
+  // Herdr's words for exec (herdr.d.ts), and hc machine ls's `why` for a machine it lost.
+  assert.equal(cutOff({ machine: "mini", failure: new Error("`herdr.exec`: the machine is unreachable") }), true);
+  assert.equal(cutOff({ machine: "mini", failure: new Error("cannot reach studio: ssh: connect to host 192.0.2.10 port 22: Operation timed out") }), true);
+  // A nonzero hc answer, its JSON error on stderr.
+  const answer = (message) => ({ code: 1, stdout: "", stderr: JSON.stringify({ error: { kind: "x", message } }) });
+  assert.equal(cutOff({ machine: "mini", failure: answer("request timed out after 10000 ms") }), true);
+  assert.equal(cutOff({ machine: "mini", failure: answer("unknown machine \"no-such-machine\"") }), false);
+  assert.equal(cutOff({ machine: "mini", failure: { code: 1, stdout: "", stderr: "sh: 1: cannot create /x: Permission denied" } }), false);
+  // This Mac's own failures are never a lost connection.
+  assert.equal(cutOff({ machine: null, failure: new Error("the machine is unreachable") }), false);
+});
+
+// `hc get <t> --json` answers: a live zsh at its prompt, and failures with hc's JSON error.
+const got = (info) => ({ code: 0, stdout: JSON.stringify(info), stderr: "" });
+const gotError = (kind, message) => ({ code: 1, stdout: "", stderr: JSON.stringify({ error: { kind, message } }) });
+const LOST = gotError("timeout", "request timed out after 10000 ms");
+
+test("a terminal on another machine whose `hc get` failed for the connection is unreachable, not gone", () => {
+  assert.deepEqual(stateOfGet({ machine: "mini", answer: LOST }), { state: "unreachable", machine: "mini" });
+  assert.deepEqual(noticeOf(stateOfGet({ machine: "mini", answer: LOST }), ko).body, "mini 기계에 연결할 수 없어요");
+});
+
+test("any other `hc get` failure, or one here, is a terminal that is gone; an answer is read as the shell's state", () => {
+  assert.deepEqual(stateOfGet({ machine: "mini", answer: gotError("not_found", "no terminal t7") }), { state: "gone" });
+  assert.deepEqual(stateOfGet({ machine: null, answer: LOST }), { state: "gone" });
+  assert.deepEqual(stateOfGet({ machine: null, answer: { code: 0, stdout: "not json", stderr: "" } }), { state: "gone" });
+  assert.deepEqual(stateOfGet({ machine: "mini", answer: got(terminal("zsh", ["/bin/zsh", "-l"])) }), { state: "ready", pid: 2, argv: ["/bin/zsh", "-l"] });
+  assert.deepEqual(stateOfGet({ machine: null, answer: got(terminal("sleep", ["sleep", "9"])) }), { state: "busy", program: "sleep" });
+});
+
+test("a look at the handoff file: gone is taken, still there is left, a read refused for the connection is unreachable", () => {
+  assert.equal(handoffLook({ machine: "mini", text: null }), "taken");
+  assert.equal(handoffLook({ machine: "mini", text: "echo hi" }), "left");
+  assert.equal(handoffLook({ machine: "mini", failure: new Error("`herdr.readTextFile`: the machine is unreachable") }), "unreachable");
+  // Any other refusal, and every refusal here, counts as taken.
+  assert.equal(handoffLook({ machine: "mini", failure: new Error("file too large") }), "taken");
+  assert.equal(handoffLook({ machine: null, failure: new Error("the machine is unreachable") }), "taken");
+});
+
+// handoffTaken on a clock that moves only when a look takes `readMs` or a sleep runs. `looks`
+// gives each look's answer in turn, the last one repeated. Returns what it said and when.
+async function timed({ wait, step, readMs, looks = ["left"] }) {
+  let clock = 0;
+  let n = 0;
+  const said = await handoffTaken({
+    look: async () => {
+      clock += readMs;
+      return looks[Math.min(n++, looks.length - 1)];
+    },
+    sleep: async (ms) => {
+      clock += ms;
+    },
+    now: () => clock,
+    wait,
+    step,
+  });
+  return { said, at: clock };
+}
+
+test("a file left on another machine is given up once the wait is over by the clock, however long each read takes", async () => {
+  const { key, prepare, step } = waitsOf("mini");
+  // 100 ms a read there, as a slow link gives.
+  const keyed = await timed({ wait: key, step, readMs: 100 });
+  assert.equal(keyed.said, "left");
+  assert.ok(keyed.at >= 1500 && keyed.at <= 1600, `gave up at ${keyed.at} ms`);
+  const prepared = await timed({ wait: prepare, step, readMs: 100 });
+  assert.equal(prepared.said, "left");
+  assert.ok(prepared.at >= 5000 && prepared.at <= 5100, `gave up at ${prepared.at} ms`);
+});
+
+test("a file left here is given up after 0.5 s after the key and 3 s after the prepare line", async () => {
+  const { key, prepare, step } = waitsOf(null);
+  assert.deepEqual(await timed({ wait: key, step, readMs: 0 }), { said: "left", at: 500 });
+  assert.deepEqual(await timed({ wait: prepare, step, readMs: 0 }), { said: "left", at: 3000 });
+});
+
+test("the wait ends at the first look that finds the file taken, or a look refused for the connection", async () => {
+  const { key, step } = waitsOf("mini");
+  assert.deepEqual(await timed({ wait: key, step, readMs: 100, looks: ["left", "left", "taken"] }), { said: "taken", at: 500 });
+  assert.deepEqual(await timed({ wait: key, step, readMs: 100, looks: ["left", "unreachable"] }), { said: "unreachable", at: 300 });
 });
 
 test("a busy shell gets nothing, only a notice", () => {
@@ -196,13 +405,13 @@ test("the notices in English, the program's name kept as it is", () => {
     level: "error",
   });
   assert.deepEqual(noticeOf({ state: "unready" }, en), { title: failed, body: "The shell isn't ready for commands yet. Press again in a moment.", level: "error" });
-  assert.deepEqual(noticeOf({ state: "remote" }, en), { title: failed, body: "Can't insert into a shell on another machine. Use the copy button and paste it.", level: "error" });
   assert.deepEqual(noticeOf({ state: "failed" }, en), { title: failed, body: "Couldn't open or find the shell pane.", level: "error" });
   // The plan and the press word their notices in the language they are given, and throw without one.
-  assert.equal(insertPlan({ terminal: "mini/t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false, tr: en }).notice.body,
-    "Can't insert into a shell on another machine. Use the copy button and paste it.");
+  const busy = { state: "busy", program: "sleep" };
+  assert.equal(insertPlan({ terminal: "t7", file: FILE, state: busy, prepared: null, fresh: false, stale: false, tr: en }).notice.title,
+    "Not inserted into the terminal");
   assert.equal(pressOutcome({ left: true, state: ready(40), keyed: false, tr: en }).notice.title, failed);
-  assert.throws(() => insertPlan({ terminal: "mini/t7", file: FILE, state: ready(40), prepared: null, fresh: true, stale: false }), /translator/);
+  assert.throws(() => insertPlan({ terminal: "t7", file: FILE, state: busy, prepared: null, fresh: false, stale: false }), /translator/);
   assert.throws(() => pressOutcome({ left: true, state: ready(40), keyed: false }), /translator/);
 });
 
@@ -272,8 +481,87 @@ test("a new shell is zsh, split below the viewer and started in the folder", () 
   assert.deepEqual(splitOf("p2", "/work/it's here"), {
     direction: "down",
     pane: "p2",
-    argv: ["/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec /bin/zsh -l", "zsh", "/work/it's here"],
+    argv: ["/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec \"$2\" -l", "zsh", "/work/it's here", "/bin/zsh"],
   });
+});
+
+test("a shell on another machine is the zsh found there, split below the viewer and started in the folder", () => {
+  assert.deepEqual(splitOf("mini/p3", "/home/me/work", "/usr/bin/zsh"), {
+    direction: "down",
+    pane: "mini/p3",
+    argv: ["/usr/bin/zsh", "-c", "cd -- \"$1\" 2>/dev/null; exec \"$2\" -l", "zsh", "/home/me/work", "/usr/bin/zsh"],
+  });
+});
+
+test("a zsh path with a space stays one word when the short zsh becomes the login shell", () => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "split-"));
+  try {
+    const tools = path.join(scratch, "My Tools");
+    const work = path.join(scratch, "it's here");
+    fs.mkdirSync(tools);
+    fs.mkdirSync(work);
+    // Stands in for zsh: prints its own path, its arguments and the folder it started in.
+    const zsh = path.join(tools, "zsh");
+    fs.writeFileSync(zsh, '#!/bin/sh\nprintf "%s|%s|%s" "$0" "$*" "$(pwd -P)"\n', { mode: 0o755 });
+    const { argv } = splitOf("mini/p3", work, zsh);
+    // This Mac's zsh runs the short zsh's line in its place.
+    const said = execFileSync("/bin/zsh", argv.slice(1), { encoding: "utf8" });
+    assert.equal(said, `${zsh}|-l|${fs.realpathSync(work)}`);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+// FIND_ZSH's answers as `hc exec --on <machine> sh -l -c FIND_ZSH sh` gives them, on Linux and on a Mac.
+const LINUX = "login /usr/bin/zsh\npath /bin/zsh\npath /usr/bin/zsh\n";
+const MAC = "login /bin/zsh\npath /bin/zsh\n";
+
+test("the zsh there is the login shell's `command -v zsh` first", () => {
+  assert.equal(zshOf(LINUX), "/usr/bin/zsh");
+  assert.equal(zshOf(MAC), "/bin/zsh");
+  // Lines a login profile prints before the answer are not taken for it.
+  assert.equal(zshOf("Welcome to mini\npath of least resistance\nlogin /usr/local/bin/zsh\n"), "/usr/local/bin/zsh");
+});
+
+test("without a login answer, the zsh there is the first of /bin, /usr/bin, /usr/local/bin and /opt/homebrew/bin", () => {
+  assert.equal(zshOf("login \npath /bin/zsh\npath /usr/bin/zsh\n"), "/bin/zsh");
+  assert.equal(zshOf("login \npath /opt/homebrew/bin/zsh\npath /usr/local/bin/zsh\n"), "/usr/local/bin/zsh");
+  assert.equal(zshOf("login \npath /opt/homebrew/bin/zsh\n"), "/opt/homebrew/bin/zsh");
+});
+
+test("no zsh there: no login answer and none of the four paths", () => {
+  assert.equal(zshOf("login \n"), null);
+  assert.equal(zshOf(""), null);
+  assert.equal(zshOf("login zsh\n"), null);
+});
+
+test("the zsh lookup answers with the login shell's zsh only when it is a program file", () => {
+  // Run here with PATH only `bin`, from the folder `cwd`, after `profile` (what a login profile
+  // may have set up).
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "find-zsh-"));
+  try {
+    const run = (bin, profile = "") =>
+      execFileSync("/bin/sh", ["-c", `${profile}${FIND_ZSH}`, "sh"], { encoding: "utf8", cwd: scratch, env: { PATH: bin } });
+    // A profile's zsh function: `command -v` answers with the bare name, which here is a folder.
+    fs.mkdirSync(path.join(scratch, "zsh"));
+    fs.mkdirSync(path.join(scratch, "a"));
+    assert.match(run(path.join(scratch, "a"), "zsh() { :; }; "), /^login \n/);
+    fs.mkdirSync(path.join(scratch, "b"));
+    fs.writeFileSync(path.join(scratch, "b/zsh"), "#!/bin/sh\n", { mode: 0o755 });
+    assert.match(run(path.join(scratch, "b")), new RegExp(`^login ${scratch}/b/zsh\n`));
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test("beside a conversation on another machine with no conversation terminal, the shell starts in that machine's home", () => {
+  const panes = [agentPane("mini/p1", "mini/tab1", "mini/t1", "/home/me/api"), viewerPane("mini/p2", "mini/tab2")];
+  assert.equal(shellFolder({ viewerTab: false, file: "/home/me/a.md", viewer: "mini/p2", panes, shell: null, home: "/home/me" }), "/home/me");
+  assert.equal(shellFolder({ viewerTab: true, file: null, viewer: "mini/p2", panes, shell: null, home: "/home/me" }), "/home/me");
+  // With one, its folder there; in a viewer tab, the document's folder there.
+  const beside = [agentPane("mini/p1", "mini/tab1", "mini/t1", "/home/me/api"), viewerPane("mini/p2", "mini/tab1")];
+  assert.equal(shellFolder({ viewerTab: false, file: "/home/me/a.md", viewer: "mini/p2", panes: beside, shell: null, home: "/home/me" }), "/home/me/api");
+  assert.equal(shellFolder({ viewerTab: true, file: "/home/me/notes/a.md", viewer: "mini/p2", panes: beside, shell: null, home: "/home/me" }), "/home/me/notes");
 });
 
 test("a block of several lines stays several lines, without its last newline", () => {

@@ -2,7 +2,7 @@
 // and a throwaway data folder, and build.sh against a compiler that fails. Nothing here
 // touches the real default apps or the real router app.
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,14 +17,21 @@ const ROUTER_ID = "test.side-viewer-router";
 // `keep-<ext>` plays the person choosing "keep" in the macOS confirmation window: the request
 // ends with exit 1 and nothing changes. `fail-<ext>` holds the exit code of any other failure.
 // `only-<ext>` gives one extension a default app of its own inside a shared file type, and
-// `gone` lists the bundle ids of apps that are no longer installed.
+// `gone` lists the bundle ids of apps that are no longer installed. `name-<id>` holds the
+// display name `--app-name` answers; without it the answer is an empty line, as for an app
+// macOS cannot find. Each request also logs the last line takeover.sh had printed by then
+// (`stdout`, where takeover() sends its output), so a line's place among the requests shows.
 const FAKE_ROUTER = `#!/bin/sh
 key() { cat "$FAKE_STATE/type-$1" 2>/dev/null || printf '%s' "$1"; }
 case "$1" in
   --default-app) cat "$FAKE_STATE/only-$2" 2>/dev/null || cat "$FAKE_STATE/app-$(key "$2")" 2>/dev/null; exit 0 ;;
+  --app-name) cat "$FAKE_STATE/name-$2" 2>/dev/null || echo; exit 0 ;;
   --type-of) printf 'type.%s\\n' "$(key "$2")"; exit 0 ;;
   --set-default-app)
-    [ -e "$FAKE_STATE/quiet" ] || printf '%s %s\\n' "$2" "$3" >> "$FAKE_STATE/requests.log"
+    [ -e "$FAKE_STATE/quiet" ] || {
+      printf '%s %s\\n' "$2" "$3" >> "$FAKE_STATE/requests.log"
+      printf '%s\\n' "$(tail -n 1 "$FAKE_STATE/stdout" 2>/dev/null)" >> "$FAKE_STATE/before.log"
+    }
     [ -e "$FAKE_STATE/keep-$2" ] && { echo "The file couldn't be opened." >&2; exit 1; }
     [ -e "$FAKE_STATE/fail-$2" ] && exit "$(cat "$FAKE_STATE/fail-$2")"
     grep -qx "$3" "$FAKE_STATE/gone" 2>/dev/null && exit 3
@@ -90,13 +97,26 @@ function world({ extensions, defaults = {}, sameType = {}, record, languages = K
     defaultOf: (ext) => execFileSync(join(dir, "router"), ["--default-app", ext], { env, encoding: "utf8" }).trim(),
     record: () => (existsSync(recordFile) ? readFileSync(recordFile, "utf8") : ""),
     dataFiles: () => readdirSync(data).sort(),
-    takeover: (...args) => spawnSync("/bin/sh", [join(here, "takeover.sh"), ...args], { env, encoding: "utf8" }),
+    // Its output goes to a file as it is printed, which the fake router reads at each request.
+    takeover: (...args) => {
+      const out = join(state, "stdout");
+      const fd = openSync(out, "w");
+      try {
+        const r = spawnSync("/bin/sh", [join(here, "takeover.sh"), ...args], { env, encoding: "utf8", stdio: ["pipe", fd, "pipe"] });
+        return { ...r, stdout: readFileSync(out, "utf8") };
+      } finally {
+        closeSync(fd);
+      }
+    },
     // The confirmation windows asked for: one line per request sent to macOS.
     requests: () => (existsSync(join(state, "requests.log")) ? readFileSync(join(state, "requests.log"), "utf8").trim().split("\n") : []),
+    // For each request, in order, the last line printed before it was sent.
+    linesBefore: () => (existsSync(join(state, "before.log")) ? readFileSync(join(state, "before.log"), "utf8").replace(/\n$/, "").split("\n") : []),
     keep: (ext) => writeFileSync(join(state, `keep-${ext}`), ""),
     fail: (ext, code) => writeFileSync(join(state, `fail-${ext}`), String(code)),
     only: (ext, id) => writeFileSync(join(state, `only-${ext}`), `${id}\n`),
     gone: (...ids) => writeFileSync(join(state, "gone"), ids.map((id) => `${id}\n`).join("")),
+    name: (id, name) => writeFileSync(join(state, `name-${id}`), `${name}\n`),
     openOriginal: (file) => spawnSync("/bin/sh", [join(here, "open-original.sh"), file], { env, encoding: "utf8" }),
     opened: () => (existsSync(join(state, "open.log")) ? readFileSync(join(state, "open.log"), "utf8") : ""),
     // Every `defaults` call, one line of arguments each.
@@ -202,6 +222,67 @@ test("make-default says how many confirmation windows to expect: one per file ty
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /^macOS 확인 창이 4번 뜹니다\./);
   assert.deepEqual(w.requests(), [`png ${ROUTER_ID}`, `jpg ${ROUTER_ID}`, `txt ${ROUTER_ID}`, `py ${ROUTER_ID}`]);
+});
+
+test("make-default says, right before each request, which window it is, its extensions and the apps by name", () => {
+  // jpg and jpeg are one file type, and md is already the router's: png, jpg+jpeg, txt, py.
+  const w = world({ defaults: { md: ROUTER_ID, png: "com.apple.Preview", jpg: "com.apple.Preview", txt: "com.apple.TextEdit", py: "com.apple.TextEdit" }, sameType: { jpeg: "jpg" } });
+  w.name("com.apple.Preview", "미리보기");
+  w.name("com.apple.TextEdit", "텍스트 편집기");
+  w.name(ROUTER_ID, "Side Viewer Router");
+  const r = w.takeover("make-default", "code");
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(
+    r.stdout,
+    "macOS 확인 창이 4번 뜹니다. 창마다 Side Viewer Router로 바꾸는 쪽을 고르세요.\n" +
+      "확인 창 1/4: png (지금 미리보기 → Side Viewer Router)\n" +
+      "확인 창 2/4: jpg jpeg (지금 미리보기 → Side Viewer Router)\n" +
+      "확인 창 3/4: txt (지금 텍스트 편집기 → Side Viewer Router)\n" +
+      "확인 창 4/4: py (지금 텍스트 편집기 → Side Viewer Router)\n" +
+      "바뀜: png jpg jpeg txt py\n",
+  );
+  assert.equal(w.requests().length, 4);
+  assert.deepEqual(w.linesBefore(), [
+    "확인 창 1/4: png (지금 미리보기 → Side Viewer Router)",
+    "확인 창 2/4: jpg jpeg (지금 미리보기 → Side Viewer Router)",
+    "확인 창 3/4: txt (지금 텍스트 편집기 → Side Viewer Router)",
+    "확인 창 4/4: py (지금 텍스트 편집기 → Side Viewer Router)",
+  ]);
+});
+
+test("make-default shows - for an extension that has no default app yet", () => {
+  const w = world({ extensions: { markdown: ["md", "mdx"], image: [], code: [] }, defaults: { md: "com.example.Notes" } });
+  w.name(ROUTER_ID, "Side Viewer Router");
+  const r = w.takeover("make-default");
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.stdout.split("\n").filter((line) => line.startsWith("확인 창 ")), [
+    "확인 창 1/2: md (지금 com.example.Notes → Side Viewer Router)",
+    "확인 창 2/2: mdx (지금 - → Side Viewer Router)",
+  ]);
+});
+
+test("restore says, right before each request, which window it is and the original app it goes back to", () => {
+  const w = world({ extensions: { markdown: ["md"], image: ["png", "jpg", "jpeg"], code: [] }, defaults: { md: ROUTER_ID, png: ROUTER_ID, jpg: ROUTER_ID }, sameType: { jpeg: "jpg" }, record: "md\tcom.example.Notes\npng\tcom.apple.Preview\njpg\tcom.apple.Preview\njpeg\tcom.apple.Preview\n" });
+  w.name("com.example.Notes", "Notes");
+  w.name("com.apple.Preview", "미리보기");
+  w.name(ROUTER_ID, "Side Viewer Router");
+  w.keep("png");
+  const r = w.takeover("restore");
+  assert.equal(r.status, 3);
+  assert.equal(
+    r.stdout,
+    "macOS 확인 창이 3번 뜹니다. 창마다 원래 앱으로 바꾸는 쪽을 고르세요.\n" +
+      "확인 창 1/3: md (지금 Side Viewer Router → Notes)\n" +
+      "확인 창 2/3: png (지금 Side Viewer Router → 미리보기)\n" +
+      "확인 창 3/3: jpg jpeg (지금 Side Viewer Router → 미리보기)\n" +
+      "바뀜: md jpg jpeg\n유지를 선택함: png\n",
+  );
+  assert.equal(r.stderr, "");
+  assert.deepEqual(w.linesBefore(), [
+    "확인 창 1/3: md (지금 Side Viewer Router → Notes)",
+    "확인 창 2/3: png (지금 Side Viewer Router → 미리보기)",
+    "확인 창 3/3: jpg jpeg (지금 Side Viewer Router → 미리보기)",
+  ]);
 });
 
 test("make-default code takes html over with its siblings in one confirmation window, and restore gives them back in one", () => {
@@ -366,6 +447,13 @@ test("restore asks for TextEdit or Preview when the recorded app is no longer in
   assert.match(r.stdout, /macOS 확인 창이 2번 뜹니다\./);
   assert.match(r.stdout, /^md: 원래 앱 com\.example\.Gone 이 없어 com\.apple\.TextEdit 으로 돌립니다\.$/m);
   assert.deepEqual(w.requests(), ["md com.example.Gone", "md com.apple.TextEdit", "png com.example.Gone", "png com.apple.Preview"]);
+  // Every request is preceded by its window line; the second request for a type keeps its i.
+  assert.deepEqual(w.linesBefore(), [
+    `확인 창 1/2: md (지금 ${ROUTER_ID} → com.example.Gone)`,
+    `확인 창 1/2: md (지금 ${ROUTER_ID} → com.apple.TextEdit)`,
+    `확인 창 2/2: png (지금 ${ROUTER_ID} → com.example.Gone)`,
+    `확인 창 2/2: png (지금 ${ROUTER_ID} → com.apple.Preview)`,
+  ]);
   assert.equal(w.defaultOf("md"), "com.apple.TextEdit");
   assert.equal(w.defaultOf("png"), "com.apple.Preview");
 });
@@ -389,12 +477,18 @@ test("make-default does not try another app when the router itself is not found"
 
 test("make-default speaks English when the first preferred language is not Korean, with the same exit code and line order", () => {
   const w = world({ extensions: { markdown: ["md"], image: ["png"], code: [] }, defaults: { md: "com.example.Notes", png: "com.apple.Preview" }, languages: ENGLISH });
+  w.name("com.example.Notes", "Notes");
+  w.name("com.apple.Preview", "Preview");
+  w.name(ROUTER_ID, "Side Viewer Router");
   w.keep("png");
   const r = w.takeover("make-default");
   assert.equal(r.status, 3);
   assert.equal(
     r.stdout,
-    "macOS will show 2 confirmation windows. In each window, choose to change to Side Viewer Router.\nChanged: md\nChose to keep: png\n",
+    "macOS will show 2 confirmation windows. In each window, choose to change to Side Viewer Router.\n" +
+      "Window 1/2: md (now Notes → Side Viewer Router)\n" +
+      "Window 2/2: png (now Preview → Side Viewer Router)\n" +
+      "Changed: md\nChose to keep: png\n",
   );
   assert.equal(r.stderr, "");
 });
@@ -422,12 +516,20 @@ for (const [what, languages, line] of [
 for (const [languages, stdout, stderr] of [
   [
     KOREAN,
-    "macOS 확인 창이 4번 뜹니다. 창마다 Side Viewer Router로 바꾸는 쪽을 고르세요.\n",
+    "macOS 확인 창이 4번 뜹니다. 창마다 Side Viewer Router로 바꾸는 쪽을 고르세요.\n" +
+      `확인 창 1/4: md (지금 com.example.Notes → ${ROUTER_ID})\n` +
+      `확인 창 2/4: png (지금 com.apple.Preview → ${ROUTER_ID})\n` +
+      `확인 창 3/4: py (지금 com.example.Editor → ${ROUTER_ID})\n` +
+      `확인 창 4/4: ts (지금 com.example.Player → ${ROUTER_ID})\n`,
     `실패: md (파일 종류 없음)\n실패: png (시간 초과)\n실패: py (오류: )\n실패: ts (앱 없음: ${ROUTER_ID})\n`,
   ],
   [
     ENGLISH,
-    "macOS will show 4 confirmation windows. In each window, choose to change to Side Viewer Router.\n",
+    "macOS will show 4 confirmation windows. In each window, choose to change to Side Viewer Router.\n" +
+      `Window 1/4: md (now com.example.Notes → ${ROUTER_ID})\n` +
+      `Window 2/4: png (now com.apple.Preview → ${ROUTER_ID})\n` +
+      `Window 3/4: py (now com.example.Editor → ${ROUTER_ID})\n` +
+      `Window 4/4: ts (now com.example.Player → ${ROUTER_ID})\n`,
     `Failed: md (no file type)\nFailed: png (timed out)\nFailed: py (error: )\nFailed: ts (app not found: ${ROUTER_ID})\n`,
   ],
 ]) {
@@ -447,13 +549,20 @@ for (const [languages, stdout, stderr] of [
 test("restore speaks English when it falls back to another app, and says one window in the singular", () => {
   const w = world({ extensions: { markdown: ["md", "mdx"], image: [], code: [] }, defaults: { md: ROUTER_ID, mdx: ROUTER_ID }, record: "md\tcom.example.Gone\n", languages: ENGLISH });
   w.gone("com.example.Gone");
+  w.name("com.apple.TextEdit", "TextEdit");
+  w.name(ROUTER_ID, "Side Viewer Router");
   const r = w.takeover("restore");
   assert.equal(r.status, 0, r.stderr);
+  // The app that is gone has no name to show, so its bundle id stands in, and the window line
+  // is printed again for the app actually asked for.
   assert.equal(
     r.stdout,
     "mdx: no original app recorded, switching to com.apple.TextEdit.\n" +
       "macOS will show 2 confirmation windows. In each window, choose to change back to the original app.\n" +
+      "Window 1/2: md (now Side Viewer Router → com.example.Gone)\n" +
       "md: original app com.example.Gone not found, switching to com.apple.TextEdit.\n" +
+      "Window 1/2: md (now Side Viewer Router → TextEdit)\n" +
+      "Window 2/2: mdx (now Side Viewer Router → TextEdit)\n" +
       "Changed: md mdx\n",
   );
   const one = world({ extensions: { markdown: ["md"], image: [], code: [] }, defaults: { md: ROUTER_ID }, record: "md\tcom.example.Notes\n", languages: ENGLISH });
@@ -466,7 +575,9 @@ test("restore says in Korean, word for word as before, which app it uses when no
   assert.equal(r.status, 0, r.stderr);
   assert.equal(
     r.stdout,
-    "mdx: 기록된 원래 앱이 없어 com.apple.TextEdit 으로 돌립니다.\nmacOS 확인 창이 1번 뜹니다. 창마다 원래 앱으로 바꾸는 쪽을 고르세요.\n바뀜: mdx\n",
+    "mdx: 기록된 원래 앱이 없어 com.apple.TextEdit 으로 돌립니다.\nmacOS 확인 창이 1번 뜹니다. 창마다 원래 앱으로 바꾸는 쪽을 고르세요.\n" +
+      `확인 창 1/1: mdx (지금 ${ROUTER_ID} → com.apple.TextEdit)\n` +
+      "바뀜: mdx\n",
   );
 });
 

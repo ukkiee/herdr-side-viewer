@@ -30,7 +30,8 @@ opens the one you pick, which is also how files open in a space on another machi
 - **Path picker** (`cmd-o`): a popup of the file paths in the focused conversation; pick
   one to open it beside the conversation (see [The path picker](#the-path-picker-cmd-o)).
 - **Remote spaces**: in a space on a Linux machine or another Mac, the viewer shows, edits
-  and saves that machine's files (see [Remote spaces](#remote-spaces)).
+  and saves that machine's files, and `>_` types into a shell there (see
+  [Remote spaces](#remote-spaces)).
 - **Outside Herdr** (Finder, another terminal) the same files keep opening in the app they
   opened in before.
 
@@ -109,7 +110,18 @@ then stay on that machine. Linux and macOS machines are supported.
   `Files on Windows machines can't be shown yet.`
 - **The router stays out of remote spaces.** A file that reaches the router while a remote
   space has focus (a path that also exists on this Mac, say) opens in its original app.
-- **`>_` doesn't type into a shell on another machine** (see [Limits](#limits)).
+- **`>_` types into a shell on that machine.** The shell pane opens there, in the folder of
+  the conversation terminal beside the viewer on that machine (in a viewer tab, the
+  document's folder; without either, that machine's home). The zsh is the one `command -v zsh`
+  finds in that machine's login shell, else the first of `/bin/zsh`, `/usr/bin/zsh`,
+  `/usr/local/bin/zsh` and `/opt/homebrew/bin/zsh` there. With none, no pane opens and a
+  notification says `There's no zsh on that machine, so it can't be inserted. Use the copy
+  button and paste it.` The command passes through a file in `~/.cache/side-viewer/shell/` on
+  that machine (folder mode 700), which the shell deletes as it takes it; nothing goes into
+  the data folder on this Mac. The viewer waits longer for that shell: 1.5 seconds after the
+  key, 5 seconds after the line that teaches it.
+- **`>_` on a machine out of reach** opens no pane and types nothing; the notification says
+  `Can't reach the machine <name>`.
 
 ### Edit and save
 
@@ -194,8 +206,9 @@ file opens in it, not in a new pane.
   presses only that key. Text you had typed at the prompt is moved aside with zsh's push-line
   and comes back after the command (with vi keys too). If the shell has not taken the file
   half a second after the key (3 seconds after the line), a notification says the command did
-  not go in (`Couldn't insert into the terminal`) and the next `>_` teaches the shell again. A shell on
-  another machine gets nothing and the same notification: the file is on this Mac.
+  not go in (`Couldn't insert into the terminal`) and the next `>_` teaches the shell again. In
+  a remote space the shell and its file are on that machine (see
+  [Remote spaces](#remote-spaces)).
 - **Pictures.** A local picture on a line of its own (`![alt](path)`, relative to the
   document's folder, or absolute) is drawn in the document: as wide as the pane at most,
   never larger than itself, at most 420 high, centered. One that can't be read shows
@@ -231,11 +244,17 @@ There is no switch.
   through Herdr, `sh` (with `stat`, `head`, `od`, `uname`, `printf`) and `cksum`, and
   reads files there. To save a file there or copy a picture's bytes it runs Herdr's `hc`
   command line on this Mac (`hc file write --on`, `hc exec --on … cat`), the `hc` on your
-  `PATH`, else `~/.local/bin/hc`.
+  `PATH`, else `~/.local/bin/hc`. For `>_` it asks that machine's login shell once for zsh
+  (`sh -l -c`), writes the command file with `sh` (`mkdir`, `chmod`, `printf`), removes one the
+  shell left with `rm`, and opens a zsh pane there.
 - **Herdr's shared state**: the viewer keeps the language last read under
   `side-viewer.lang` (`"en"` or `"ko"`), which every viewer reads.
 - **Your files**: the mod writes a file when you save it or click a checkbox in it, on the
   machine of the viewer's space.
+- **Another machine's home**: `>_` in a remote space writes its command to
+  `~/.cache/side-viewer/shell/<machine>_<terminal>.txt` there (folder mode 700, file mode
+  600), deleted by the shell as it puts it in the input line, or by the viewer when the shell
+  has not taken it.
 - **Herdr's keys**: `install.sh` adds `cmd-o` to Herdr's `keys.json` (see [Install](#install)).
 - **Terminal**: the `>_` button opens a zsh pane and types into it through Herdr's `hc`
   (`hc send`, `hc keys`, `hc get`). A shell it opens gets one line binding an insert widget
@@ -255,7 +274,7 @@ There is no switch.
   - `previews/`, copies of edited svg sources, drawn before they are saved;
   - `handoff-<id>.json`, the unsaved edits handed to a new viewer tab, deleted once the tab
     has read them (one can be left behind if Herdr quits in between);
-  - `shell/<terminal>.txt`, the command `>_` hands to a shell pane, deleted by the shell as it
+  - `shell/<terminal>.txt`, the command `>_` hands to a shell pane on this Mac, deleted by the shell as it
     puts it in the input line, or by the viewer when the shell has not taken it (one can be
     left behind if an `hc` call fails; the next `>_` replaces it).
 
@@ -317,6 +336,12 @@ command first prints how many windows are coming (`macOS will show N confirmatio
 sends the requests one at a time, waiting up to 300 seconds for each answer. It asks only for
 what the router does not hold yet, so N can be smaller than the counts below.
 
+Just before each request it prints one line naming the window that comes next:
+`Window i/N: <extensions> (now <current app> → <new app>)`, with the same N as the first line,
+for example `Window 1/1: md (now TextEdit → Side Viewer Router)`. An app shows as the
+name Finder gives it, as its bundle id when macOS can't find it, or as `-` when the extension
+has no default app.
+
 In each window pick **Side Viewer Router**. If you pick the button that keeps the current
 app, that extension stays as it was, and the command lists it under `Chose to keep`
 rather than as a failure. Changed extensions are listed under `Changed`, real failures
@@ -361,6 +386,16 @@ app**: keeping the current one leaves the router in place for that extension. An
 whose default you changed yourself in the meantime is left alone. If a recorded original
 app has been uninstalled since, the command says so and asks for a sibling extension's app
 instead, or for TextEdit (Preview for images).
+
+The same `Window i/N` line comes before each window, with the original app as the new app.
+When that app is gone, the line that says so is followed by the same window's line again,
+naming the app asked for instead:
+
+```text
+Window 1/2: md (now Side Viewer Router → com.example.Gone)
+md: original app com.example.Gone not found, switching to com.apple.TextEdit.
+Window 1/2: md (now Side Viewer Router → TextEdit)
+```
 
 **Run it before you delete the router app**: the record it restores from is of no use
 without the command.
@@ -426,8 +461,8 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
   sent is a draft moved aside with alt+q, so if that new zsh uses vi keys and its prompt
   holds text, the text can run along with that line. Clear the prompt before the first `>_`
   after starting a new zsh.
-- **`>_` doesn't type into a shell on another machine.** The command goes through a file on
-  this Mac, which that shell can't read; a notification says so. Use the copy button.
+- **`>_` needs zsh, on another machine too.** A machine with none gets no shell pane, only a
+  notification; use the copy button there.
 - **No keyboard navigation** between blocks, no `cmd+E` for the source switch, no filling in
   of `{{placeholders}}` in commands.
 - **A path with text stuck to its end doesn't open.** Herdr reads the letters right after a

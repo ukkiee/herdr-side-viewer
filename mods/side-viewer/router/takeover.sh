@@ -5,14 +5,16 @@
 # make-default takes over the markdown and image extensions; `code` adds the code extensions.
 #
 # macOS asks the person to confirm every change, once per file type, and the router cannot
-# answer for them. So each run first says how many times macOS will ask, sends one request per
-# file type, and reports the extensions the person chose to keep apart from real failures.
+# answer for them. So each run first says how many times macOS will ask, then before each
+# request names that window's extensions and the app it changes from and to, sends one request
+# per file type, and reports the extensions the person chose to keep apart from real failures.
 #
 # Exit code: 0 everything asked for was changed (or nothing needed changing), 1 a request
 # failed, 2 wrong usage, 3 nothing failed but the person kept the current app for some.
 # An extension restore reports as staying with the router is neither a failure nor kept.
 #
-# SIDE_VIEWER_ROUTER: the command that answers `--default-app <ext>`, `--type-of <ext>` and
+# SIDE_VIEWER_ROUTER: the command that answers `--default-app <ext>`, `--type-of <ext>`,
+#   `--app-name <id>` (an empty line for an app it cannot find) and
 #   `--set-default-app <ext> <id>` (exit 0 changed, 1 macOS refused, 3 app not found,
 #   4 no file type, 5 timed out).
 # SIDE_VIEWER_ROUTER_ID: the router's bundle id.
@@ -54,6 +56,8 @@ say() {
     en.windows_to_router) say_fmt="macOS will show %s confirmation window$say_s. In each window, choose to change to Side Viewer Router." ;;
     ko.windows_to_original) say_fmt='macOS 확인 창이 %s번 뜹니다. 창마다 원래 앱으로 바꾸는 쪽을 고르세요.' ;;
     en.windows_to_original) say_fmt="macOS will show %s confirmation window$say_s. In each window, choose to change back to the original app." ;;
+    ko.window) say_fmt='확인 창 %s/%s: %s (지금 %s → %s)' ;;
+    en.window) say_fmt='Window %s/%s: %s (now %s → %s)' ;;
     ko.nothing) say_fmt='바꿀 것이 없습니다.' ;;
     en.nothing) say_fmt='Nothing to change.' ;;
     ko.left) say_fmt='라우터에 남음:%s (이 확장자를 맡은 앱이 라우터뿐입니다)' ;;
@@ -89,6 +93,14 @@ need_router_id() {
 }
 
 current() { "$router" --default-app "$1" 2>/dev/null; }
+
+# How app $1 (a bundle id) is shown to the person: its name, the bundle id when macOS cannot
+# find the app, or "-" for no app at all.
+app_label() {
+  [ -n "$1" ] || { printf '%s' -; return; }
+  label=$("$router" --app-name "$1" 2>/dev/null)
+  printf '%s' "${label:-$1}"
+}
 
 # Extensions of one file type share one default app and one confirmation window.
 type_of() {
@@ -131,11 +143,15 @@ run_plan() {
   errors="$plan.err"
   types="$plan.types"
   cut -f 1 "$plan" | awk 'NF && !seen[$0]++' > "$types"
+  window=0
   while IFS= read -r type; do
     ext=$(awk -F '\t' -v type="$type" '$1 == type { print $2; exit }' "$plan")
     app=$(awk -F '\t' -v type="$type" '$1 == type { print $3; exit }' "$plan")
     group=$(awk -F '\t' -v type="$type" '$1 == type { printf "%s%s", sep, $2; sep = " " }' "$plan")
     before=$(current "$ext")
+    window=$((window + 1))
+    # Each request can bring up a window, so the person reads which one it is just before.
+    say window "$window" "$count" "$group" "$(app_label "$before")" "$(app_label "$app")"
     "$router" --set-default-app "$ext" "$app" < /dev/null > /dev/null 2> "$errors"
     code=$?
     # The app is gone: without another request the extension would stay with the router for
@@ -145,6 +161,8 @@ run_plan() {
       if [ -n "$other" ] && [ "$other" != "$app" ]; then
         say app_gone "$ext" "$app" "$other"
         app=$other
+        # The window that does come up is for this app, so the line above it says so.
+        say window "$window" "$count" "$group" "$(app_label "$before")" "$(app_label "$app")"
         "$router" --set-default-app "$ext" "$app" < /dev/null > /dev/null 2> "$errors"
         code=$?
       fi

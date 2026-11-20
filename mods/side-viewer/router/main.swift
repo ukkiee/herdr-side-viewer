@@ -52,6 +52,15 @@ func defaultApp(_ ext: String) -> String? {
   return Bundle(url: app)?.bundleIdentifier
 }
 
+// The app's name as FileManager.displayName gives it (the name Finder shows), without the ".app"
+// Finder adds when the person has it show every extension; nil when macOS cannot find the app.
+// Its language is not promised: as a bare binary on a Korean system it gave "TextEdit".
+func appName(_ bundleID: String) -> String? {
+  guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
+  let name = FileManager.default.displayName(atPath: app.path)
+  return name.hasSuffix(".app") ? String(name.dropLast(4)) : name
+}
+
 func setDefaultApp(_ ext: String, _ bundleID: String) -> Never {
   guard let type = fileType(ext) else { fail("\(ext): no file type", code: 4) }
   guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
@@ -124,6 +133,10 @@ case "--type-of" where arguments.count == 2:
   exit(0)
 case "--default-app" where arguments.count == 2:
   print(defaultApp(arguments[1]) ?? "")
+  exit(0)
+case "--app-name" where arguments.count == 2:
+  // An empty line for an app that is not installed: takeover.sh shows the bundle id instead.
+  print(appName(arguments[1]) ?? "")
   exit(0)
 case "--set-default-app" where arguments.count == 3:
   setDefaultApp(arguments[1], arguments[2])

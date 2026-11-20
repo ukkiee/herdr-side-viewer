@@ -8,6 +8,7 @@
 // press that key. No line is left to run, nothing stays on screen, and a draft is pushed
 // aside in any keymap.
 import { wordsOf } from "./i18n.js";
+import { saveFailureOf, unavailable } from "./remote-results.js";
 
 // The folder that holds the handoff files, under the app's folder `app` (appHome()).
 export const insertFolderOf = (app) => `${app}/data/side-viewer/shell`;
@@ -15,7 +16,24 @@ export const insertFolderOf = (app) => `${app}/data/side-viewer/shell`;
 // The handoff file of terminal `terminal`. One per terminal, so two viewers' shells never share
 // one; a remote address's "/" would make a subfolder.
 export const insertFileOf = (app, terminal) =>
-  `${insertFolderOf(app)}/${terminal.replace(/[^A-Za-z0-9_-]/g, "_")}.txt`;
+  `${insertFolderOf(app)}/${safeName(terminal)}.txt`;
+const safeName = (terminal) => terminal.replace(/[^A-Za-z0-9_-]/g, "_");
+
+// The handoff folder and file, { folder, file }, for the shell at hc address `terminal`. A zsh
+// reads the file on its own machine: here the app's data folder (`app`, appHome()), on another
+// machine `.cache/side-viewer/shell` in its home (`home`, that machine's home folder).
+export function handoffOf({ terminal, app, home }) {
+  if (!isRemote(terminal)) return { folder: insertFolderOf(app), file: insertFileOf(app, terminal) };
+  const folder = `${home}/.cache/side-viewer/shell`;
+  return { folder, file: `${folder}/${safeName(terminal)}.txt` };
+}
+
+// Run on the other machine as `sh -c HANDOFF_THERE sh <folder> <file> <text>`: the handoff file
+// written in one command, it and its folder readable by the owner alone, since the file holds
+// what the person is about to run. writeTextFile has no `on`, so the text goes as an argument; a
+// code block stays under Linux's 128 KiB limit for one. An earlier file is written over, made
+// the owner's only before the text goes in (umask covers only a new one).
+export const HANDOFF_THERE = 'umask 077; mkdir -p "$1" && chmod 700 "$1" && { [ ! -e "$2" ] || chmod 600 "$2"; } && printf %s "$3" > "$2"';
 
 // The key the widget is bound to: one `hc keys` can press (it names keys up to F12) that zsh
 // and terminal programs leave unbound. It reaches zsh as "\e[24;7~".
@@ -50,6 +68,15 @@ export const insertText = (command) => command.replace(/\n+$/, "");
 export const KEY_WAIT_MS = 500;
 export const PREPARE_WAIT_MS = 3000;
 
+// The waits for a shell on machine `machine` (null: this Mac), in ms: after the key, after the
+// prepare line, and between two looks at the handoff file. Another machine's key and file
+// reads each cross the network (a read there took 27 to 151 ms), so it gets three times the
+// key's wait and looks half as often.
+export function waitsOf(machine) {
+  if (machine == null) return { key: KEY_WAIT_MS, prepare: PREPARE_WAIT_MS, step: 50 };
+  return { key: 1500, prepare: 5000, step: 100 };
+}
+
 // The zsh `state` (a ready shellState) as remembered once prepared. `exec zsh` keeps the pid,
 // so its arguments tell it apart too, unless it was started with the same ones.
 export const shellOf = (state) => ({ pid: state.pid, argv: state.argv });
@@ -58,6 +85,11 @@ const sameShell = (prepared, state) =>
 
 // Whether hc address `address` is on another machine ("mini/t7").
 export const isRemote = (address) => address.includes("/");
+
+// The machine of hc address `address` (a terminal's or a pane's): its "<machine>/" prefix, or
+// null for this Mac. A shell split off a viewer opens on the viewer's machine, so the viewer's
+// pane address tells where a new shell will be, whatever space value its props hold.
+export const machineOfAddress = (address) => (isRemote(address) ? address.slice(0, address.lastIndexOf("/")) : null);
 
 // What to do to put the handoff file's text into terminal `terminal`, as
 // { commands: hc argument lists in order, notice: what to tell instead, or null,
@@ -69,16 +101,17 @@ export const isRemote = (address) => address.includes("/");
 // prepared again. Its draft is pushed aside with alt+q first, or `hc send` would run it
 // together with the prepare line; in a vi keymap alt+q is not push-line, so that one case can
 // still run a draft. A fresh shell gets no alt+q: sent before zsh reads its keys it would only
-// show up on screen as "^[q". Another machine's shell would never find the handoff file.
+// show up on screen as "^[q". A shell on another machine (its address's prefix) is treated the
+// same, with that machine's waits (waitsOf); `file` is then the handoff file there.
 // tr: the translator the notice is worded with (i18n.js).
 export function insertPlan({ terminal, file, state, prepared, fresh, stale, tr }) {
-  if (isRemote(terminal)) return { commands: [], notice: noticeOf({ state: "remote" }, tr), wait: 0 };
   if (state.state === "busy") return { commands: [], notice: noticeOf(state, tr), wait: 0 };
+  const waits = waitsOf(machineOfAddress(terminal));
   if (!stale && sameShell(prepared, state)) {
-    return { commands: [["keys", terminal, INSERT_KEY]], notice: null, wait: KEY_WAIT_MS };
+    return { commands: [["keys", terminal, INSERT_KEY]], notice: null, wait: waits.key };
   }
   const prepare = ["send", terminal, prepareLine(file)];
-  return { commands: fresh ? [prepare] : [["keys", terminal, "alt+q"], prepare], notice: null, wait: PREPARE_WAIT_MS };
+  return { commands: fresh ? [prepare] : [["keys", terminal, "alt+q"], prepare], notice: null, wait: waits.prepare };
 }
 
 // After a press, whether the zsh took it: `left` says the handoff file was still there once
@@ -110,6 +143,42 @@ export function shellState(info) {
   if (!foreground || foreground.argv?.[1] === "-c") return { state: "starting" };
   const program = String(foreground.name ?? "").split("/").pop();
   return /^-?zsh$/.test(program) ? { state: "ready", pid: foreground.pid, argv: foreground.argv } : { state: "busy", program };
+}
+
+// The state of the terminal on machine `machine` (null: this Mac) from `hc get <t> --json`'s
+// answer `answer` ({ code, stdout, stderr }): shellState of what it printed, or, when it failed,
+// { state: "unreachable", machine } if that was the connection (cutOff), else "gone".
+export function stateOfGet({ machine, answer }) {
+  if (answer?.code !== 0) return cutOff({ machine, failure: answer }) ? { state: "unreachable", machine } : { state: "gone" };
+  let info = null;
+  try {
+    info = JSON.parse(answer.stdout);
+  } catch {}
+  return shellState(info);
+}
+
+// What one look at the handoff file on machine `machine` says: "taken" when it is gone,
+// "left" when it is still there, "unreachable" when the read was refused for the connection.
+// Any other refused read counts as taken, as the file can't be told to be there.
+//   text: what the read gave (null: no file); failure: the read's rejection, if it was refused
+export function handoffLook({ machine, text = null, failure = null }) {
+  if (failure != null) return cutOff({ machine, failure }) ? "unreachable" : "taken";
+  return text == null ? "taken" : "left";
+}
+
+// Looks at the handoff file until it is taken or `wait` ms have passed on the clock `now`
+// (Date.now), a look every `step` ms or less: "taken", "left", or "unreachable" (handoffLook).
+// The time a look takes counts, so a slow link does not stretch the wait; the last sleep is cut
+// so the last look falls at the end of the wait.
+//   look(): Promise of one handoffLook; sleep(ms): Promise that resolves after `ms`
+export async function handoffTaken({ look, sleep, now, wait, step }) {
+  const started = now();
+  for (;;) {
+    const seen = await look();
+    const rest = wait - (now() - started);
+    if (seen !== "left" || rest <= 0) return seen;
+    await sleep(Math.min(step, rest));
+  }
 }
 
 const MOD = "side-viewer";
@@ -145,20 +214,44 @@ export function openedShell(before, panes, viewer) {
 
 // The pane.split arguments for a shell below the viewer. pane.split takes no folder, so a
 // short zsh moves there first and becomes the login shell; a folder that is gone leaves the
-// shell where Herdr started it. Always zsh: the line goes in through a zle widget.
-export function splitOf(viewer, folder) {
+// shell where Herdr started it. Always zsh: the line goes in through a zle widget. `zsh` is
+// its path on the viewer's machine: /bin/zsh here, zshOf's answer on another machine. Both the
+// folder and the zsh go as arguments, so a space or quote in either stays one word.
+export function splitOf(viewer, folder, zsh = ZSH) {
   return {
     direction: "down",
     pane: viewer,
-    argv: [ZSH, "-c", `cd -- "$1" 2>/dev/null; exec ${ZSH} -l`, "zsh", folder],
+    argv: [zsh, "-c", 'cd -- "$1" 2>/dev/null; exec "$2" -l', "zsh", folder, zsh],
   };
+}
+
+// Where a zsh may be when the login shell's PATH has none, in the order they are taken.
+const ZSH_PATHS = ["/bin/zsh", "/usr/bin/zsh", "/usr/local/bin/zsh", "/opt/homebrew/bin/zsh"];
+
+// Run on another machine as `sh -l -c FIND_ZSH sh`, so PATH is the one its login shell sets
+// up: a "login <path>" line with `command -v zsh` when that is a program file (empty when not:
+// none, or an alias), then a "path <path>" line for each of ZSH_PATHS that is one. The tags
+// keep apart whatever a login profile prints first.
+export const FIND_ZSH = 'z=$(command -v zsh 2>/dev/null); { [ -f "$z" ] && [ -x "$z" ]; } || z=; ' +
+  "printf 'login %s\\n' \"$z\"; " +
+  `for p in ${ZSH_PATHS.join(" ")}; do [ -f "$p" ] && [ -x "$p" ] && printf 'path %s\\n' "$p"; done; exit 0`;
+
+// FIND_ZSH's answer as the zsh to start there: the login shell's, else the first of ZSH_PATHS
+// there, else null (no zsh, so no shell pane: the widget is zsh's).
+export function zshOf(stdout) {
+  const lines = String(stdout ?? "").split("\n");
+  const login = lines.filter((line) => line.startsWith("login ")).pop()?.slice("login ".length);
+  if (login?.startsWith("/")) return login;
+  const found = new Set(lines.filter((line) => line.startsWith("path ")).map((line) => line.slice("path ".length)));
+  return ZSH_PATHS.find((p) => found.has(p)) ?? null;
 }
 
 // The folder a new shell pane starts in. In a viewer tab, the shown document's folder. Beside
 // a conversation, that conversation terminal's live folder: the viewer was split off it, so it
 // is a terminal pane in the viewer's own tab, an agent's before a plain shell's, and never the
 // shell this viewer opened. Home when there is none.
-//   viewer: the viewer's pane id or null; panes: herdr panes(); shell: { pane, terminal } or null
+//   viewer: the viewer's pane id or null; panes: herdr panes(); shell: { pane, terminal } or null;
+//   home: the home folder of the viewer's machine, another machine's when the shell opens there
 export function shellFolder({ viewerTab, file, viewer, panes, shell, home }) {
   if (viewerTab) {
     if (!file) return home;
@@ -172,9 +265,20 @@ export function shellFolder({ viewerTab, file, viewer, panes, shell, home }) {
   return conversation?.cwd ?? home;
 }
 
+// Whether machine `machine` (null: this Mac, never cut off) can't be reached now: Herdr's
+// machines() lists it unavailable, or `failure` says so. `failure` is a rejection of exec or
+// readTextFile, or a nonzero answer { code, stdout, stderr } of a command run there or of an
+// `hc` command for its terminal; remote-results.js reads both. Any other failure is not the
+// connection's.
+export function cutOff({ machine, machines = [], failure = null }) {
+  if (machine == null) return false;
+  if (unavailable(machines, machine)) return true;
+  return failure != null && saveFailureOf(failure).reason === "unreachable";
+}
+
 // The notification (herdr notify) for a line that was not put in, in tr's language (i18n.js).
 //   reason: { state: "busy", program } | { state: "unprepared" } | { state: "unready" }
-//     | { state: "remote" } | { state: "failed" }
+//     | { state: "noZsh" } | { state: "unreachable", machine } | { state: "failed" }
 export function noticeOf(reason, tr) {
   const words = wordsOf(tr);
   if (reason.state === "busy") {
@@ -183,6 +287,7 @@ export function noticeOf(reason, tr) {
   const title = words("alerts.insertFailed");
   if (reason.state === "unprepared") return { title, body: words("alerts.unprepared"), level: "error" };
   if (reason.state === "unready") return { title, body: words("alerts.unready"), level: "error" };
-  if (reason.state === "remote") return { title, body: words("alerts.remote"), level: "error" };
+  if (reason.state === "noZsh") return { title, body: words("alerts.noZsh"), level: "error" };
+  if (reason.state === "unreachable") return { title, body: words("alerts.unreachable", { machine: reason.machine }), level: "error" };
   return { title, body: words("alerts.failed"), level: "error" };
 }
