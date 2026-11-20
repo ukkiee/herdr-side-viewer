@@ -36,9 +36,12 @@ export class ShellPane {
   insert(command, { file, viewerTab, tr }, cx) {
     if (this.working) return;
     this.working = true;
+    // The sent conversations as they are at the press: a file sent while a remote zsh is looked
+    // up must not move this command's new shell to another conversation's folder.
+    const conversations = shared(CONVERSATIONS_KEY);
     cx.spawn(async (cx) => {
       try {
-        const notice = await this.put(command, file, viewerTab, tr, cx);
+        const notice = await this.put(command, file, viewerTab, tr, conversations, cx);
         if (notice) notify(notice);
       } catch {
         notify(noticeOf({ state: "failed" }, tr));
@@ -51,7 +54,7 @@ export class ShellPane {
   // Returns the notice to show, or null when the command went in. The machine is the kept
   // shell's, else the viewer's (machineOfAddress); a machine Herdr already lists as unavailable
   // gets nothing, and a remote step refused for the connection says so too.
-  async put(command, file, viewerTab, tr, cx) {
+  async put(command, file, viewerTab, tr, conversations, cx) {
     const all = panes();
     const kept = liveShell(this.shell, all);
     const viewer = kept ? null : viewerPaneOf({ props: props(), focused: focused(), panes: all });
@@ -60,13 +63,13 @@ export class ShellPane {
     if (cutOff({ machine, machines: machines() })) return noticeOf({ state: "unreachable", machine }, tr);
     const trouble = (failure) => noticeOf(cutOff({ machine, failure }) ? { state: "unreachable", machine } : { state: "failed" }, tr);
     try {
-      return await this.putOn(machine, kept, viewer, all, command, file, viewerTab, tr, trouble, cx);
+      return await this.putOn(machine, kept, viewer, all, conversations, command, file, viewerTab, tr, trouble, cx);
     } catch (error) {
       return trouble(error);
     }
   }
 
-  async putOn(machine, kept, viewer, all, command, file, viewerTab, tr, trouble, cx) {
+  async putOn(machine, kept, viewer, all, conversations, command, file, viewerTab, tr, trouble, cx) {
     const access = accessOf(machine);
     if (kept) {
       const state = await this.settled(kept.terminal, machine, cx);
@@ -80,7 +83,7 @@ export class ShellPane {
     if (zsh === null) return noticeOf({ state: "noZsh" }, tr);
     // Beside two conversations the shell starts with the one that sent the file.
     const tab = all.find((p) => p.pane === viewer)?.tab;
-    const conversation = sentConversation(shared(CONVERSATIONS_KEY), tab, all)?.pane ?? null;
+    const conversation = sentConversation(conversations, tab, all)?.pane ?? null;
     const folder = shellFolder({ viewerTab, file, viewer, panes: all, shell: this.shell, conversation, home: await access.home() });
     run("pane.split", splitOf(viewer, folder, zsh));
     const opened = await this.appeared(all, viewer, cx);
