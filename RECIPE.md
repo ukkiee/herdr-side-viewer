@@ -1249,19 +1249,24 @@ Step 67 is in a space on this Mac, in the shell pane below the side viewer besid
 conversation (step 35).
 
 67. A new zsh is prepared by the keymap of the one prepared before it. Clear the line
-    (ctrl+C) here and below.
+    (ctrl+C) here and below. The draft is a command that leaves a marker file only if it
+    runs, since the prepare line's `clear` would wipe anything it printed.
+    - Run `rm -f /tmp/side-viewer-check-draft-ran` first.
     - Run `zsh -f -o emacs` and click `>_` with the line empty: the command goes in. Clear
       the line, then run `ls ~/.config/herdr-app/data/side-viewer/shell/`: there is no
       `.keymap` file for this pane's terminal, as the viewer read and deleted it.
-    - Run `zsh -f -o emacs` again, type `echo draft` without Enter and click `>_`: the input line
-      holds the command and no `draft` was printed. Clear it: `echo draft` comes back at the
-      next prompt.
+    - Run `zsh -f -o emacs` again, type `touch /tmp/side-viewer-check-draft-ran` without
+      Enter and click `>_`: the input line holds the command. Clear it: the `touch` draft
+      comes back at the next prompt. Clear that too, then run `ls
+      /tmp/side-viewer-check-draft-ran`: no such file, so the draft did not run.
     - Clear the line, run `zsh -f -o vi` and click `>_` with the line empty: the command
       goes in. Clear the line.
-    - Run `zsh -f -o vi` again, type `echo draft` without Enter (insert mode) and click
-      `>_`: the input line holds the command and no `draft` was printed. Clear it: the next
-      prompt is empty, as `echo draft` was erased.
-    - Clear the line and run `exit` four times, back to the shell pane's first zsh.
+    - Run `zsh -f -o vi` again, type `touch /tmp/side-viewer-check-draft-ran` without Enter
+      (insert mode) and click `>_`: the input line holds the command. Clear it: the next
+      prompt is empty, as the draft was erased. Run `ls /tmp/side-viewer-check-draft-ran`: no
+      such file, so the draft did not run.
+    - Clear the line, run `rm -f /tmp/side-viewer-check-draft-ran`, and run `exit` four
+      times, back to the shell pane's first zsh.
 
 ### Two conversations in one tab
 
