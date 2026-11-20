@@ -26,7 +26,7 @@ opens the one you pick, which is also how files open in a space on another machi
   changes on disk.
 - **Viewer tab**: the header's `Open in New Tab` button gives the file a tab of its own.
 - **`>_` on shell blocks**: types a code block's command into a shell pane below the viewer,
-  without running it (one narrow case with zsh's vi keys, see [Limits](#limits)).
+  without running it (one narrow case after switching zsh's keymap, see [Limits](#limits)).
 - **Path picker** (`cmd-o`): a popup of the file paths in the focused conversation; pick
   one to open it beside the conversation (see [The path picker](#the-path-picker-cmd-o)).
 - **Remote spaces**: in a space on a Linux machine or another Mac, the viewer shows, edits
@@ -117,7 +117,8 @@ then stay on that machine. Linux and macOS machines are supported.
   `/usr/local/bin/zsh` and `/opt/homebrew/bin/zsh` there. With none, no pane opens and a
   notification says `There's no zsh on that machine, so it can't be inserted. Use the copy
   button and paste it.` The command passes through a file in `~/.cache/side-viewer/shell/` on
-  that machine (folder mode 700), which the shell deletes as it takes it; nothing goes into
+  that machine (folder mode 700), which the shell deletes as it takes it, and the zsh's
+  keymap through a `.keymap` file beside it, which the viewer deletes once read; nothing goes into
   the data folder on this Mac. The viewer waits longer for that shell: 1.5 seconds after the
   key, 5 seconds after the line that teaches it.
 - **`>_` on a machine out of reach** opens no pane and types nothing; the notification says
@@ -204,7 +205,10 @@ file opens in it, not in a new pane.
   one line that teaches it a key, `ctrl+alt+F12`, puts that file's command in and clears the
   screen, so no line is left on the shell's screen. After that `>_` writes the file and
   presses only that key. Text you had typed at the prompt is moved aside with zsh's push-line
-  and comes back after the command (with vi keys too). If the shell has not taken the file
+  and comes back after the command (with vi keys too). The line also leaves zsh's keymap in a
+  file beside the command's, so when a new zsh started in that pane is taught again, typed
+  text is moved aside there too with emacs keys, and erased, not run, with vi keys or when the
+  keymap is not known (see [Limits](#limits)). If the shell has not taken the file
   half a second after the key (3 seconds after the line), a notification says the command did
   not go in (`Couldn't insert into the terminal`) and the next `>_` teaches the shell again. In
   a remote space the shell and its file are on that machine (see
@@ -254,7 +258,9 @@ There is no switch.
 - **Another machine's home**: `>_` in a remote space writes its command to
   `~/.cache/side-viewer/shell/<machine>_<terminal>.txt` there (folder mode 700, file mode
   600), deleted by the shell as it puts it in the input line, or by the viewer when the shell
-  has not taken it.
+  has not taken it. The line that teaches the shell writes its keymap to
+  `<machine>_<terminal>.keymap` beside it, which the viewer reads and deletes once the shell
+  has taken the command.
 - **Herdr's keys**: `install.sh` adds `cmd-o` to Herdr's `keys.json` (see [Install](#install)).
 - **Terminal**: the `>_` button opens a zsh pane and types into it through Herdr's `hc`
   (`hc send`, `hc keys`, `hc get`). A shell it opens gets one line binding an insert widget
@@ -276,7 +282,10 @@ There is no switch.
     has read them (one can be left behind if Herdr quits in between);
   - `shell/<terminal>.txt`, the command `>_` hands to a shell pane on this Mac, deleted by the shell as it
     puts it in the input line, or by the viewer when the shell has not taken it (one can be
-    left behind if an `hc` call fails; the next `>_` replaces it).
+    left behind if an `hc` call fails; the next `>_` replaces it);
+  - `shell/<terminal>.keymap`, the keymap of the zsh last taught there, written by that line
+    and deleted by the viewer once read (one can be left behind if the shell took the line
+    late; the next line replaces it).
 
   A copy in `images/` or `previews/` is deleted when a newer copy of the same file replaces
   it, or when not shown for 30 days.
@@ -457,10 +466,15 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
   taught last, the viewer sees a new zsh and sends it the line that teaches it the insert key
   again, then `clear`. When the arguments match (a second `exec zsh` in a row, say), it
   can't tell: that `>_` leaves `;7~` in the input line, a notification says
-  `Couldn't insert into the terminal`, and the next `>_` teaches the shell again. Only when that line is
-  sent is a draft moved aside with alt+q, so if that new zsh uses vi keys and its prompt
-  holds text, the text can run along with that line. Clear the prompt before the first `>_`
-  after starting a new zsh.
+  `Couldn't insert into the terminal`, and the next `>_` teaches the shell again. Before that
+  line, text typed at the prompt is cleared by the keymap the last taught zsh there had: with
+  emacs keys it is moved aside with alt+q and comes back after the command; with vi keys, or
+  when the keymap is not known, `ctrl+c` erases it, so it is lost but never run. The viewer
+  learns a keymap only when it teaches a zsh, so if the new zsh has vi keys while the one
+  taught before it had emacs keys (say, `bindkey -v` run after it was taught, or a new zsh
+  started with other settings), it gets alt+q and its typed text can run along with that
+  line. Clear the prompt before the first `>_` after starting a new
+  zsh.
 - **`>_` needs zsh, on another machine too.** A machine with none gets no shell pane, only a
   notification; use the copy button there.
 - **No keyboard navigation** between blocks, no `cmd+E` for the source switch, no filling in

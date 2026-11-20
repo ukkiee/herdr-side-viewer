@@ -300,12 +300,19 @@ The mod shows files, not agents, so it has no agent statuses.
   <terminal> ctrl+alt+f12`. Instead of that key, a zsh not yet prepared gets the prepare line
   with `hc send`: a zle widget `_side_viewer_insert` that pushes a draft aside (`zle
   push-line`), reads the file into `BUFFER`, puts the cursor at its end and removes the file,
-  bound to `\e[24;7~` in the emacs, viins and vicmd keymaps; then `print -rz` of the file's
-  text (shown at the next prompt, above a draft pushed aside before), the file removed, and
-  `clear`. The viewer remembers the pid and argv of the zsh it prepared (`hc get`'s
-  `foreground` at the prompt); a shell just opened is prepared without alt+q, a zsh with
-  another pid or argv in the same pane, or one that left an earlier file, is prepared again
-  after `hc keys <terminal> alt+q`. Then the viewer waits for the file to go (500 ms after
+  bound to `\e[24;7~` in the emacs, viins and vicmd keymaps; then `bindkey -lL main >|
+  <keymap file> 2>/dev/null` (the keymap file is the handoff file's name with `.keymap`, in
+  the same folder), then `print -rz` of the file's text (shown at the next prompt, above a
+  draft pushed aside before), the file removed, and `clear`. The viewer remembers the pid and
+  argv of the zsh it prepared (`hc get`'s `foreground` at the prompt), and, once a prepare
+  line's handoff file is taken, reads the keymap file on that machine, removes it (`rm -f`)
+  and remembers its keymap: `bindkey -A emacs main` is emacs, `bindkey -A viins main` or
+  `bindkey -A vicmd main` is vi, anything else, no file or a failed read is not known. A key
+  press, or a prepare line not taken, leaves it as it was; a shell just opened starts not
+  known. A shell just opened is prepared with no key first; a zsh with another pid or argv in
+  the same pane, or one that left an earlier file, is prepared again after `hc keys
+  <terminal> alt+q` when the remembered keymap is emacs, else after `hc keys <terminal>
+  ctrl+c`, with no wait before the line. Then the viewer waits for the file to go (500 ms after
   the key, 3 s after the prepare line, looking every 50 ms; for a shell on another machine
   1500 ms, 5000 ms and every 100 ms, each look a file read there; the waits are clock time,
   the reads included). A file still there is removed (`rm -f` on its machine, also when an
@@ -601,10 +608,17 @@ Platform:
   widget's push-line works in every keymap, so a vi-keymap draft is never run. zsh only.
   The one line still sent with `hc send` is the prepare line, and it puts that press's command
   in itself (`print -rz`), so no key can arrive while zle is not reading and be echoed as
-  `^[[24;7~`. It goes to a shell just opened (no draft yet), or after alt+q when the pane's
-  zsh looks new (`zsh` run there, or `exec zsh` with other argv) or left the last file. In
-  that case alt+q is not push-line in a vi keymap, so a draft can run with the prepare line,
-  and `clear` wipes that shell's screen (README, Limits). `exec` keeps the pid, so `exec zsh`
+  `^[[24;7~`. It goes to a shell just opened (no draft yet), or after a key that clears the
+  draft when the pane's zsh looks new (`zsh` run there, or `exec zsh` with other argv) or
+  left the last file, and `clear` wipes that shell's screen (README, Limits). alt+q is
+  push-line in emacs but Esc then q in vi, which can run a draft with the prepare line, so
+  alt+q goes only when the last prepare line there left emacs; vi or not known gets ctrl+c,
+  which drops the draft without running it. `hc send` waits for the output to settle (about
+  200 ms) before it pastes, so the line after ctrl+c needs no wait of its own: with none, the
+  line ran and the draft did not in every try, here and on a Linux machine, in viins and
+  vicmd. The keymap is the last prepared zsh's, read when it was prepared: a new zsh with
+  vi keys after one prepared with emacs keys (`bindkey -v` run after the prepare, or other
+  settings) still gets alt+q (README, Limits). `exec` keeps the pid, so `exec zsh`
   with the same argv as the zsh prepared is only caught after its press: the unbound key
   leaves `;7~` in the input line and the file stays, which the wait above turns into a
   notification and a prepare on the next press. A shell on another machine reads its file
@@ -1179,6 +1193,26 @@ echo 'docs/samples/code-sample.md:12 and `box.svg`'
     hc exec --on "$m" sh -c 'cd "$HOME/.cache" && rmdir side-viewer/shell side-viewer 2>/dev/null; ls -A side-viewer/shell'
     # No such file or directory, or only other terminals' files
     ```
+
+### Shell pane keymaps
+
+Step 68 is in a space on this Mac, in the shell pane below the side viewer beside the
+conversation (step 35).
+
+68. A new zsh is prepared by the keymap of the one prepared before it. Clear the line
+    (ctrl+C) here and below.
+    - Run `zsh -f` and click `>_` with the line empty: the command goes in.
+      `ls ~/.config/herdr-app/data/side-viewer/shell/` lists no `.keymap` file. Clear the
+      line.
+    - Run `zsh -f` again, type `echo draft` without Enter and click `>_`: the input line
+      holds the command and no `draft` was printed. Clear it: `echo draft` comes back at the
+      next prompt.
+    - Clear the line, run `zsh -f -o vi` and click `>_` with the line empty: the command
+      goes in. Clear the line.
+    - Run `zsh -f -o vi` again, type `echo draft` without Enter (insert mode) and click
+      `>_`: the input line holds the command and no `draft` was printed. Clear it: the next
+      prompt is empty, as `echo draft` was erased.
+    - Clear the line and run `exit` four times, back to the shell pane's first zsh.
 
 ### Giving the extensions back
 
