@@ -194,6 +194,29 @@ test("a focused side viewer beside a conversation reads that conversation, an ag
   assert.deepEqual(conversationOf({ focused: focusOn(shellOnly[1]), panes: shellOnly }), { pane: "p5", terminal: "t5", cwd: "/srv" });
 });
 
+test("a focused side viewer reads the conversation that last sent its tab a file", () => {
+  const second = agentPane("p5", "w1", "t5", "/work/b");
+  const panes = [...PANES, second];
+  assert.deepEqual(conversationOf({ focused: focusOn(viewer), panes, conversations: { w1: "p5" } }), { pane: "p5", terminal: "t5", cwd: "/work/b" });
+  // A plain shell that sent the file counts as well.
+  assert.deepEqual(conversationOf({ focused: focusOn(viewer), panes, conversations: { w1: "p2" } }), { pane: "p2", terminal: "t2", cwd: "/tmp" });
+});
+
+test("without a live sent conversation in its tab a focused side viewer reads the tab's agent", () => {
+  const elsewhere = agentPane("p6", "w3", "t6", "/work/c");
+  const panes = [...PANES, elsewhere];
+  const first = { pane: "p1", terminal: "t1", cwd: CWD };
+  for (const conversations of [undefined, {}, { w1: "p8" }, { w1: "p6" }, { w1: "p3" }, { w3: "p6" }]) {
+    assert.deepEqual(conversationOf({ focused: focusOn(viewer), panes, conversations }), first, JSON.stringify(conversations));
+  }
+});
+
+test("a focused terminal is read whatever conversation sent the file", () => {
+  const second = agentPane("p5", "w1", "t5", "/work/b");
+  const panes = [...PANES, second];
+  assert.deepEqual(conversationOf({ focused: focusOn(conversation), panes, conversations: { w1: "p5" } }), { pane: "p1", terminal: "t1", cwd: CWD });
+});
+
 test("a remote conversation keeps its machine address", () => {
   const remote = [agentPane("p7", "w4", "nuc/t3", "/home/me/app"), viewerPane("p8", "w4")];
   assert.deepEqual(conversationOf({ focused: focusOn(remote[1]), panes: remote }), { pane: "p7", terminal: "nuc/t3", cwd: "/home/me/app" });
