@@ -65,9 +65,11 @@ extension the router has not taken over.
 - **Where it opens.** A side viewer showing in the conversation's tab takes the file, so no
   pane is added; otherwise a new viewer splits off to the right of the conversation. The
   popup closes once that is settled, within about half a second.
-- **Focus.** With focus on a side viewer beside a conversation, the picker reads that
-  conversation (an agent's terminal first). Anywhere else without a terminal (a viewer tab,
-  another mod) it says `Click a conversation terminal, then press again.`
+- **Focus.** With focus on a side viewer beside a conversation, the picker reads the
+  conversation that last sent a file to that tab (by cmd-click or this picker) while it is
+  still a terminal in the tab, else the tab's conversation (an agent's terminal first).
+  Anywhere else without a terminal (a viewer tab, another mod) it says
+  `Click a conversation terminal, then press again.`
 - **Its other lines**: `Finding…`, `This conversation shows no file path to open.`,
   `No path matches.`, the two remote notices below, and `Couldn't look for paths: <reason>`
   for any other failure (the terminal closed, say).
@@ -111,8 +113,9 @@ then stay on that machine. Linux and macOS machines are supported.
 - **The router stays out of remote spaces.** A file that reaches the router while a remote
   space has focus (a path that also exists on this Mac, say) opens in its original app.
 - **`>_` types into a shell on that machine.** The shell pane opens there, in the folder of
-  the conversation terminal beside the viewer on that machine (in a viewer tab, the
-  document's folder; without either, that machine's home). The zsh is the one `command -v zsh`
+  the conversation terminal beside the viewer on that machine, the one that last sent a file
+  to the tab first (in a viewer tab, the document's folder; without either, that machine's
+  home). The zsh is the one `command -v zsh`
   finds in that machine's login shell, else the first of `/bin/zsh`, `/usr/bin/zsh`,
   `/usr/local/bin/zsh` and `/opt/homebrew/bin/zsh` there. With none, no pane opens and a
   notification says `There's no zsh on that machine, so it can't be inserted. Use the copy
@@ -198,7 +201,9 @@ file opens in it, not in a new pane.
   `fish` or `console` also has a `>_` button. It opens a shell pane below the viewer and
   types the command into its input line. It does not press Enter and does not touch the
   clipboard: check it, then press Enter yourself. The shell is zsh and starts in the folder of
-  the conversation terminal beside the viewer (in a viewer tab, the document's folder). The
+  the conversation terminal beside the viewer (in a viewer tab, the document's folder). With
+  two conversations in the tab, that is the one that last sent a file to the tab (by cmd-click
+  or the path picker) while it is still there, else an agent's terminal first. The
   next `>_` goes into the same shell pane while it is open. If that shell is running a
   program, nothing is typed and a notification says so (`Not inserted into the terminal`). When it
   first opens the shell pane it writes the command to a file in the data folder and sends zsh
@@ -252,7 +257,9 @@ There is no switch.
   (`sh -l -c`), writes the command file with `sh` (`mkdir`, `chmod`, `printf`), removes one the
   shell left with `rm`, and opens a zsh pane there.
 - **Herdr's shared state**: the viewer keeps the language last read under
-  `side-viewer.lang` (`"en"` or `"ko"`), which every viewer reads.
+  `side-viewer.lang` (`"en"` or `"ko"`), which every viewer reads, and the conversation pane
+  that last sent a file to each tab under `side-viewer.conversations`
+  (`{ "<tab id>": "<pane id>" }`), with tabs that are gone taken out.
 - **Your files**: the mod writes a file when you save it or click a checkbox in it, on the
   machine of the viewer's space.
 - **Another machine's home**: `>_` in a remote space writes its command to
