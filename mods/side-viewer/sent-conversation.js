@@ -14,7 +14,8 @@ import { addressOf } from "./machine.js";
 export const CONVERSATIONS_KEY = "side-viewer.conversations";
 
 // The openings viewers took, latest last, under OPENINGS_KEY, each as { id, tab }: the tab
-// whose memory it changed, or null when it changed none. A copy starts again with the same
+// whose memory it changed, or null while that tab is not known; a later start of the same
+// opening fills it in once it is sure (takeOpening). A copy starts again with the same
 // props when a mod file is saved, when the app restarts and its tab shows, and first starts
 // when its tab first shows, which may be long after the split. Only the first start of an
 // opening may change the memory: a later one would put back a conversation that requests
@@ -35,14 +36,21 @@ const OPENING_ID = /^[A-Za-z0-9_-]+$/;
 // the opening's id, and the conversation's pane id without its machine prefix (machine.js
 // addressOf). An id not taken yet is added to the openings; its conversation is remembered
 // for its tab (nothing when the space or the pane is not listed), and an opening without one
-// forgets the viewer's tab (forgottenTabOf). Props without an id, an older router's or a
-// viewer tab's, change nothing.
+// forgets the viewer's tab (forgottenTabOf). An id already taken changes no memory; if it was
+// kept with no tab, it gets the tab once that is sure (sureTabOf), so it is kept like any
+// opening of a tab on screen. Props without an id, an older router's or a viewer tab's, change
+// nothing.
 //   conversations: shared(CONVERSATIONS_KEY); openings: shared(OPENINGS_KEY); spaces: Herdr's
 //   spaces(); panes: herdr panes(); viewer: the viewer's pane id or null; focused: herdr focused()
 export function takeOpening({ conversations, openings, props, spaces, panes, viewer, focused }) {
   const id = props?.id;
   const taken = openingsOf(openings);
-  if (typeof id !== "string" || !OPENING_ID.test(id) || taken.some((o) => o.id === id)) return { conversations, openings };
+  if (typeof id !== "string" || !OPENING_ID.test(id)) return { conversations, openings };
+  if (taken.some((o) => o.id === id)) {
+    const tab = sureTabOf({ props, spaces, panes, viewer });
+    if (!tab || !taken.some((o) => o.id === id && o.tab === null)) return { conversations, openings };
+    return { conversations, openings: taken.map((o) => (o.id === id && o.tab === null ? { id, tab } : o)) };
+  }
   let tab;
   let after;
   if (typeof props.conversation === "string") {
@@ -54,6 +62,15 @@ export function takeOpening({ conversations, openings, props, spaces, panes, vie
     after = forgetConversation(conversations, tab, panes);
   }
   return { conversations: after, openings: keptOpenings([...taken, { id, tab }], panes) };
+}
+
+// The tab of a viewer starting with `props`, when it is sure: its opening's conversation's,
+// else the viewer's own, as panes() lists them; else null. Never the focused tab, which may be
+// another viewer's.
+function sureTabOf({ props, spaces, panes, viewer }) {
+  const conversation = typeof props.conversation === "string" ? addressOf(props.conversation, props, spaces) : null;
+  const tabOf = (pane) => (pane == null ? null : panes.find((p) => p.pane === pane)?.tab ?? null);
+  return tabOf(conversation) ?? tabOf(viewer);
 }
 
 // The openings in shared(OPENINGS_KEY), anything: a bare id, as an earlier viewer kept it, is

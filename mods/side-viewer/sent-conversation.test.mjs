@@ -193,9 +193,76 @@ test("an opening without a conversation is kept with the tab it forgot, so a req
 
 test("openings kept as bare ids, as an earlier viewer kept them, count as taken with no tab", () => {
   const before = { conversations: { tab1: "p2" }, openings: ["1800000000-41"] };
-  assert.deepEqual(start(before, opened({ conversation: "p1" })), before);
+  assert.deepEqual(start(before, opened({ conversation: "p1" })).conversations, before.conversations);
   const next = start(before, opened({ conversation: "p1", id: "1800000000-42" }));
   assert.deepEqual(next.openings, [{ id: "1800000000-41", tab: null }, { id: "1800000000-42", tab: "tab1" }]);
+});
+
+// `count` openings taken in turn in tabs that close right after: each viewer starts beside a
+// conversation of a tab of its own, which the next start no longer lists.
+const openInClosedTabs = (state, count) => {
+  let now = state;
+  for (let n = 0; n < count; n++) {
+    const panes = [...PANES, terminalPane(`q${n}`, `tmp${n}`, `tq${n}`, "/tmp"), modPane(`v${n}`, `tmp${n}`)];
+    now = start(now, opened({ conversation: `q${n}`, id: `1900000000-${n}` }), { panes, viewer: `v${n}` });
+  }
+  return now;
+};
+// PANES before its conversations show up: only the viewer, so an opening finds no tab.
+const VIEWER_ONLY = [modPane("p3", "tab1")];
+
+test("an opening taken before its tab was known gets the tab once the conversation shows, and a request since outlives more closed tabs than are kept", () => {
+  const a = start(EMPTY, opened({ conversation: "p1" }), { panes: [], viewer: null });
+  assert.deepEqual(a.openings, [{ id: "1800000000-41", tab: null }]);
+  const b = request(a, "p2");
+  const filled = start(b, opened({ conversation: "p1" }));
+  assert.deepEqual(filled, { conversations: { tab1: "p2" }, openings: [{ id: "1800000000-41", tab: "tab1" }] });
+  const crowded = openInClosedTabs(filled, OPENINGS_KEPT + 2);
+  assert.equal(crowded.conversations.tab1, "p2");
+  assert.deepEqual(start(crowded, opened({ conversation: "p1" })), crowded);
+});
+
+test("a tab forgotten since an opening taken before its tab was known stays forgotten after more closed tabs than are kept", () => {
+  const a = start(EMPTY, opened({ conversation: "p1" }), { panes: [], viewer: null });
+  const gone = request(request(a, "p1"), null);
+  assert.deepEqual(gone.conversations, {});
+  const filled = start(gone, opened({ conversation: "p1" }));
+  assert.deepEqual(filled, { conversations: {}, openings: [{ id: "1800000000-41", tab: "tab1" }] });
+  const crowded = openInClosedTabs(filled, OPENINGS_KEPT + 2);
+  assert.equal(crowded.conversations.tab1, undefined);
+  assert.deepEqual(start(crowded, opened({ conversation: "p1" })), crowded);
+});
+
+test("an opening kept as a bare id gets its tab when its viewer starts again, so a request since outlives more closed tabs than are kept", () => {
+  const before = { conversations: { tab1: "p2" }, openings: ["1800000000-41"] };
+  const filled = start(before, opened({ conversation: "p1" }));
+  assert.deepEqual(filled, { conversations: { tab1: "p2" }, openings: [{ id: "1800000000-41", tab: "tab1" }] });
+  const crowded = openInClosedTabs(filled, OPENINGS_KEPT + 2);
+  assert.equal(crowded.conversations.tab1, "p2");
+  assert.deepEqual(start(crowded, opened({ conversation: "p1" })), crowded);
+  const forgotten = { conversations: {}, openings: ["1800000000-41"] };
+  const crowdedGone = openInClosedTabs(start(forgotten, opened({ conversation: "p1" })), OPENINGS_KEPT + 2);
+  assert.equal(crowdedGone.conversations.tab1, undefined);
+  assert.deepEqual(start(crowdedGone, opened({ conversation: "p1" })), crowdedGone);
+});
+
+test("an opening taken before its tab was known gets the viewer's tab when its conversation is still not listed", () => {
+  const before = { conversations: { tab1: "p2" }, openings: [{ id: "1800000000-41", tab: null }] };
+  assert.deepEqual(start(before, opened({ conversation: "p8" })), { conversations: { tab1: "p2" }, openings: [{ id: "1800000000-41", tab: "tab1" }] });
+  assert.deepEqual(start(before, opened({ conversation: undefined }), { panes: VIEWER_ONLY }).openings, [{ id: "1800000000-41", tab: "tab1" }]);
+});
+
+test("an opening taken before its tab was known stays without one while neither its conversation nor its viewer is listed, whatever the focus", () => {
+  const before = { conversations: { tab1: "p2" }, openings: [{ id: "1800000000-41", tab: null }] };
+  assert.deepEqual(start(before, opened({ conversation: "p8" }), { viewer: null }), before);
+  assert.deepEqual(start(before, opened({ conversation: undefined }), { viewer: null }), before);
+  const bare = { conversations: { tab1: "p2" }, openings: ["1800000000-41"] };
+  assert.deepEqual(start(bare, opened({ conversation: "p8" }), { viewer: null }), bare);
+});
+
+test("an opening with its tab already kept is left as it is when its viewer starts again in another", () => {
+  const before = { conversations: { tab1: "p2" }, openings: [{ id: "1800000000-41", tab: "tab9" }] };
+  assert.deepEqual(start(before, opened({ conversation: "p1" })), before);
 });
 
 test("a broken list of openings starts as none taken", () => {
@@ -205,11 +272,12 @@ test("a broken list of openings starts as none taken", () => {
   }
 });
 
-test("an opening whose conversation is not on screen yet is taken without changing the memory", () => {
+test("an opening whose conversation is not on screen yet is taken without changing the memory, and gets its tab once it shows", () => {
   const before = { conversations: { tab1: "p1" }, openings: [] };
   const unlisted = start(before, opened({ space: "s9" }));
   assert.deepEqual(unlisted, { conversations: { tab1: "p1" }, openings: [{ id: "1800000000-41", tab: null }] });
-  assert.deepEqual(start(unlisted, opened({ space: "s9" }), { spaces: [...SPACES, { id: "s9", machine: null }] }), unlisted);
+  const shown = start(unlisted, opened({ space: "s9" }), { spaces: [...SPACES, { id: "s9", machine: null }] });
+  assert.deepEqual(shown, { conversations: { tab1: "p1" }, openings: [{ id: "1800000000-41", tab: "tab1" }] });
 });
 
 test("a remote viewer finds its conversation under the prefix this screen gives the machine", () => {
