@@ -154,17 +154,21 @@ const quoted = (text) => `'${text.replaceAll("'", "'\\''")}'`;
 // same terminal (shellOf).
 // A shell from splitOf is "starting" until its short zsh has become the login shell, and so
 // is a terminal hc has no foreground for yet. Only splitOf's exact argv counts as that short
-// zsh (any folder): any other `-c` run, a zsh one too, is a program the person started, and a
-// line sent to it would be read by that program.
+// zsh (any folder): any other `-c` run (runsCommand), a zsh one too, is a program the person
+// started, and a line sent to it would be read by that program.
 //   { state: "ready", pid, argv } | { state: "busy", program } | { state: "starting" } | { state: "gone" }
 export function shellState(info) {
   if (info?.state !== "live") return { state: "gone" };
   const foreground = info.foreground;
   if (!foreground || isStartingZsh(foreground.argv)) return { state: "starting" };
   const program = String(foreground.name ?? "").split("/").pop();
-  const runsLine = (foreground.argv ?? []).slice(1).includes("-c");
+  const runsLine = (foreground.argv ?? []).slice(1).some(runsCommand);
   return /^-?zsh$/.test(program) && !runsLine ? { state: "ready", pid: foreground.pid, argv: foreground.argv } : { state: "busy", program };
 }
+
+// Whether an argument asks the shell to run a command: `-c`, or a bundle of one-dash short
+// options with c in it (`-fc`, `-ic`). A `--` long option is not read.
+const runsCommand = (word) => typeof word === "string" && /^-[A-Za-z]*c[A-Za-z]*$/.test(word);
 
 // splitOf's argv: [zsh, "-c", START_SCRIPT, "zsh", folder, zsh].
 const isStartingZsh = (argv) =>

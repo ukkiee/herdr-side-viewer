@@ -495,6 +495,19 @@ test("a zsh with -c anywhere among its arguments runs a line, not a prompt, so i
   assert.deepEqual(shellState(running({ argv: ["zsh", "-l", "-c", "sleep 3; true"], name: "zsh" })), { state: "busy", program: "zsh" });
 });
 
+test("a zsh whose short options bundle c, as -fc or -ic, runs a line too, so it is busy", () => {
+  const busy = { state: "busy", program: "zsh" };
+  assert.deepEqual(shellState(running({ argv: ["zsh", "-fc", "sleep 3; true"], name: "zsh" })), busy);
+  assert.deepEqual(shellState(running({ argv: ["/bin/zsh", "-ic", "sleep 3"], name: "zsh" })), busy);
+  assert.deepEqual(shellState(running({ argv: ["zsh", "-l", "-cf", "sleep 3"], name: "zsh" })), busy);
+});
+
+test("long options and short ones without c leave a zsh at its prompt ready", () => {
+  for (const argv of [["zsh", "--c"], ["zsh", "--norcs"], ["/bin/zsh", "-f"], ["/bin/zsh", "-l"], ["zsh", "-f", "-o", "emacs"]]) {
+    assert.deepEqual(shellState(running({ argv, name: "zsh" })), { state: "ready", pid: 2, argv }, argv.join(" "));
+  }
+});
+
 test("a shell running another program is busy, and the program is named", () => {
   assert.deepEqual(shellState(terminal("sleep", ["sleep", "20"])), { state: "busy", program: "sleep" });
   assert.deepEqual(shellState(terminal("vim")), { state: "busy", program: "vim" });
