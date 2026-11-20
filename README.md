@@ -263,8 +263,9 @@ There is no switch.
   that last sent a file to each tab under `side-viewer.conversations`
   (`{ "<tab id>": "<pane id>" }`), with tabs that are gone taken out. Each new viewer it
   opened is listed under `side-viewer.openings` as `{ "id": "<opening id>", "tab": "<tab
-  id>" }` (`tab` is null while that tab is not known, and filled in when the viewer starts
-  again beside its conversation or in its tab), all of those of tabs still open and the
+  id>" }` (`tab` is null while that tab is not known, and filled in with its conversation's
+  tab once that pane shows, when the viewer starts again or takes a file; never from the
+  focus), all of those of tabs still open and the
   latest 50 of the rest, so a viewer that starts again (after a mod file is saved or the app
   restarts) does not put back a conversation another file was sent from since.
 - **Your files**: the mod writes a file when you save it or click a checkbox in it, on the

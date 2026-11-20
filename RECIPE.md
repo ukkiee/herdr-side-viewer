@@ -141,7 +141,7 @@ The mod shows files, not agents, so it has no agent statuses.
 - **Sent conversation** (sent-conversation.js). Herdr's shared state
   `side-viewer.conversations` is `{ <tab id>: <pane id> }`: per tab, the conversation pane
   that last sent a file to its viewers. A viewer that takes a request naming a conversation,
-  or first starts with an opening naming one (`takeOpening`), writes that pane under the tab
+  or first starts with an opening naming one (`afterRequest`, `afterStart`), writes that pane under the tab
   `panes()` puts it in (nothing when `panes()` does not list it). Props carry the pane id
   without its `<machine>/` prefix (ADR 0002); the viewer puts back the prefix its space id has
   on this screen, and takes none while its space is not listed. A request naming none, or a
@@ -155,9 +155,13 @@ The mod shows files, not agents, so it has no agent statuses.
   id in that list, as an earlier viewer kept it, counts as `{ id, tab: null }`. A copy that
   starts again with an id already there (a mod file was saved, the app restarted and its tab
   shows) neither writes nor takes out anything; if that id's `tab` is null (a bare id
-  included), it only fills in the tab once it is sure: the tab `panes()` puts the props'
-  conversation in, else the viewer's pane's tab, never the focused tab. Props without an `id` (an older router's) change
-  nothing. Each write also drops tabs `panes()`
+  included), it only fills in the tab `panes()` puts the props' conversation in, once
+  `panes()` lists that pane. It never fills it from the focus or a viewer found by it
+  (`viewerPaneOf` guesses the viewer's own pane from the focus, which may sit on another
+  tab's viewer), and an opening naming no conversation stays with no tab. A copy whose own
+  opening is left with no tab keeps it, and fills it in the same way when it takes a request
+  and that pane shows, without starting again; the props' conversation is not written again.
+  Props without an `id` (an older router's) change nothing. Each write also drops tabs `panes()`
   no longer has, and the map and the list are set only when they change, since `setShared` draws every mod
   again. The picker popup never writes it. The shell pane's folder and the picker's
   conversation follow the tab's entry while that pane is a terminal in the tab; a pane that
