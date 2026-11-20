@@ -199,8 +199,8 @@ test("a shell already prepared only gets the key", () => {
   });
 });
 
-test("a shell that is now another zsh is prepared again, its draft pushed aside first", () => {
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(41), prepared: shellOf(ready(40)), fresh: false, stale: false, tr: ko }), {
+test("a shell that is now another emacs zsh is prepared again, its draft pushed aside first", () => {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(41), prepared: shellOf(ready(40)), keymap: "emacs", fresh: false, stale: false, tr: ko }), {
     commands: [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE, KEYMAP)]],
     notice: null,
     wait: PREPARE_WAIT_MS,
@@ -209,13 +209,41 @@ test("a shell that is now another zsh is prepared again, its draft pushed aside 
 
 test("after exec zsh, which keeps the pid, a zsh started with other arguments is prepared again", () => {
   const exec = { state: "ready", pid: 40, argv: ["zsh"] };
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: exec, prepared: shellOf(ready(40)), fresh: false, stale: false, tr: ko }).commands,
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: exec, prepared: shellOf(ready(40)), keymap: "emacs", fresh: false, stale: false, tr: ko }).commands,
     [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE, KEYMAP)]]);
 });
 
 test("a handoff file the last press left behind means the zsh lacks the widget, so it is prepared again", () => {
-  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(40), prepared: shellOf(ready(40)), fresh: false, stale: true, tr: ko }).commands,
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(40), prepared: shellOf(ready(40)), keymap: "emacs", fresh: false, stale: true, tr: ko }).commands,
     [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE, KEYMAP)]]);
+});
+
+test("a shell prepared again whose zsh was vi gets ctrl+c, not alt+q, right before the prepare line", () => {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(41), prepared: shellOf(ready(40)), keymap: "vi", fresh: false, stale: false, tr: ko }), {
+    commands: [["keys", "t7", "ctrl+c"], ["send", "t7", prepareLine(FILE, KEYMAP)]],
+    notice: null,
+    wait: PREPARE_WAIT_MS,
+  });
+});
+
+test("a shell prepared again whose keymap is not known gets ctrl+c too", () => {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(40), prepared: shellOf(ready(40)), keymap: null, fresh: false, stale: true, tr: ko }).commands,
+    [["keys", "t7", "ctrl+c"], ["send", "t7", prepareLine(FILE, KEYMAP)]]);
+});
+
+test("a shell just opened gets only the prepare line, whatever the keymap", () => {
+  for (const keymap of ["emacs", "vi", null]) {
+    assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(40), prepared: null, keymap, fresh: true, stale: false, tr: ko }).commands,
+      [["send", "t7", prepareLine(FILE, KEYMAP)]]);
+  }
+});
+
+test("a prepared vi zsh only gets the key; its widget pushes the draft aside", () => {
+  assert.deepEqual(insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(40), prepared: shellOf(ready(40)), keymap: "vi", fresh: false, stale: false, tr: ko }), {
+    commands: [KEY],
+    notice: null,
+    wait: KEY_WAIT_MS,
+  });
 });
 
 // A Linux zsh at its prompt, as `hc get` shows one (`/usr/bin/zsh -l`).
@@ -235,8 +263,16 @@ test("a shell on another machine is prepared like one here, and gets more time t
     notice: null,
     wait: 1500,
   });
-  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, state: readyThere(41), prepared: shellOf(readyThere(40)), fresh: false, stale: false, tr: ko }), {
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, state: readyThere(41), prepared: shellOf(readyThere(40)), keymap: "emacs", fresh: false, stale: false, tr: ko }), {
     commands: [["keys", THERE, "alt+q"], ["send", THERE, prepareLine(FILE_THERE, KEYMAP_THERE)]],
+    notice: null,
+    wait: 5000,
+  });
+});
+
+test("a shell on another machine prepared again whose keymap is not known gets ctrl+c, with that machine's wait", () => {
+  assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, state: readyThere(41), prepared: shellOf(readyThere(40)), keymap: null, fresh: false, stale: false, tr: ko }), {
+    commands: [["keys", THERE, "ctrl+c"], ["send", THERE, prepareLine(FILE_THERE, KEYMAP_THERE)]],
     notice: null,
     wait: 5000,
   });

@@ -6,7 +6,9 @@
 // shell's handoff file. A zsh not yet prepared gets a line (prepareLine) that defines a zsh
 // widget on a key nobody uses and puts this first command in itself; later presses only
 // press that key. No line is left to run, nothing stays on screen, and a draft is pushed
-// aside in any keymap.
+// aside in any keymap. A prepare line also leaves the zsh's keymap in a file beside the
+// handoff file, so preparing a new zsh in that terminal later clears a draft without running
+// it (insertPlan).
 import { wordsOf } from "./i18n.js";
 import { saveFailureOf, unavailable } from "./remote-results.js";
 
@@ -109,24 +111,30 @@ export const machineOfAddress = (address) => (isRemote(address) ? address.slice(
 // What to do to put the handoff file's text into terminal `terminal`, as
 // { commands: hc argument lists in order, notice: what to tell instead, or null,
 //   wait: how long the handoff file may stay before the press counts as not taken (ms) }.
+//   file, keymapFile: the shell's handoff and keymap files (handoffOf);
 //   state: shellState() of the terminal now; prepared: shellOf() the zsh last prepared there,
-//   or null; fresh: the shell was just opened by this viewer, so it has no draft;
+//   or null; keymap: what the last prepare line there left (keymapOf), or null;
+//   fresh: the shell was just opened by this viewer, so it has no draft;
 //   stale: an earlier press's handoff file was still there, so that zsh did not take it.
 // A zsh other than the one prepared, or one that left the file, lacks the widget, so it is
-// prepared again. Its draft is pushed aside with alt+q first, or `hc send` would run it
-// together with the prepare line; in a vi keymap alt+q is not push-line, so that one case can
-// still run a draft. A fresh shell gets no alt+q: sent before zsh reads its keys it would only
-// show up on screen as "^[q". A shell on another machine (its address's prefix) is treated the
-// same, with that machine's waits (waitsOf); `file` is then the handoff file there.
+// prepared again, and a draft there must not reach `hc send`, which would run it together with
+// the prepare line. In emacs alt+q pushes it aside, and zsh brings it back after the command.
+// In vi alt+q is Esc then q, which can run it, so a vi zsh, or one whose keymap is not known,
+// gets ctrl+c: the draft is dropped, never run. No wait is needed before the line, as `hc send`
+// waits for the output to settle first. A fresh shell gets neither: sent before zsh reads its
+// keys, alt+q would only show up on screen as "^[q". A shell on another machine (its address's
+// prefix) is treated the same, with that machine's waits (waitsOf); the files are then there.
 // tr: the translator the notice is worded with (i18n.js).
-export function insertPlan({ terminal, file, keymapFile, state, prepared, fresh, stale, tr }) {
+export function insertPlan({ terminal, file, keymapFile, state, prepared, keymap, fresh, stale, tr }) {
   if (state.state === "busy") return { commands: [], notice: noticeOf(state, tr), wait: 0 };
   const waits = waitsOf(machineOfAddress(terminal));
   if (!stale && sameShell(prepared, state)) {
     return { commands: [["keys", terminal, INSERT_KEY]], notice: null, wait: waits.key };
   }
   const prepare = ["send", terminal, prepareLine(file, keymapFile)];
-  return { commands: fresh ? [prepare] : [["keys", terminal, "alt+q"], prepare], notice: null, wait: waits.prepare };
+  if (fresh) return { commands: [prepare], notice: null, wait: waits.prepare };
+  const clear = keymap === "emacs" ? "alt+q" : "ctrl+c";
+  return { commands: [["keys", terminal, clear], prepare], notice: null, wait: waits.prepare };
 }
 
 // After a press, whether the zsh took it: `left` says the handoff file was still there once
