@@ -212,9 +212,10 @@ file opens in it, not in a new pane.
   screen, so no line is left on the shell's screen. After that `>_` writes the file and
   presses only that key. Text you had typed at the prompt is moved aside with zsh's push-line
   and comes back after the command (with vi keys too). The line also leaves zsh's keymap in a
-  file beside the command's, so when a new zsh started in that pane is taught again, typed
-  text is moved aside there too with emacs keys, and erased, not run, with vi keys or when the
-  keymap is not known (see [Limits](#limits)). If the shell has not taken the file
+  file beside the command's, under a mark new for each press, so when a new zsh started in
+  that pane is taught again, typed text is moved aside there too with emacs keys, and erased,
+  not run, with vi keys or when the keymap is not known, as it is when that file carries
+  another press's mark (see [Limits](#limits)). If the shell has not taken the file
   half a second after the key (3 seconds after the line), a notification says the command did
   not go in (`Couldn't insert into the terminal`) and the next `>_` teaches the shell again. In
   a remote space the shell and its file are on that machine (see
@@ -262,7 +263,8 @@ There is no switch.
   that last sent a file to each tab under `side-viewer.conversations`
   (`{ "<tab id>": "<pane id>" }`), with tabs that are gone taken out. Each new viewer it
   opened is listed under `side-viewer.openings` as `{ "id": "<opening id>", "tab": "<tab
-  id>" }` (`tab` is null when it changed no tab), all of those of tabs still open and the
+  id>" }` (`tab` is null while that tab is not known, and filled in when the viewer starts
+  again beside its conversation or in its tab), all of those of tabs still open and the
   latest 50 of the rest, so a viewer that starts again (after a mod file is saved or the app
   restarts) does not put back a conversation another file was sent from since.
 - **Your files**: the mod writes a file when you save it or click a checkbox in it, on the
@@ -270,7 +272,7 @@ There is no switch.
 - **Another machine's home**: `>_` in a remote space writes its command to
   `~/.cache/side-viewer/shell/<machine>_<terminal>.txt` there (folder mode 700, file mode
   600), deleted by the shell as it puts it in the input line, or by the viewer when the shell
-  has not taken it. The line that teaches the shell writes its keymap to
+  has not taken it. The line that teaches the shell writes that press's mark and its keymap to
   `<machine>_<terminal>.keymap` beside it, which the viewer reads and deletes once the shell
   has taken the command.
 - **Herdr's keys**: `install.sh` adds `cmd-o` to Herdr's `keys.json` (see [Install](#install)).
@@ -295,7 +297,7 @@ There is no switch.
   - `shell/<terminal>.txt`, the command `>_` hands to a shell pane on this Mac, deleted by the shell as it
     puts it in the input line, or by the viewer when the shell has not taken it (one can be
     left behind if an `hc` call fails; the next `>_` replaces it);
-  - `shell/<terminal>.keymap`, the keymap of the zsh last taught there, written by that line
+  - `shell/<terminal>.keymap`, the press's mark and the keymap of the zsh last taught there, written by that line
     and deleted by the viewer once read (one can be left behind if the shell took the line
     late; the next line replaces it).
 

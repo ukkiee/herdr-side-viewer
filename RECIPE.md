@@ -149,12 +149,14 @@ The mod shows files, not agents, so it has no agent statuses.
   pane by `viewerPaneOf`, else the focused tab). Each opening counts once, whenever its copy
   first starts (its tab may first show long after the split): the viewer adds `{ id, tab }`
   to shared state `side-viewer.openings`, a list, latest last, where `tab` is the tab whose
-  entry it wrote or took out, or null when it changed none. Every opening of a tab `panes()`
+  entry it wrote or took out, or null while that tab is not known. Every opening of a tab `panes()`
   lists is kept, so a viewer still on screen never loses its own; of the rest (tabs gone,
   a remote tab hidden while its machine is cut off, or null), the latest 50 are kept. A bare
   id in that list, as an earlier viewer kept it, counts as `{ id, tab: null }`. A copy that
   starts again with an id already there (a mod file was saved, the app restarted and its tab
-  shows) neither writes nor takes out anything. Props without an `id` (an older router's) change
+  shows) neither writes nor takes out anything; if that id's `tab` is null (a bare id
+  included), it only fills in the tab once it is sure: the tab `panes()` puts the props'
+  conversation in, else the viewer's pane's tab, never the focused tab. Props without an `id` (an older router's) change
   nothing. Each write also drops tabs `panes()`
   no longer has, and the map and the list are set only when they change, since `setShared` draws every mod
   again. The picker popup never writes it. The shell pane's folder and the picker's
@@ -336,15 +338,18 @@ The mod shows files, not agents, so it has no agent statuses.
   with `hc send`: a zle widget `_side_viewer_insert` that pushes a draft aside (`zle
   push-line`), reads the file into `BUFFER`, puts the cursor at its end and removes the file,
   bound to `\e[24;7~` in the emacs, viins and vicmd keymaps; then `command rm -f -- <keymap
-  file>` and `bindkey -lL main >| <keymap file> 2>/dev/null` (the keymap file is the handoff
-  file's name with `.keymap`, in the same folder; removed first, so an old one the line can't
-  write over, left read-only, is never read as this zsh's keymap), then `print -rz` of the file's text (shown at the next prompt, above a
+  file>` and `{ print -r -- <mark>; bindkey -lL main } >| <keymap file> 2>/dev/null` (the
+  keymap file is the handoff file's name with `.keymap`, in the same folder; `<mark>` is new
+  for every press, the time and a random part in `[A-Za-z0-9_-]`; the file is removed first,
+  so a read-only one is written anew), then `print -rz` of the file's text (shown at the next prompt, above a
   draft pushed aside before), the file removed, and `clear`. The viewer remembers the pid and
   argv of the zsh it prepared (`hc get`'s `foreground` at the prompt), and, once a prepare
   line's handoff file is taken, reads the keymap file on that machine, removes it (`rm -f`)
-  and remembers its keymap: `bindkey -A emacs main` is emacs, `bindkey -A viins main` or
-  `bindkey -A vicmd main` is vi, each only as the file's one line; anything else, more lines,
-  no file or a failed read is not known. A key
+  and remembers its keymap only when the file's first line is this press's mark and exactly
+  one line follows: `bindkey -A emacs main` is emacs, `bindkey -A viins main` or
+  `bindkey -A vicmd main` is vi. Another mark or none (an old file the line could neither
+  remove nor write over), anything else after the mark, more lines, no file or a failed read
+  is not known. A key
   press, or a prepare line not taken, leaves it as it was; a shell just opened starts not
   known. A shell just opened is prepared with no key first; a zsh with another pid or argv in
   the same pane, or one that left an earlier file, is prepared again after `hc keys
@@ -383,7 +388,12 @@ The mod shows files, not agents, so it has no agent statuses.
   `zsh -o emacs task.zsh`). Either is busy and gets no key and no prepare line. With `s`, or
   no argument left, it is at its prompt and ready (`zsh -l`, `-zsh`, `zsh -f`, `zsh --emacs`,
   `zsh -s foo`, and `zsh -fis -- -c`, whose `-c` is an argument). Anything else is busy too,
-  any other `-c` run included (`python3 -c …`, `sh -c 'a; b'`). A busy shell gets nothing at once, no pane opens, and a Herdr
+  any other `-c` run included (`python3 -c …`, `sh -c 'a; b'`). This reading is exact only
+  for `zsh <file>`, `-c`, a one-dash short bundle holding `c`, arguments after `--`, arguments
+  after `-s`, and programs other than zsh. Other zsh option syntax (`+c`, `--no-stdin`,
+  `--stdin`, `--emulate`, `-b`, an option turned on by name such as `-o stdin`) can be read
+  wrong: a zsh running something can count as ready, or one at its prompt as busy.
+  A busy shell gets nothing at once, no pane opens, and a Herdr
   notification says `터미널에 넣지 않았습니다` / `셸에서 다른 프로그램(<name>)이 실행
   중입니다. 끝난 뒤 다시 누르세요.`; when no pane can be opened or found,
   `터미널에 넣지 못했습니다` / `셸 pane을 열거나 찾지 못했습니다.`.
@@ -567,8 +577,8 @@ The mod shows files, not agents, so it has no agent statuses.
   with the copies), `previews/` (edited svg sources, same names, folder mode
   700), `handoff-<id>.json` (`{"id","file","at","edit"}`, deleted by the tab that reads
   it), `shell/<terminal>.txt` (the command for `>_` to a shell on this Mac, folder mode
-  700, deleted by the shell's widget as it reads it), `shell/<terminal>.keymap` (the zsh's
-  keymap a prepare line writes there, deleted by the viewer once it reads it after that
+  700, deleted by the shell's widget as it reads it), `shell/<terminal>.keymap` (a prepare
+  line's mark and its zsh's keymap, written there, deleted by the viewer once it reads it after that
   line's command is taken; one a prepare line not taken left is written over by the next),
   and `remote-saves/<ms>-<random>.txt` (the text of a save
   to another machine, folder mode 700, deleted when the write ends; one older than 10
@@ -1263,18 +1273,19 @@ conversation (step 35).
 
 67. A new zsh is prepared by the keymap of the one prepared before it. Clear the line
     (ctrl+C) here and below. The draft is a command that leaves a marker file only if it
-    runs, since the prepare line's `clear` would wipe anything it printed.
+    runs, since the prepare line's `clear` would wipe anything it printed. It ends with `;`
+    so that, if it runs joined to the prepare line, `touch` still runs and leaves the file.
     - Run `rm -f /tmp/side-viewer-check-draft-ran` first.
     - Run `zsh -f -o emacs` and click `>_` with the line empty: the command goes in. Clear
       the line, then run `ls ~/.config/herdr-app/data/side-viewer/shell/`: there is no
       `.keymap` file for this pane's terminal, as the viewer read and deleted it.
-    - Run `zsh -f -o emacs` again, type `touch /tmp/side-viewer-check-draft-ran` without
+    - Run `zsh -f -o emacs` again, type `touch /tmp/side-viewer-check-draft-ran;` without
       Enter and click `>_`: the input line holds the command. Clear it: the `touch` draft
       comes back at the next prompt. Clear that too, then run `ls
       /tmp/side-viewer-check-draft-ran`: no such file, so the draft did not run.
     - Clear the line, run `zsh -f -o vi` and click `>_` with the line empty: the command
       goes in. Clear the line.
-    - Run `zsh -f -o vi` again, type `touch /tmp/side-viewer-check-draft-ran` without Enter
+    - Run `zsh -f -o vi` again, type `touch /tmp/side-viewer-check-draft-ran;` without Enter
       (insert mode) and click `>_`: the input line holds the command. Clear it: the next
       prompt is empty, as the draft was erased. Run `ls /tmp/side-viewer-check-draft-ran`: no
       such file, so the draft did not run.
