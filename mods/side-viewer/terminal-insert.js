@@ -154,29 +154,53 @@ const quoted = (text) => `'${text.replaceAll("'", "'\\''")}'`;
 // same terminal (shellOf).
 // A shell from splitOf is "starting" until its short zsh has become the login shell, and so
 // is a terminal hc has no foreground for yet. Only splitOf's exact argv counts as that short
-// zsh (any folder): any other `-c` run (runsCommand), a zsh one too, is a program the person
-// started, and a line sent to it would be read by that program.
+// zsh (any folder): any other zsh running a line or a script (runsSomething) is a program the
+// person started, and a line or key sent to it would reach that program.
 //   { state: "ready", pid, argv } | { state: "busy", program } | { state: "starting" } | { state: "gone" }
 export function shellState(info) {
   if (info?.state !== "live") return { state: "gone" };
   const foreground = info.foreground;
   if (!foreground || isStartingZsh(foreground.argv)) return { state: "starting" };
   const program = String(foreground.name ?? "").split("/").pop();
-  const runsLine = (foreground.argv ?? []).slice(1).some(runsCommand);
-  return /^-?zsh$/.test(program) && !runsLine ? { state: "ready", pid: foreground.pid, argv: foreground.argv } : { state: "busy", program };
+  const runs = runsSomething((foreground.argv ?? []).slice(1));
+  return /^-?zsh$/.test(program) && !runs ? { state: "ready", pid: foreground.pid, argv: foreground.argv } : { state: "busy", program };
 }
 
-// Whether an argument asks the shell to run a command, read as zsh reads it: `-c`, or a bundle
-// of one-dash short options (letters and digits) with c in it (`-fc`, `-ic`, `-4c`). In a
-// bundle, `o` takes the rest of it as an option's name, so the c of `-oemacs` runs nothing.
-// A `--` long option is not read.
-function runsCommand(word) {
-  if (typeof word !== "string" || !word.startsWith("-") || word.startsWith("--")) return false;
-  for (const letter of word.slice(1)) {
-    if (letter === "c") return true;
-    if (letter === "o" || !/[A-Za-z0-9]/.test(letter)) return false;
+// Whether zsh arguments `args` (argv without argv[0]) make it run something rather than sit at
+// a prompt, read in order as zsh reads them. A word starting with `-` or `+` is options: a
+// `--name` long option is a name alone; a short bundle's letters and digits turn flags on
+// (`-`) or off (`+`), and an `o` in it takes the rest, or the next word when nothing is left,
+// as an option's name, so the c of `-oemacs` runs nothing. The word `--` or `-`, or the first
+// word that is not an option, ends them, and what follows are arguments. The c flag runs a
+// line (`-c`, `-fc`, `-4c`); without c or s, the first argument is a script file it runs
+// (`zsh task.zsh`). With s, or no argument left, it reads commands from the terminal, so the
+// `-c` of `zsh -fis -- -c` is only an argument.
+function runsSomething(args) {
+  const flags = new Set();
+  let at = 0;
+  for (; at < args.length; at++) {
+    const word = String(args[at]);
+    if (word === "--" || word === "-") {
+      at++;
+      break;
+    }
+    if (!/^[-+]/.test(word)) break;
+    if (word.startsWith("--")) continue;
+    const on = word[0] === "-";
+    const letters = word.slice(1);
+    for (let i = 0; i < letters.length; i++) {
+      const letter = letters[i];
+      if (letter === "o") {
+        if (i === letters.length - 1) at++;
+        break;
+      }
+      if (!/[A-Za-z0-9]/.test(letter)) continue;
+      if (on) flags.add(letter);
+      else flags.delete(letter);
+    }
   }
-  return false;
+  if (flags.has("c")) return true;
+  return !flags.has("s") && at < args.length;
 }
 
 // splitOf's argv: [zsh, "-c", START_SCRIPT, "zsh", folder, zsh].

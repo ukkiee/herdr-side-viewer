@@ -518,6 +518,31 @@ test("long options and short ones without c leave a zsh at its prompt ready", ()
   }
 });
 
+test("a zsh running a script file, its first word after the options, is busy", () => {
+  for (const argv of [["zsh", "task.zsh"], ["zsh", "-f", "task.zsh"], ["zsh", "-o", "emacs", "task.zsh"], ["/bin/zsh", "--emacs", "./run me.zsh", "a"]]) {
+    assert.deepEqual(shellState(running({ argv, name: "zsh" })), { state: "busy", program: "zsh" }, argv.join(" "));
+  }
+});
+
+test("words after -- or - are arguments, so a -c there runs nothing, and -s reads commands from the terminal", () => {
+  for (const argv of [["zsh", "-fis", "--", "-c"], ["zsh", "-s", "--", "a", "b"], ["zsh", "-s", "foo"], ["zsh", "-i", "-"], ["zsh", "--emacs"], ["zsh", "-o", "emacs"]]) {
+    assert.deepEqual(shellState(running({ argv, name: "zsh" })), { state: "ready", pid: 2, argv }, argv.join(" "));
+  }
+});
+
+test("a zsh running a line or a script gets neither a key nor a prepare line", () => {
+  for (const argv of [["zsh", "task.zsh"], ["zsh", "-c", "read x"], ["zsh", "-cf", "read x"]]) {
+    const state = shellState(running({ argv, name: "zsh" }));
+    for (const prepared of [null, { pid: 2, argv }]) {
+      for (const keymap of ["vi", "emacs", null]) {
+        const plan = insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state, prepared, keymap, fresh: false, stale: false, tr: ko });
+        assert.deepEqual(plan.commands, [], argv.join(" "));
+        assert.equal(plan.kind, null);
+      }
+    }
+  }
+});
+
 test("a shell running another program is busy, and the program is named", () => {
   assert.deepEqual(shellState(terminal("sleep", ["sleep", "20"])), { state: "busy", program: "sleep" });
   assert.deepEqual(shellState(terminal("vim")), { state: "busy", program: "vim" });
