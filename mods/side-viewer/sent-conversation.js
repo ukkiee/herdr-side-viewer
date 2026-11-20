@@ -13,15 +13,18 @@ import { addressOf } from "./machine.js";
 
 export const CONVERSATIONS_KEY = "side-viewer.conversations";
 
-// The ids of the openings viewers took, latest last, under OPENINGS_KEY. A copy starts again
-// with the same props when a mod file is saved, when the app restarts and its tab shows, and
-// first starts when its tab first shows, which may be long after the split. Only the first
-// start of an opening may change the memory: a later one would put back a conversation that
-// requests since replaced or took out.
+// The openings viewers took, latest last, under OPENINGS_KEY, each as { id, tab }: the tab
+// whose memory it changed, or null when it changed none. A copy starts again with the same
+// props when a mod file is saved, when the app restarts and its tab shows, and first starts
+// when its tab first shows, which may be long after the split. Only the first start of an
+// opening may change the memory: a later one would put back a conversation that requests
+// since replaced or took out.
 export const OPENINGS_KEY = "side-viewer.openings";
 
-// How many opening ids are kept. An opening pushed out by that many newer ones could be
-// taken again, by a copy that has not started since.
+// How many openings of tabs panes() does not list, or of no tab, are kept. An opening pushed
+// out by that many newer ones could be taken again, by a copy that has not started since.
+// Openings of tabs on screen are all kept, so a live viewer's never is; a remote tab hidden
+// while its machine is cut off counts as gone, so the limit leaves room for its openings.
 export const OPENINGS_KEPT = 50;
 
 // The same characters as a request's id (open.sh, the path picker), which the opening reuses.
@@ -38,13 +41,39 @@ const OPENING_ID = /^[A-Za-z0-9_-]+$/;
 //   spaces(); panes: herdr panes(); viewer: the viewer's pane id or null; focused: herdr focused()
 export function takeOpening({ conversations, openings, props, spaces, panes, viewer, focused }) {
   const id = props?.id;
-  const taken = Array.isArray(openings) ? openings.filter((o) => typeof o === "string") : [];
-  if (typeof id !== "string" || !OPENING_ID.test(id) || taken.includes(id)) return { conversations, openings };
-  const after =
-    typeof props.conversation === "string"
-      ? rememberConversation(conversations, addressOf(props.conversation, props, spaces), panes)
-      : forgetConversation(conversations, forgottenTabOf({ viewer, focused, panes }), panes);
-  return { conversations: after, openings: [...taken, id].slice(-OPENINGS_KEPT) };
+  const taken = openingsOf(openings);
+  if (typeof id !== "string" || !OPENING_ID.test(id) || taken.some((o) => o.id === id)) return { conversations, openings };
+  let tab;
+  let after;
+  if (typeof props.conversation === "string") {
+    const conversation = addressOf(props.conversation, props, spaces);
+    tab = panes.find((p) => p.pane === conversation)?.tab ?? null;
+    after = rememberConversation(conversations, conversation, panes);
+  } else {
+    tab = forgottenTabOf({ viewer, focused, panes });
+    after = forgetConversation(conversations, tab, panes);
+  }
+  return { conversations: after, openings: keptOpenings([...taken, { id, tab }], panes) };
+}
+
+// The openings in shared(OPENINGS_KEY), anything: a bare id, as an earlier viewer kept it, is
+// one with no tab; anything else that is not { id, tab } is dropped.
+function openingsOf(openings) {
+  if (!Array.isArray(openings)) return [];
+  return openings.flatMap((o) => {
+    if (typeof o === "string") return [{ id: o, tab: null }];
+    if (!o || typeof o !== "object" || typeof o.id !== "string") return [];
+    return [{ id: o.id, tab: typeof o.tab === "string" ? o.tab : null }];
+  });
+}
+
+// `openings` with every one of a tab panes() lists, and the latest OPENINGS_KEPT of the rest,
+// in their order.
+function keptOpenings(openings, panes) {
+  const tabs = new Set(panes.map((p) => p.tab));
+  const gone = openings.filter((o) => !tabs.has(o.tab));
+  const keptGone = new Set(gone.slice(-OPENINGS_KEPT));
+  return openings.filter((o) => tabs.has(o.tab) || keptGone.has(o));
 }
 
 // The map with `conversation` (a pane id) remembered for the tab panes() puts it in, and

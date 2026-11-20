@@ -86,8 +86,8 @@ test("the openings taken live in Herdr's shared state under their own key", () =
   assert.equal(OPENINGS_KEY, "side-viewer.openings");
 });
 
-test("a viewer's first start remembers the conversation its opening names, and keeps the opening's id", () => {
-  assert.deepEqual(start(EMPTY, opened({ conversation: "p1" })), { conversations: { tab1: "p1" }, openings: ["1800000000-41"] });
+test("a viewer's first start remembers the conversation its opening names, and keeps the opening's id with that conversation's tab", () => {
+  assert.deepEqual(start(EMPTY, opened({ conversation: "p1" })), { conversations: { tab1: "p1" }, openings: [{ id: "1800000000-41", tab: "tab1" }] });
 });
 
 test("an opening taken once, then a request from another conversation: the copy starting again keeps the request's", () => {
@@ -107,15 +107,15 @@ test("an opening taken once, then a request without a conversation: starting aga
 });
 
 test("an opening first shown long after it was made is still taken", () => {
-  const before = { conversations: { tab1: "p1" }, openings: ["1700000000-7"] };
+  const before = { conversations: { tab1: "p1" }, openings: [{ id: "1700000000-7", tab: "tab1" }] };
   const late = start(before, opened({ conversation: "p2", id: "1800000000-99" }));
-  assert.deepEqual(late, { conversations: { tab1: "p2" }, openings: ["1700000000-7", "1800000000-99"] });
+  assert.deepEqual(late, { conversations: { tab1: "p2" }, openings: [{ id: "1700000000-7", tab: "tab1" }, { id: "1800000000-99", tab: "tab1" }] });
 });
 
 test("a new opening without a conversation forgets the viewer's own tab once", () => {
   const before = { conversations: { tab1: "p2", tab2: "p4" }, openings: [] };
   const taken = start(before, opened({ conversation: undefined }));
-  assert.deepEqual(taken, { conversations: { tab2: "p4" }, openings: ["1800000000-41"] });
+  assert.deepEqual(taken, { conversations: { tab2: "p4" }, openings: [{ id: "1800000000-41", tab: "tab1" }] });
   const b = request(taken, "p1");
   assert.deepEqual(start(b, opened({ conversation: undefined })), b);
 });
@@ -126,7 +126,7 @@ test("a viewer not found among the panes forgets the focused tab for an opening 
 });
 
 test("props without an opening id, as an older router's, leave the memory as it was", () => {
-  const before = { conversations: { tab1: "p2" }, openings: ["1700000000-7"] };
+  const before = { conversations: { tab1: "p2" }, openings: [{ id: "1700000000-7", tab: "tab1" }] };
   for (const props of [opened({ id: undefined }), opened({ id: undefined, conversation: undefined }), opened({ id: 7 }), opened({ id: "" }), opened({ id: "a b" }), undefined]) {
     assert.deepEqual(start(before, props), before, JSON.stringify(props));
   }
@@ -137,12 +137,65 @@ test("a viewer tab's props name no opening and change nothing", () => {
   assert.deepEqual(start(before, { file: "/work/a/plan.md", viewerTab: true, space: "s1" }), before);
 });
 
-test("only the latest openings are kept", () => {
-  const many = Array.from({ length: OPENINGS_KEPT }, (_, n) => `1700000000-${n}`);
-  const taken = start({ conversations: {}, openings: many }, opened({ id: "1800000000-new" }));
-  assert.equal(taken.openings.length, OPENINGS_KEPT);
-  assert.equal(taken.openings[0], "1700000000-1");
-  assert.equal(taken.openings.at(-1), "1800000000-new");
+// `count` openings taken in a tab that is gone, or with no tab, numbered from `from`.
+const closed = (count, from = 0) =>
+  Array.from({ length: count }, (_, n) => ({ id: `1700000000-${from + n}`, tab: (from + n) % 2 ? "tab9" : null }));
+// `count` openings of tab2 taken in turn by viewers starting there, each naming p4.
+const openInTab2 = (state, count) => {
+  let now = state;
+  for (let n = 0; n < count; n++) now = start(now, opened({ conversation: "p4", id: `1900000000-${n}` }), { viewer: "p4" });
+  return now;
+};
+
+test("only the latest openings of tabs that are gone, or of no tab, are kept", () => {
+  const taken = start({ conversations: {}, openings: closed(OPENINGS_KEPT) }, opened({ id: "1800000000-new", conversation: "p1" }));
+  assert.equal(taken.openings.length, OPENINGS_KEPT + 1);
+  const after = start({ conversations: {}, openings: closed(OPENINGS_KEPT) }, opened({ id: "1800000000-new", space: "s9" }));
+  assert.equal(after.openings.length, OPENINGS_KEPT);
+  assert.deepEqual(after.openings[0], { id: "1700000000-1", tab: "tab9" });
+  assert.deepEqual(after.openings.at(-1), { id: "1800000000-new", tab: null });
+});
+
+test("openings of tabs still on screen are kept however many there are; only the others are cut to the latest", () => {
+  const liveOnes = Array.from({ length: OPENINGS_KEPT + 5 }, (_, n) => ({ id: `1600000000-${n}`, tab: n % 2 ? "tab1" : "tab2" }));
+  const mixed = [...closed(30), ...liveOnes.slice(0, 20), ...closed(30, 30), ...liveOnes.slice(20)];
+  const taken = start({ conversations: {}, openings: mixed }, opened({ id: "1800000000-new", conversation: "p1" }));
+  const kept = taken.openings.map((o) => o.id);
+  for (const o of liveOnes) assert.ok(kept.includes(o.id), o.id);
+  const closedKept = taken.openings.filter((o) => o.tab !== "tab1" && o.tab !== "tab2");
+  assert.deepEqual(closedKept, closed(OPENINGS_KEPT, 10));
+  assert.equal(taken.openings.at(-1).id, "1800000000-new");
+  assert.deepEqual(kept.filter((id) => !id.startsWith("1700000000-")), [...liveOnes.map((o) => o.id), "1800000000-new"]);
+});
+
+test("a viewer still on screen starting again after more openings than are kept elsewhere keeps the request that came since", () => {
+  const a = start(EMPTY, opened({ conversation: "p1" }));
+  const b = request(a, "p2");
+  const crowded = openInTab2(b, OPENINGS_KEPT + 3);
+  assert.deepEqual(crowded.conversations, { tab1: "p2", tab2: "p4" });
+  assert.deepEqual(start(crowded, opened({ conversation: "p1" })), crowded);
+});
+
+test("a tab forgotten by a request stays forgotten when its viewer starts again after more openings than are kept", () => {
+  const a = start(EMPTY, opened({ conversation: "p1" }));
+  const gone = request(a, null);
+  const crowded = openInTab2(gone, OPENINGS_KEPT + 3);
+  assert.deepEqual(crowded.conversations, { tab2: "p4" });
+  assert.deepEqual(start(crowded, opened({ conversation: "p1" })), crowded);
+});
+
+test("an opening without a conversation is kept with the tab it forgot, so a request since survives its viewer starting again", () => {
+  const a = start({ conversations: { tab1: "p1" }, openings: [] }, opened({ conversation: undefined }));
+  assert.deepEqual(a.openings, [{ id: "1800000000-41", tab: "tab1" }]);
+  const crowded = openInTab2(request(a, "p2"), OPENINGS_KEPT + 3);
+  assert.deepEqual(start(crowded, opened({ conversation: undefined })), crowded);
+});
+
+test("openings kept as bare ids, as an earlier viewer kept them, count as taken with no tab", () => {
+  const before = { conversations: { tab1: "p2" }, openings: ["1800000000-41"] };
+  assert.deepEqual(start(before, opened({ conversation: "p1" })), before);
+  const next = start(before, opened({ conversation: "p1", id: "1800000000-42" }));
+  assert.deepEqual(next.openings, [{ id: "1800000000-41", tab: null }, { id: "1800000000-42", tab: "tab1" }]);
 });
 
 test("a broken list of openings starts as none taken", () => {
@@ -155,7 +208,7 @@ test("a broken list of openings starts as none taken", () => {
 test("an opening whose conversation is not on screen yet is taken without changing the memory", () => {
   const before = { conversations: { tab1: "p1" }, openings: [] };
   const unlisted = start(before, opened({ space: "s9" }));
-  assert.deepEqual(unlisted, { conversations: { tab1: "p1" }, openings: ["1800000000-41"] });
+  assert.deepEqual(unlisted, { conversations: { tab1: "p1" }, openings: [{ id: "1800000000-41", tab: null }] });
   assert.deepEqual(start(unlisted, opened({ space: "s9" }), { spaces: [...SPACES, { id: "s9", machine: null }] }), unlisted);
 });
 
