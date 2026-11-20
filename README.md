@@ -26,7 +26,8 @@ opens the one you pick, which is also how files open in a space on another machi
   changes on disk.
 - **Viewer tab**: the header's `Open in New Tab` button gives the file a tab of its own.
 - **`>_` on shell blocks**: types a code block's command into a shell pane below the viewer,
-  without running it (one narrow case after switching zsh's keymap, see [Limits](#limits)).
+  without running it (except in two cases where a zsh's keys differ from the ones the viewer
+  remembers, see [Limits](#limits)).
 - **Path picker** (`cmd-o`): a popup of the file paths in the focused conversation; pick
   one to open it beside the conversation (see [The path picker](#the-path-picker-cmd-o)).
 - **Remote spaces**: in a space on a Linux machine or another Mac, the viewer shows, edits
