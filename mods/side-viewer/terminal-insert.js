@@ -19,13 +19,14 @@ export const insertFileOf = (app, terminal) =>
   `${insertFolderOf(app)}/${safeName(terminal)}.txt`;
 const safeName = (terminal) => terminal.replace(/[^A-Za-z0-9_-]/g, "_");
 
-// The handoff folder and file, { folder, file }, for the shell at hc address `terminal`. A zsh
-// reads the file on its own machine: here the app's data folder (`app`, appHome()), on another
-// machine `.cache/side-viewer/shell` in its home (`home`, that machine's home folder).
+// The handoff folder, file and keymap file, { folder, file, keymap }, for the shell at hc
+// address `terminal`. A zsh reads and writes them on its own machine: here the app's data
+// folder (`app`, appHome()), on another machine `.cache/side-viewer/shell` in its home (`home`,
+// that machine's home folder). The keymap file is where a prepare line leaves the zsh's keymap.
 export function handoffOf({ terminal, app, home }) {
-  if (!isRemote(terminal)) return { folder: insertFolderOf(app), file: insertFileOf(app, terminal) };
-  const folder = `${home}/.cache/side-viewer/shell`;
-  return { folder, file: `${folder}/${safeName(terminal)}.txt` };
+  const folder = isRemote(terminal) ? `${home}/.cache/side-viewer/shell` : insertFolderOf(app);
+  const name = `${folder}/${safeName(terminal)}`;
+  return { folder, file: `${name}.txt`, keymap: `${name}.keymap` };
 }
 
 // Run on the other machine as `sh -c HANDOFF_THERE sh <folder> <file> <text>`: the handoff file

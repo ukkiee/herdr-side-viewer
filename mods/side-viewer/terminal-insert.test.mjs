@@ -30,6 +30,7 @@ const terminal = (name, argv = [`/bin/${name}`]) =>
 
 const APP = "/Users/me/.config/herdr-app";
 const FILE = `${APP}/data/side-viewer/shell/t7.txt`;
+const KEYMAP = `${APP}/data/side-viewer/shell/t7.keymap`;
 
 test("each shell has its own handoff file in the app's data folder", () => {
   assert.equal(insertFileOf(APP, "t7"), FILE);
@@ -37,11 +38,12 @@ test("each shell has its own handoff file in the app's data folder", () => {
   assert.equal(insertFolderOf(APP), `${APP}/data/side-viewer/shell`);
 });
 
-test("a shell here uses the data folder's handoff file; a shell on another machine one in that machine's ~/.cache", () => {
-  assert.deepEqual(handoffOf({ terminal: "t7", app: APP, home: HOME }), { folder: `${APP}/data/side-viewer/shell`, file: FILE });
+test("a shell here uses the data folder's handoff and keymap files; a shell on another machine ones in that machine's ~/.cache", () => {
+  assert.deepEqual(handoffOf({ terminal: "t7", app: APP, home: HOME }), { folder: `${APP}/data/side-viewer/shell`, file: FILE, keymap: KEYMAP });
   assert.deepEqual(handoffOf({ terminal: "mini/t7", app: APP, home: "/home/me" }), {
     folder: "/home/me/.cache/side-viewer/shell",
     file: "/home/me/.cache/side-viewer/shell/mini_t7.txt",
+    keymap: "/home/me/.cache/side-viewer/shell/mini_t7.keymap",
   });
 });
 
