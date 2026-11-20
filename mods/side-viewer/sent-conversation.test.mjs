@@ -1,7 +1,9 @@
 // node --test: the sent conversation each tab remembers, without Herdr.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CONVERSATIONS_KEY, OPENINGS_KEY, OPENINGS_KEPT, rememberConversation, forgetConversation, sentConversation, takeOpening, forgottenTabOf } from "./sent-conversation.js";
+import { CONVERSATIONS_KEY, OPENINGS_KEY, OPENINGS_KEPT, rememberConversation, forgetConversation, sentConversation, takeOpening, forgottenTabOf, afterStart, afterRequest } from "./sent-conversation.js";
+import { shellFolder } from "./terminal-insert.js";
+import { conversationOf } from "./path-picker.js";
 
 // Herdr's panes(): a terminal pane, or a mod pane (terminal null).
 const terminalPane = (pane, tab, terminal, cwd) => ({ pane, tab, terminal, cwd, status: null, program: { key: "shell", agent: false, shell: true } });
@@ -246,14 +248,10 @@ test("an opening kept as a bare id gets its tab when its viewer starts again, so
   assert.deepEqual(start(crowdedGone, opened({ conversation: "p1" })), crowdedGone);
 });
 
-test("an opening taken before its tab was known gets the viewer's tab when its conversation is still not listed", () => {
+test("an opening taken before its tab was known stays without one while its conversation is not listed, even with its viewer listed or focused", () => {
   const before = { conversations: { tab1: "p2" }, openings: [{ id: "1800000000-41", tab: null }] };
-  assert.deepEqual(start(before, opened({ conversation: "p8" })), { conversations: { tab1: "p2" }, openings: [{ id: "1800000000-41", tab: "tab1" }] });
-  assert.deepEqual(start(before, opened({ conversation: undefined }), { panes: VIEWER_ONLY }).openings, [{ id: "1800000000-41", tab: "tab1" }]);
-});
-
-test("an opening taken before its tab was known stays without one while neither its conversation nor its viewer is listed, whatever the focus", () => {
-  const before = { conversations: { tab1: "p2" }, openings: [{ id: "1800000000-41", tab: null }] };
+  assert.deepEqual(start(before, opened({ conversation: "p8" })), before);
+  assert.deepEqual(start(before, opened({ conversation: undefined }), { panes: VIEWER_ONLY }), before);
   assert.deepEqual(start(before, opened({ conversation: "p8" }), { viewer: null }), before);
   assert.deepEqual(start(before, opened({ conversation: undefined }), { viewer: null }), before);
   const bare = { conversations: { tab1: "p2" }, openings: ["1800000000-41"] };
@@ -302,3 +300,61 @@ test("a viewer not found among the panes forgets the focused tab", () => {
   assert.equal(forgottenTabOf({ viewer: "p9", focused: { tab: "tab2", pane: "p4" }, panes: PANES }), "tab2");
   assert.equal(forgottenTabOf({ viewer: null, focused: null, panes: PANES }), null);
 });
+
+// A copy's start and the requests it takes, as main.js runs them on Herdr's own values.
+// Tab T (tab1) holds conversation A (p1), conversation B (p2) and its viewer p3; tab X (tab2)
+// holds a terminal x4 and a viewer x5 of its own. The viewer of T was split off A.
+const T_PANES = [
+  terminalPane("p1", "tab1", "t1", "/work/a"),
+  terminalPane("p2", "tab1", "t2", "/work/b"),
+  modPane("p3", "tab1"),
+];
+const X_PANES = [terminalPane("x4", "tab2", "tx4", "/work/x"), modPane("x5", "tab2")];
+const T_OPENED = { file: "/work/a/plan.md", space: "s1", conversation: "p1", id: "1800000000-41" };
+// A copy of T's viewer starting again: the split's props, as Herdr gives them on every start.
+const restart = (state, { panes, focused }) =>
+  afterStart({ given: T_OPENED, props: T_OPENED, focused, panes, spaces: SPACES, ...state });
+// T's viewer taking a request from `conversation` (null: one that names none), focus on that viewer.
+const sent = (state, conversation, panes) =>
+  afterRequest({ conversation, unfilled: state.unfilled ?? null, props: T_OPENED, focused: { tab: "tab1", pane: "p3" }, panes, spaces: SPACES, conversations: state.conversations, openings: state.openings });
+// `count` viewers split off conversations of temporary tabs, each closed before the next opens.
+const openTemporaryTabs = (state, count, panes) => {
+  let now = state;
+  for (let n = 0; n < count; n++) {
+    const props = { file: "/tmp/x.md", space: "s1", conversation: `q${n}`, id: `1900000000-${n}` };
+    const here = [...panes, terminalPane(`q${n}`, `tmp${n}`, `tq${n}`, "/tmp"), modPane(`v${n}`, `tmp${n}`)];
+    const after = afterStart({ given: props, props, focused: { tab: `tmp${n}`, pane: `v${n}` }, panes: here, spaces: SPACES, conversations: now.conversations, openings: now.openings });
+    now = { ...now, conversations: after.conversations, openings: after.openings };
+  }
+  return now;
+};
+// Where T's viewer opens a shell, and whom the path picker reads with that viewer focused.
+const shellAndPicker = (conversations, panes) => ({
+  shell: shellFolder({ viewer: "p3", panes, shell: null, conversation: sentConversation(conversations, "tab1", panes)?.pane ?? null, home: "/home" }),
+  picker: conversationOf({ focused: { tab: "tab1", pane: "p3" }, panes, conversations })?.pane,
+});
+
+test("a taken opening's empty tab is not filled from another tab's focused viewer, and is filled with T once A shows there", () => {
+  const before = { conversations: {}, openings: [{ id: "1800000000-41", tab: null }] };
+  const focusInX = { tab: "tab2", pane: "x4" };
+  const blind = restart(before, { panes: [modPane("p3", "tab1"), ...X_PANES], focused: focusInX });
+  assert.deepEqual(blind.openings, [{ id: "1800000000-41", tab: null }]);
+  const seen = restart(blind, { panes: [...T_PANES, ...X_PANES], focused: focusInX });
+  assert.deepEqual(seen.openings, [{ id: "1800000000-41", tab: "tab1" }]);
+  assert.deepEqual(seen.conversations, {});
+});
+
+for (const [name, conversation, kept] of [["B's request", "p2", "p2"], ["a request that names none", null, undefined]]) {
+  test(`after the tab is filled with T, ${name} outlives X closing, more closed tabs than are kept, and a restart`, () => {
+    const before = { conversations: {}, openings: [{ id: "1800000000-41", tab: null }] };
+    const focusInX = { tab: "tab2", pane: "x4" };
+    const blind = restart(before, { panes: [modPane("p3", "tab1"), ...X_PANES], focused: focusInX });
+    const seen = restart(blind, { panes: [...T_PANES, ...X_PANES], focused: focusInX });
+    const requested = sent(seen, conversation, [...T_PANES, ...X_PANES]);
+    assert.equal(requested.conversations.tab1, kept);
+    const crowded = openTemporaryTabs(requested, OPENINGS_KEPT + 2, T_PANES);
+    const again = restart(crowded, { panes: T_PANES, focused: { tab: "tab1", pane: "p3" } });
+    assert.equal(again.conversations.tab1, kept);
+    if (conversation) assert.deepEqual(shellAndPicker(again.conversations, T_PANES), { shell: "/work/b", picker: "p2" });
+  });
+}

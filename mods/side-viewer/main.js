@@ -41,8 +41,7 @@ import { LANGS, translator, systemLang, askAgainAfter } from "./i18n.js";
 import { machineOf } from "./machine.js";
 import { accessOf } from "./file-access.js";
 import { openTargetOf, pickedRequest, pickedSplit } from "./path-picker.js";
-import { CONVERSATIONS_KEY, OPENINGS_KEY, rememberConversation, forgetConversation, forgottenTabOf, takeOpening } from "./sent-conversation.js";
-import { viewerPaneOf } from "./terminal-insert.js";
+import { CONVERSATIONS_KEY, OPENINGS_KEY, afterStart, afterRequest } from "./sent-conversation.js";
 import { PathPicker } from "./picker-view.js";
 
 // Where the system's language is remembered in Herdr's shared state ("ko" | "en").
@@ -147,7 +146,7 @@ export default class SideViewer extends View {
     // A viewer split off a conversation carries its opening (open.sh, the path picker). Only
     // the first start of that opening changes the sent conversation (sent-conversation.js
     // takeOpening), however often this copy starts again.
-    this.takeOpened({ ...given, ...props() });
+    this.takeOpened(given);
     // A viewer tab starts with an empty history, as every new copy does: back only returns
     // to files opened in this tab.
     this.show(given?.file ?? props()?.file, cx);
@@ -302,35 +301,28 @@ export default class SideViewer extends View {
     });
   }
 
-  // The sent conversation (sent-conversation.js): `conversation`, the pane that sent this viewer
-  // a file, is remembered for its tab; null, a request that names none, takes this viewer's tab
-  // out (forgottenTabOf). Setting shared state draws every mod again, so it is set only when
-  // the map changes.
+  // The sent conversation (sent-conversation.js afterRequest): `conversation`, the pane that
+  // sent this viewer a file, is remembered for its tab; null, a request that names none, takes
+  // this viewer's tab out. Setting shared state draws every mod again, so each value is set
+  // only when it changes.
   keepSent(conversation) {
-    const all = panes();
-    const before = shared(CONVERSATIONS_KEY);
-    let after;
-    if (conversation) {
-      after = rememberConversation(before, conversation, all);
-    } else {
-      const here = focused();
-      const viewer = viewerPaneOf({ props: props(), focused: here, panes: all });
-      after = forgetConversation(before, forgottenTabOf({ viewer, focused: here, panes: all }), all);
-    }
-    setChanged(CONVERSATIONS_KEY, before ?? {}, after);
+    const conversations = shared(CONVERSATIONS_KEY);
+    const openings = shared(OPENINGS_KEY);
+    const after = afterRequest({ conversation, unfilled: this.unfilled, props: props(), focused: focused(), panes: panes(), spaces: spaces(), conversations, openings });
+    setChanged(CONVERSATIONS_KEY, conversations ?? {}, after.conversations ?? {});
+    setChanged(OPENINGS_KEY, openings, after.openings);
+    this.unfilled = after.unfilled;
   }
 
   // The opening in this copy's props, taken on its first start only (sent-conversation.js
-  // takeOpening): its conversation remembered for the tab, or the viewer's tab forgotten.
+  // afterStart): its conversation remembered for the tab, or the viewer's tab forgotten.
   takeOpened(given) {
-    const all = panes();
-    const here = focused();
     const conversations = shared(CONVERSATIONS_KEY);
     const openings = shared(OPENINGS_KEY);
-    const viewer = viewerPaneOf({ props: props(), focused: here, panes: all });
-    const after = takeOpening({ conversations, openings, props: given, spaces: spaces(), panes: all, viewer, focused: here });
+    const after = afterStart({ given, props: props(), focused: focused(), panes: panes(), spaces: spaces(), conversations, openings });
     setChanged(CONVERSATIONS_KEY, conversations ?? {}, after.conversations ?? {});
     setChanged(OPENINGS_KEY, openings, after.openings);
+    this.unfilled = after.unfilled;
   }
 
   // The path picker's pick, opened the way open.sh opens a cmd-clicked file: a side viewer

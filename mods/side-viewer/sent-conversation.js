@@ -10,6 +10,7 @@
 // Setting shared state draws every mod again, so the caller sets it only when the map changed.
 
 import { addressOf } from "./machine.js";
+import { viewerPaneOf } from "./terminal-insert.js";
 
 export const CONVERSATIONS_KEY = "side-viewer.conversations";
 
@@ -47,7 +48,7 @@ export function takeOpening({ conversations, openings, props, spaces, panes, vie
   const taken = openingsOf(openings);
   if (typeof id !== "string" || !OPENING_ID.test(id)) return { conversations, openings };
   if (taken.some((o) => o.id === id)) {
-    const tab = sureTabOf({ props, spaces, panes, viewer });
+    const tab = sureTabOf({ props, spaces, panes });
     if (!tab || !taken.some((o) => o.id === id && o.tab === null)) return { conversations, openings };
     return { conversations, openings: taken.map((o) => (o.id === id && o.tab === null ? { id, tab } : o)) };
   }
@@ -64,13 +65,36 @@ export function takeOpening({ conversations, openings, props, spaces, panes, vie
   return { conversations: after, openings: keptOpenings([...taken, { id, tab }], panes) };
 }
 
-// The tab of a viewer starting with `props`, when it is sure: its opening's conversation's,
-// else the viewer's own, as panes() lists them; else null. Never the focused tab, which may be
-// another viewer's.
-function sureTabOf({ props, spaces, panes, viewer }) {
+// What a copy's start does to the shared state, from Herdr's own values: { conversations,
+// openings }, as takeOpening decides for the opening in its props.
+//   given: the props init got; props: herdr props(); focused: herdr focused(); panes: herdr
+//   panes(); spaces: herdr spaces(); conversations, openings: the two shared values
+export function afterStart({ given, props, focused, panes, spaces, conversations, openings }) {
+  const viewer = viewerPaneOf({ props, focused, panes });
+  const after = takeOpening({ conversations, openings, props: { ...given, ...props }, spaces, panes, viewer, focused });
+  return { conversations: after.conversations, openings: after.openings, unfilled: null };
+}
+
+// What a request from `conversation` (null: one that names none) does to the shared state, from
+// Herdr's own values: { conversations, openings, unfilled }. Its conversation is remembered for
+// its tab, or the viewer's tab forgotten (forgottenTabOf).
+export function afterRequest({ conversation, unfilled, props, focused, panes, spaces, conversations, openings }) {
+  let after;
+  if (conversation) {
+    after = rememberConversation(conversations, conversation, panes);
+  } else {
+    const viewer = viewerPaneOf({ props, focused, panes });
+    after = forgetConversation(conversations, forgottenTabOf({ viewer, focused, panes }), panes);
+  }
+  return { conversations: after, openings, unfilled };
+}
+
+// The tab of the conversation an opening's `props` name, as panes() lists it; else null. A
+// viewer's own tab is not sure: a mod pane is not told its id, and viewerPaneOf guesses it from
+// the focus, which may sit on another tab's viewer.
+function sureTabOf({ props, spaces, panes }) {
   const conversation = typeof props.conversation === "string" ? addressOf(props.conversation, props, spaces) : null;
-  const tabOf = (pane) => (pane == null ? null : panes.find((p) => p.pane === pane)?.tab ?? null);
-  return tabOf(conversation) ?? tabOf(viewer);
+  return conversation == null ? null : panes.find((p) => p.pane === conversation)?.tab ?? null;
 }
 
 // The openings in shared(OPENINGS_KEY), anything: a bare id, as an earlier viewer kept it, is
