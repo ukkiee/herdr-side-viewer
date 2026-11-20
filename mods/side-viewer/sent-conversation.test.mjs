@@ -1,7 +1,7 @@
 // node --test: the sent conversation each tab remembers, without Herdr.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CONVERSATIONS_KEY, rememberConversation, forgetConversation, sentConversation, openedConversation } from "./sent-conversation.js";
+import { CONVERSATIONS_KEY, rememberConversation, forgetConversation, sentConversation, openedConversation, forgottenTabOf } from "./sent-conversation.js";
 
 // Herdr's panes(): a terminal pane, or a mod pane (terminal null).
 const terminalPane = (pane, tab, terminal, cwd) => ({ pane, tab, terminal, cwd, status: null, program: { key: "shell", agent: false, shell: true } });
@@ -103,4 +103,14 @@ test("a viewer whose space is not listed yet takes no conversation", () => {
 
 test("a viewer without a space value is on this Mac and takes the id as it is", () => {
   assert.equal(openedConversation(opened({ space: undefined }), { now: AT * 1000, spaces: [] }), "p2");
+});
+
+test("a request without a conversation forgets the viewer's own tab, even with the focus in another", () => {
+  assert.equal(forgottenTabOf({ viewer: "p3", focused: { tab: "tab2", pane: "p4" }, panes: PANES }), "tab1");
+});
+
+test("a viewer not found among the panes forgets the focused tab", () => {
+  assert.equal(forgottenTabOf({ viewer: null, focused: { tab: "tab2", pane: "p4" }, panes: PANES }), "tab2");
+  assert.equal(forgottenTabOf({ viewer: "p9", focused: { tab: "tab2", pane: "p4" }, panes: PANES }), "tab2");
+  assert.equal(forgottenTabOf({ viewer: null, focused: null, panes: PANES }), null);
 });

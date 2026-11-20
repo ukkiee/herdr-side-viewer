@@ -46,6 +46,13 @@ export function forgetConversation(map, tab, panes) {
   return rest;
 }
 
+// The tab a request without a conversation takes out: the viewer's own, found by its pane
+// (terminal-insert.js viewerPaneOf), else the focused tab, or null.
+//   viewer: the viewer's pane id or null; focused: herdr focused(); panes: herdr panes()
+export function forgottenTabOf({ viewer, focused, panes }) {
+  return panes.find((p) => p.pane === viewer)?.tab ?? focused?.tab ?? null;
+}
+
 // The pane (from panes()) of the conversation remembered for `tab`, while it is a terminal in
 // that tab and not the pane `except` (a viewer's own shell pane); null otherwise.
 export function sentConversation(map, tab, panes, except = null) {

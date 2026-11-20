@@ -41,7 +41,7 @@ import { LANGS, translator, systemLang, askAgainAfter } from "./i18n.js";
 import { machineOf } from "./machine.js";
 import { accessOf } from "./file-access.js";
 import { openTargetOf, pickedRequest, pickedSplit } from "./path-picker.js";
-import { CONVERSATIONS_KEY, rememberConversation, forgetConversation, openedConversation } from "./sent-conversation.js";
+import { CONVERSATIONS_KEY, rememberConversation, forgetConversation, forgottenTabOf, openedConversation } from "./sent-conversation.js";
 import { viewerPaneOf } from "./terminal-insert.js";
 import { PathPicker } from "./picker-view.js";
 
@@ -298,8 +298,8 @@ export default class SideViewer extends View {
 
   // The sent conversation (sent-conversation.js): `conversation`, the pane that sent this viewer
   // a file, is remembered for its tab; null, a request that names none, takes this viewer's tab
-  // out, found by its pane (viewerPaneOf) or else the focused tab. Setting shared state draws
-  // every mod again, so it is set only when the map changes.
+  // out (forgottenTabOf). Setting shared state draws every mod again, so it is set only when
+  // the map changes.
   keepSent(conversation) {
     const all = panes();
     const before = shared(CONVERSATIONS_KEY);
@@ -309,7 +309,7 @@ export default class SideViewer extends View {
     } else {
       const here = focused();
       const viewer = viewerPaneOf({ props: props(), focused: here, panes: all });
-      after = forgetConversation(before, all.find((p) => p.pane === viewer)?.tab ?? here?.tab, all);
+      after = forgetConversation(before, forgottenTabOf({ viewer, focused: here, panes: all }), all);
     }
     if (JSON.stringify(after) !== JSON.stringify(before ?? {})) setShared(CONVERSATIONS_KEY, after);
   }
