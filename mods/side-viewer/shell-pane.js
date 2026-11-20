@@ -138,7 +138,7 @@ export class ShellPane {
   // A prepare line that was taken has left the zsh's keymap in the keymap file, which is read
   // and removed then; a key press, or a prepare line not taken, leaves the kept keymap as it is.
   async send(shell, command, state, fresh, access, tr, trouble, cx) {
-    const { folder, file, keymap: keymapFile } = handoffOf({ terminal: shell.terminal, app: appHome(), home: access.remote ? await access.home() : null });
+    const { folder, file, keymapFile } = handoffOf({ terminal: shell.terminal, app: appHome(), home: access.remote ? await access.home() : null });
     const stale = (await access.read(file).catch(() => null)) != null;
     const plan = insertPlan({ terminal: shell.terminal, file, keymapFile, state, prepared: shell.prepared, keymap: shell.keymap, fresh, stale, tr });
     if (plan.notice) return plan.notice;
@@ -156,7 +156,7 @@ export class ShellPane {
       if (look !== "taken") await access.run("rm", ["-f", "--", file]).catch(() => null);
     }
     if (look === "unreachable") return noticeOf({ state: "unreachable", machine: access.machine }, tr);
-    const keyed = plan.wait === waits.key;
+    const keyed = plan.kind === "key";
     const outcome = pressOutcome({ left: look === "left", state, keyed, tr });
     shell.prepared = outcome.prepared;
     if (outcome.notice) return outcome.notice;

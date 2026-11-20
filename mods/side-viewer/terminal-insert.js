@@ -12,23 +12,16 @@
 import { wordsOf } from "./i18n.js";
 import { saveFailureOf, unavailable } from "./remote-results.js";
 
-// The folder that holds the handoff files, under the app's folder `app` (appHome()).
-export const insertFolderOf = (app) => `${app}/data/side-viewer/shell`;
-
-// The handoff file of terminal `terminal`. One per terminal, so two viewers' shells never share
-// one; a remote address's "/" would make a subfolder.
-export const insertFileOf = (app, terminal) =>
-  `${insertFolderOf(app)}/${safeName(terminal)}.txt`;
-const safeName = (terminal) => terminal.replace(/[^A-Za-z0-9_-]/g, "_");
-
-// The handoff folder, file and keymap file, { folder, file, keymap }, for the shell at hc
+// The handoff folder, file and keymap file, { folder, file, keymapFile }, for the shell at hc
 // address `terminal`. A zsh reads and writes them on its own machine: here the app's data
 // folder (`app`, appHome()), on another machine `.cache/side-viewer/shell` in its home (`home`,
 // that machine's home folder). The keymap file is where a prepare line leaves the zsh's keymap.
+// One pair per terminal, so two viewers' shells never share one; a remote address's "/" would
+// make a subfolder, so it becomes "_".
 export function handoffOf({ terminal, app, home }) {
-  const folder = isRemote(terminal) ? `${home}/.cache/side-viewer/shell` : insertFolderOf(app);
-  const name = `${folder}/${safeName(terminal)}`;
-  return { folder, file: `${name}.txt`, keymap: `${name}.keymap` };
+  const folder = isRemote(terminal) ? `${home}/.cache/side-viewer/shell` : `${app}/data/side-viewer/shell`;
+  const name = `${folder}/${terminal.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+  return { folder, file: `${name}.txt`, keymapFile: `${name}.keymap` };
 }
 
 // Run on the other machine as `sh -c HANDOFF_THERE sh <folder> <file> <text>`: the handoff file
@@ -47,7 +40,7 @@ const WIDGET = "_side_viewer_insert";
 // draft aside with push-line (zsh brings it back at the next prompt), puts the file's text in
 // the input line with the cursor at its end, and removes the file so a stray press puts nothing
 // in. It is bound in the vi keymaps too, so a draft there is never run.
-// It writes the zsh's main keymap (`bindkey -lL main`) over `keymap`, the keymap file, even
+// It writes the zsh's main keymap (`bindkey -lL main`) over `keymapFile`, even
 // under noclobber, so the viewer knows how to clear a draft the next time it prepares a zsh
 // there (keymapOf). It does that before it removes the handoff file, since the viewer reads
 // the keymap file once the handoff file is gone.
@@ -56,21 +49,22 @@ const WIDGET = "_side_viewer_insert";
 // echoed as "^[[24;7~". A draft pushed aside before the line sits under it on the buffer stack,
 // so it comes back after the command. `clear` wipes the line from the screen; the leading
 // space keeps it out of the history where histignorespace is on.
-export function prepareLine(file, keymap) {
+export function prepareLine(file, keymapFile) {
   const bind = (name) => `bindkey -M ${name} '\\e[24;7~' ${WIDGET};`;
   const path = quoted(file);
   return ` ${WIDGET}() { local f=${path}; [[ -r "$f" ]] || return 0; [[ -n $BUFFER ]] && zle push-line;` +
     ` BUFFER="$(<"$f")"; command rm -f -- "$f"; CURSOR=$#BUFFER }; zle -N ${WIDGET};` +
     ` ${bind("emacs")} ${bind("viins")} ${bind("vicmd")}` +
-    ` bindkey -lL main >| ${quoted(keymap)} 2>/dev/null;` +
+    ` bindkey -lL main >| ${quoted(keymapFile)} 2>/dev/null;` +
     ` [[ -r ${path} ]] && print -rz -- "$(<${path})"; command rm -f -- ${path}; clear`;
 }
 
 // The keymap a prepare line left in the keymap file, from its text `text` (null: no file):
 // "emacs", "vi" (insert or command mode), or null when it can't be told. `bindkey -lL main`
-// prints the keymap main is linked to as `bindkey -A <name> main`.
+// prints the keymap main is linked to as one line, `bindkey -A <name> main`; any other text,
+// more lines included, is not known.
 export function keymapOf(text) {
-  const name = /^bindkey -A (\S+) main$/m.exec(String(text ?? ""))?.[1];
+  const name = /^bindkey -A (\S+) main\n?$/.exec(String(text ?? ""))?.[1];
   if (name === "emacs") return "emacs";
   return name === "viins" || name === "vicmd" ? "vi" : null;
 }
@@ -110,7 +104,8 @@ export const machineOfAddress = (address) => (isRemote(address) ? address.slice(
 
 // What to do to put the handoff file's text into terminal `terminal`, as
 // { commands: hc argument lists in order, notice: what to tell instead, or null,
-//   wait: how long the handoff file may stay before the press counts as not taken (ms) }.
+//   wait: how long the handoff file may stay before the press counts as not taken (ms),
+//   kind: "key" (only the key), "prepare" (a prepare line), or null (nothing goes out) }.
 //   file, keymapFile: the shell's handoff and keymap files (handoffOf);
 //   state: shellState() of the terminal now; prepared: shellOf() the zsh last prepared there,
 //   or null; keymap: what the last prepare line there left (keymapOf), or null;
@@ -126,15 +121,15 @@ export const machineOfAddress = (address) => (isRemote(address) ? address.slice(
 // prefix) is treated the same, with that machine's waits (waitsOf); the files are then there.
 // tr: the translator the notice is worded with (i18n.js).
 export function insertPlan({ terminal, file, keymapFile, state, prepared, keymap, fresh, stale, tr }) {
-  if (state.state === "busy") return { commands: [], notice: noticeOf(state, tr), wait: 0 };
+  if (state.state === "busy") return { commands: [], notice: noticeOf(state, tr), wait: 0, kind: null };
   const waits = waitsOf(machineOfAddress(terminal));
   if (!stale && sameShell(prepared, state)) {
-    return { commands: [["keys", terminal, INSERT_KEY]], notice: null, wait: waits.key };
+    return { commands: [["keys", terminal, INSERT_KEY]], notice: null, wait: waits.key, kind: "key" };
   }
   const prepare = ["send", terminal, prepareLine(file, keymapFile)];
-  if (fresh) return { commands: [prepare], notice: null, wait: waits.prepare };
+  if (fresh) return { commands: [prepare], notice: null, wait: waits.prepare, kind: "prepare" };
   const clear = keymap === "emacs" ? "alt+q" : "ctrl+c";
-  return { commands: [["keys", terminal, clear], prepare], notice: null, wait: waits.prepare };
+  return { commands: [["keys", terminal, clear], prepare], notice: null, wait: waits.prepare, kind: "prepare" };
 }
 
 // After a press, whether the zsh took it: `left` says the handoff file was still there once

@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { insertFileOf, insertFolderOf, handoffOf, keymapOf, HANDOFF_THERE, FIND_ZSH, zshOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, cutOff, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf, stateOfGet, handoffLook, handoffTaken } from "./terminal-insert.js";
+import { handoffOf, keymapOf, HANDOFF_THERE, FIND_ZSH, zshOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, cutOff, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf, stateOfGet, handoffLook, handoffTaken } from "./terminal-insert.js";
 import { translator } from "./i18n.js";
 import { en as alertsEn, ko as alertsKo } from "./messages-alerts.js";
 
@@ -32,18 +32,18 @@ const APP = "/Users/me/.config/herdr-app";
 const FILE = `${APP}/data/side-viewer/shell/t7.txt`;
 const KEYMAP = `${APP}/data/side-viewer/shell/t7.keymap`;
 
-test("each shell has its own handoff file in the app's data folder", () => {
-  assert.equal(insertFileOf(APP, "t7"), FILE);
-  assert.equal(insertFileOf(APP, "mini/t12"), `${APP}/data/side-viewer/shell/mini_t12.txt`);
-  assert.equal(insertFolderOf(APP), `${APP}/data/side-viewer/shell`);
+test("each shell has its own handoff file, named after its address with a remote one's \"/\" made \"_\"", () => {
+  assert.equal(handoffOf({ terminal: "t7", app: APP, home: HOME }).file, FILE);
+  assert.equal(handoffOf({ terminal: "t12", app: APP, home: HOME }).file, `${APP}/data/side-viewer/shell/t12.txt`);
+  assert.equal(handoffOf({ terminal: "mini/t12", app: APP, home: "/home/me" }).file, "/home/me/.cache/side-viewer/shell/mini_t12.txt");
 });
 
 test("a shell here uses the data folder's handoff and keymap files; a shell on another machine ones in that machine's ~/.cache", () => {
-  assert.deepEqual(handoffOf({ terminal: "t7", app: APP, home: HOME }), { folder: `${APP}/data/side-viewer/shell`, file: FILE, keymap: KEYMAP });
+  assert.deepEqual(handoffOf({ terminal: "t7", app: APP, home: HOME }), { folder: `${APP}/data/side-viewer/shell`, file: FILE, keymapFile: KEYMAP });
   assert.deepEqual(handoffOf({ terminal: "mini/t7", app: APP, home: "/home/me" }), {
     folder: "/home/me/.cache/side-viewer/shell",
     file: "/home/me/.cache/side-viewer/shell/mini_t7.txt",
-    keymap: "/home/me/.cache/side-viewer/shell/mini_t7.keymap",
+    keymapFile: "/home/me/.cache/side-viewer/shell/mini_t7.keymap",
   });
 });
 
@@ -181,6 +181,13 @@ test("an empty keymap file, none, or another keymap is not known", () => {
   assert.equal(keymapOf("emacs"), null);
 });
 
+test("a keymap file with more than one line, even two keymaps, is not known", () => {
+  assert.equal(keymapOf("bindkey -A emacs main\nbindkey -A viins main\n"), null);
+  assert.equal(keymapOf("zsh: something\nbindkey -A emacs main\n"), null);
+  assert.equal(keymapOf("bindkey -A viins main\nmore\n"), null);
+  assert.equal(keymapOf("bindkey -A emacs main"), "emacs");
+});
+
 const KEY = ["keys", "t7", "ctrl+alt+f12"];
 
 test("a shell just opened is prepared, and the prepare line itself puts the command in; no key, no Enter", () => {
@@ -188,6 +195,7 @@ test("a shell just opened is prepared, and the prepare line itself puts the comm
     commands: [["send", "t7", prepareLine(FILE, KEYMAP)]],
     notice: null,
     wait: PREPARE_WAIT_MS,
+    kind: "prepare",
   });
 });
 
@@ -196,6 +204,7 @@ test("a shell already prepared only gets the key", () => {
     commands: [KEY],
     notice: null,
     wait: KEY_WAIT_MS,
+    kind: "key",
   });
 });
 
@@ -204,6 +213,7 @@ test("a shell that is now another emacs zsh is prepared again, its draft pushed 
     commands: [["keys", "t7", "alt+q"], ["send", "t7", prepareLine(FILE, KEYMAP)]],
     notice: null,
     wait: PREPARE_WAIT_MS,
+    kind: "prepare",
   });
 });
 
@@ -223,6 +233,7 @@ test("a shell prepared again whose zsh was vi gets ctrl+c, not alt+q, right befo
     commands: [["keys", "t7", "ctrl+c"], ["send", "t7", prepareLine(FILE, KEYMAP)]],
     notice: null,
     wait: PREPARE_WAIT_MS,
+    kind: "prepare",
   });
 });
 
@@ -243,7 +254,16 @@ test("a prepared vi zsh only gets the key; its widget pushes the draft aside", (
     commands: [KEY],
     notice: null,
     wait: KEY_WAIT_MS,
+    kind: "key",
   });
+});
+
+test("a plan names what it does, the key or the prepare line, apart from how long it waits", () => {
+  const plan = (more) => insertPlan({ terminal: "t7", file: FILE, keymapFile: KEYMAP, state: ready(40), prepared: shellOf(ready(40)), keymap: "emacs", fresh: false, stale: false, tr: ko, ...more }).kind;
+  assert.equal(plan({}), "key");
+  assert.equal(plan({ stale: true }), "prepare");
+  assert.equal(plan({ prepared: null, fresh: true }), "prepare");
+  assert.equal(plan({ state: { state: "busy", program: "sleep" } }), null);
 });
 
 // A Linux zsh at its prompt, as `hc get` shows one (`/usr/bin/zsh -l`).
@@ -257,16 +277,19 @@ test("a shell on another machine is prepared like one here, and gets more time t
     commands: [["send", THERE, prepareLine(FILE_THERE, KEYMAP_THERE)]],
     notice: null,
     wait: 5000,
+    kind: "prepare",
   });
   assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, state: readyThere(40), prepared: shellOf(readyThere(40)), fresh: false, stale: false, tr: ko }), {
     commands: [["keys", THERE, "ctrl+alt+f12"]],
     notice: null,
     wait: 1500,
+    kind: "key",
   });
   assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, state: readyThere(41), prepared: shellOf(readyThere(40)), keymap: "emacs", fresh: false, stale: false, tr: ko }), {
     commands: [["keys", THERE, "alt+q"], ["send", THERE, prepareLine(FILE_THERE, KEYMAP_THERE)]],
     notice: null,
     wait: 5000,
+    kind: "prepare",
   });
 });
 
@@ -275,6 +298,7 @@ test("a shell on another machine prepared again whose keymap is not known gets c
     commands: [["keys", THERE, "ctrl+c"], ["send", THERE, prepareLine(FILE_THERE, KEYMAP_THERE)]],
     notice: null,
     wait: 5000,
+    kind: "prepare",
   });
 });
 
@@ -284,6 +308,7 @@ test("a busy shell on another machine gets nothing, only the same notice as here
     commands: [],
     notice: { title: "터미널에 넣지 않았습니다", body: "셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.", level: "warning" },
     wait: 0,
+    kind: null,
   });
 });
 
@@ -456,6 +481,7 @@ test("a busy shell gets nothing, only a notice", () => {
     commands: [],
     notice: noticeOf(busy, ko),
     wait: 0,
+    kind: null,
   });
 });
 
