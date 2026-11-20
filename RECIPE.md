@@ -366,8 +366,10 @@ The mod shows files, not agents, so it has no agent statuses.
   The next `>_` uses the same pane while it shows the same terminal. `hc get`'s `foreground`
   tells the shell's state: none yet, or exactly the split's argv above (any folder), is
   starting, asked again every 100 ms for up to 5 s; a zsh with no `-c` among its arguments,
-  alone or in a bundle of one-dash short options (`-fc`, `-ic`; a `--` long option is not
-  read), is ready; anything else is busy, any other `-c` run included (`python3 -c …`,
+  read as zsh reads them (`-c` alone, or a `c` in a bundle of one-dash short options, letters
+  and digits, read from the left: `-fc`, `-ic`, `-4c`; an `o` there takes the rest as an
+  option's name, so `-oemacs` and `-foemacs` hold no `c`; a `--` long option is not read),
+  is ready; anything else is busy, any other `-c` run included (`python3 -c …`,
   `sh -c 'a; b'`, a `zsh -c 'a; b'` or `zsh -fc 'a; b'` too). A busy shell gets nothing at once, no pane opens, and a Herdr
   notification says `터미널에 넣지 않았습니다` / `셸에서 다른 프로그램(<name>)이 실행
   중입니다. 끝난 뒤 다시 누르세요.`; when no pane can be opened or found,

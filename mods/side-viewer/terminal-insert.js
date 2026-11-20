@@ -166,9 +166,18 @@ export function shellState(info) {
   return /^-?zsh$/.test(program) && !runsLine ? { state: "ready", pid: foreground.pid, argv: foreground.argv } : { state: "busy", program };
 }
 
-// Whether an argument asks the shell to run a command: `-c`, or a bundle of one-dash short
-// options with c in it (`-fc`, `-ic`). A `--` long option is not read.
-const runsCommand = (word) => typeof word === "string" && /^-[A-Za-z]*c[A-Za-z]*$/.test(word);
+// Whether an argument asks the shell to run a command, read as zsh reads it: `-c`, or a bundle
+// of one-dash short options (letters and digits) with c in it (`-fc`, `-ic`, `-4c`). In a
+// bundle, `o` takes the rest of it as an option's name, so the c of `-oemacs` runs nothing.
+// A `--` long option is not read.
+function runsCommand(word) {
+  if (typeof word !== "string" || !word.startsWith("-") || word.startsWith("--")) return false;
+  for (const letter of word.slice(1)) {
+    if (letter === "c") return true;
+    if (letter === "o" || !/[A-Za-z0-9]/.test(letter)) return false;
+  }
+  return false;
+}
 
 // splitOf's argv: [zsh, "-c", START_SCRIPT, "zsh", folder, zsh].
 const isStartingZsh = (argv) =>

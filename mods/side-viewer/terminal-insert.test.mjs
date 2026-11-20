@@ -502,8 +502,18 @@ test("a zsh whose short options bundle c, as -fc or -ic, runs a line too, so it 
   assert.deepEqual(shellState(running({ argv: ["zsh", "-l", "-cf", "sleep 3"], name: "zsh" })), busy);
 });
 
+test("a digit is a short option too, so -4c bundles c and is busy", () => {
+  assert.deepEqual(shellState(running({ argv: ["zsh", "-4c", "sleep 3; true"], name: "zsh" })), { state: "busy", program: "zsh" });
+});
+
+test("the rest of a bundle after o is an option's name, so the c in -oemacs runs nothing", () => {
+  for (const argv of [["zsh", "-oemacs"], ["zsh", "-foemacs"], ["/bin/zsh", "-l", "-ocorrect"]]) {
+    assert.deepEqual(shellState(running({ argv, name: "zsh" })), { state: "ready", pid: 2, argv }, argv.join(" "));
+  }
+});
+
 test("long options and short ones without c leave a zsh at its prompt ready", () => {
-  for (const argv of [["zsh", "--c"], ["zsh", "--norcs"], ["/bin/zsh", "-f"], ["/bin/zsh", "-l"], ["zsh", "-f", "-o", "emacs"]]) {
+  for (const argv of [["zsh", "--c"], ["zsh", "--cd"], ["zsh", "--norcs"], ["/bin/zsh", "-f"], ["/bin/zsh", "-l"], ["zsh", "-i"], ["zsh", "-f", "-o", "emacs"]]) {
     assert.deepEqual(shellState(running({ argv, name: "zsh" })), { state: "ready", pid: 2, argv }, argv.join(" "));
   }
 });
