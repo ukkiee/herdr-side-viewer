@@ -81,6 +81,12 @@ const FAKE_OPEN = `#!/bin/sh
 for a in "$@"; do printf '%s\\n' "$a"; done >> "$FAKE_STATE/open.log"
 `;
 
+// A new pane's props without `at`, the time it was opened, which changes from run to run.
+const withoutAt = (json) => {
+  const { at: _at, ...rest } = JSON.parse(json);
+  return rest;
+};
+
 function world({ herdr = true, installed = true, record } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "side-viewer-open-"));
   const state = join(dir, "state");
@@ -165,8 +171,19 @@ test("with Herdr in front, the file opens in a side viewer pane split to the rig
   const w = world();
   const r = w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(w.splitArgs(), ["do", "pane.split", "--direction", "right", "--mod", "side-viewer", "--props", `{"file":"/work/notes/plan.md","space":"${SPACE}","conversation":"${FOCUSED}"}`]);
+  assert.deepEqual(w.splitArgs().slice(0, 7), ["do", "pane.split", "--direction", "right", "--mod", "side-viewer", "--props"]);
+  assert.deepEqual(withoutAt(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE, conversation: FOCUSED });
   assert.deepEqual(w.openArgs(), []);
+});
+
+test("a new pane's props carry the unix seconds it was opened at", () => {
+  const w = world();
+  const before = Math.floor(Date.now() / 1000);
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  const after = Math.floor(Date.now() / 1000);
+  const { at } = JSON.parse(w.splitArgs()[7]);
+  assert.equal(typeof at, "number");
+  assert.ok(at >= before && at <= after, `${before} <= ${at} <= ${after}`);
 });
 
 test("a side viewer showing in the current tab takes the file, and no pane is opened", () => {
@@ -336,7 +353,7 @@ test("a path with spaces, quotes, a backslash and Korean reaches the viewer and 
   w.open(file, HERDR_FRONT);
   const args = w.splitArgs();
   assert.equal(args.length, 8);
-  assert.deepEqual(JSON.parse(args[7]), { file, space: SPACE, conversation: FOCUSED });
+  assert.deepEqual(withoutAt(args[7]), { file, space: SPACE, conversation: FOCUSED });
 
   const showing = world();
   showing.viewersShowing();
@@ -405,7 +422,7 @@ test("a new pane and a waiting request both carry the focused space", () => {
   const w = world();
   w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.equal(w.statusAsked(), 1);
-  assert.deepEqual(JSON.parse(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE, conversation: FOCUSED });
+  assert.deepEqual(withoutAt(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE, conversation: FOCUSED });
   const request = JSON.parse(readFileSync(join(w.env.SIDE_VIEWER_DATA, "request.json"), "utf8"));
   assert.equal(request.space, SPACE);
   assert.equal(request.file, "/work/notes/plan.md");
@@ -435,7 +452,7 @@ test("without a plain focused pane, the file opens as before with no conversatio
     w.statusSays(out);
     const r = w.open("/work/notes/plan.md", HERDR_FRONT);
     assert.equal(r.status, 0, r.stderr);
-    assert.deepEqual(JSON.parse(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE }, out);
+    assert.deepEqual(withoutAt(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE }, out);
     const request = JSON.parse(readFileSync(join(w.env.SIDE_VIEWER_DATA, "request.json"), "utf8"));
     assert.equal("conversation" in request, false, out);
     assert.deepEqual(w.openArgs(), [], out);
