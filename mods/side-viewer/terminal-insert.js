@@ -45,17 +45,22 @@ const WIDGET = "_side_viewer_insert";
 // draft aside with push-line (zsh brings it back at the next prompt), puts the file's text in
 // the input line with the cursor at its end, and removes the file so a stray press puts nothing
 // in. It is bound in the vi keymaps too, so a draft there is never run.
+// It writes the zsh's main keymap (`bindkey -lL main`) over `keymap`, the keymap file, even
+// under noclobber, so the viewer knows how to clear a draft the next time it prepares a zsh
+// there (keymapOf). It does that before it removes the handoff file, since the viewer reads
+// the keymap file once the handoff file is gone.
 // The line then puts this press's text in itself with `print -z`, which zle shows at the next
 // prompt: a key sent right after the line could reach the shell before zle reads again and be
 // echoed as "^[[24;7~". A draft pushed aside before the line sits under it on the buffer stack,
 // so it comes back after the command. `clear` wipes the line from the screen; the leading
 // space keeps it out of the history where histignorespace is on.
-export function prepareLine(file) {
-  const bind = (keymap) => `bindkey -M ${keymap} '\\e[24;7~' ${WIDGET};`;
+export function prepareLine(file, keymap) {
+  const bind = (name) => `bindkey -M ${name} '\\e[24;7~' ${WIDGET};`;
   const path = quoted(file);
   return ` ${WIDGET}() { local f=${path}; [[ -r "$f" ]] || return 0; [[ -n $BUFFER ]] && zle push-line;` +
     ` BUFFER="$(<"$f")"; command rm -f -- "$f"; CURSOR=$#BUFFER }; zle -N ${WIDGET};` +
     ` ${bind("emacs")} ${bind("viins")} ${bind("vicmd")}` +
+    ` bindkey -lL main >| ${quoted(keymap)} 2>/dev/null;` +
     ` [[ -r ${path} ]] && print -rz -- "$(<${path})"; command rm -f -- ${path}; clear`;
 }
 
@@ -105,13 +110,13 @@ export const machineOfAddress = (address) => (isRemote(address) ? address.slice(
 // show up on screen as "^[q". A shell on another machine (its address's prefix) is treated the
 // same, with that machine's waits (waitsOf); `file` is then the handoff file there.
 // tr: the translator the notice is worded with (i18n.js).
-export function insertPlan({ terminal, file, state, prepared, fresh, stale, tr }) {
+export function insertPlan({ terminal, file, keymapFile, state, prepared, fresh, stale, tr }) {
   if (state.state === "busy") return { commands: [], notice: noticeOf(state, tr), wait: 0 };
   const waits = waitsOf(machineOfAddress(terminal));
   if (!stale && sameShell(prepared, state)) {
     return { commands: [["keys", terminal, INSERT_KEY]], notice: null, wait: waits.key };
   }
-  const prepare = ["send", terminal, prepareLine(file)];
+  const prepare = ["send", terminal, prepareLine(file, keymapFile)];
   return { commands: fresh ? [prepare] : [["keys", terminal, "alt+q"], prepare], notice: null, wait: waits.prepare };
 }
 

@@ -130,9 +130,9 @@ export class ShellPane {
   //   state: the shell's ready state (shellState), remembered once the shell took a command.
   //   trouble(failure): the notice for a failed step, the connection's or not.
   async send(shell, command, state, fresh, access, tr, trouble, cx) {
-    const { folder, file } = handoffOf({ terminal: shell.terminal, app: appHome(), home: access.remote ? await access.home() : null });
+    const { folder, file, keymap: keymapFile } = handoffOf({ terminal: shell.terminal, app: appHome(), home: access.remote ? await access.home() : null });
     const stale = (await access.read(file).catch(() => null)) != null;
-    const plan = insertPlan({ terminal: shell.terminal, file, state, prepared: shell.prepared, fresh, stale, tr });
+    const plan = insertPlan({ terminal: shell.terminal, file, keymapFile, state, prepared: shell.prepared, fresh, stale, tr });
     if (plan.notice) return plan.notice;
     const written = await this.write(access, folder, file, insertText(command));
     if (written !== true) return trouble(written);
