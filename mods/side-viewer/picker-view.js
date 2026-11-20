@@ -7,9 +7,10 @@
 // submit, and ↑↓ and Esc are heard on the root.
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, ScrollHandle } from "gpui-base";
-import { hc, focused, panes, spaces, machines, readTextFile, appHome, closeOverlay, props, settings } from "herdr";
+import { hc, focused, panes, spaces, machines, readTextFile, appHome, closeOverlay, props, settings, shared } from "herdr";
 import { conversationOf, pathCandidates, existingPaths, filterPaths, readFailureOf, pickerFailureOf, listHeightOf, pickerWidthOf, ROW, CARD_PAD, CARD_GAP, INPUT_HEIGHT } from "./path-picker.js";
 import { machineOf, spaceValue } from "./machine.js";
+import { CONVERSATIONS_KEY } from "./sent-conversation.js";
 import { accessOf } from "./file-access.js";
 import { unavailable } from "./remote-results.js";
 import { wordsOf } from "./i18n.js";
@@ -43,10 +44,11 @@ export class PathPicker {
   }
 
   // The conversation is the one focused when the popup opens: a click on a row moves no
-  // focus away from it first.
+  // focus away from it first. A focused viewer stands for the conversation that last sent its
+  // tab a file (sent-conversation.js).
   find(cx) {
     const here = focused();
-    const conversation = conversationOf({ focused: here, panes: panes() });
+    const conversation = conversationOf({ focused: here, panes: panes(), conversations: shared(CONVERSATIONS_KEY) });
     if (!conversation) {
       this.state = "elsewhere";
       return;

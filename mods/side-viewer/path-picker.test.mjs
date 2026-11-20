@@ -5,7 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { pathCandidates, existingPaths, filterPaths, listHeightOf, pickerWidthOf, PICKER_MIN_WIDTH, conversationOf, openTargetOf, readFailureOf, pickerFailureOf } from "./path-picker.js";
+import { takeOpening } from "./sent-conversation.js";
+import { pathCandidates, existingPaths, filterPaths, listHeightOf, pickerWidthOf, PICKER_MIN_WIDTH, conversationOf, openTargetOf, pickedRequest, pickedSplit, readFailureOf, pickerFailureOf } from "./path-picker.js";
 
 const groups = JSON.parse(readFileSync(new URL("./extensions.json", import.meta.url), "utf8"));
 const HOME = "/Users/me";
@@ -194,6 +195,29 @@ test("a focused side viewer beside a conversation reads that conversation, an ag
   assert.deepEqual(conversationOf({ focused: focusOn(shellOnly[1]), panes: shellOnly }), { pane: "p5", terminal: "t5", cwd: "/srv" });
 });
 
+test("a focused side viewer reads the conversation that last sent its tab a file", () => {
+  const second = agentPane("p5", "w1", "t5", "/work/b");
+  const panes = [...PANES, second];
+  assert.deepEqual(conversationOf({ focused: focusOn(viewer), panes, conversations: { w1: "p5" } }), { pane: "p5", terminal: "t5", cwd: "/work/b" });
+  // A plain shell that sent the file counts as well.
+  assert.deepEqual(conversationOf({ focused: focusOn(viewer), panes, conversations: { w1: "p2" } }), { pane: "p2", terminal: "t2", cwd: "/tmp" });
+});
+
+test("without a live sent conversation in its tab a focused side viewer reads the tab's agent", () => {
+  const elsewhere = agentPane("p6", "w3", "t6", "/work/c");
+  const panes = [...PANES, elsewhere];
+  const first = { pane: "p1", terminal: "t1", cwd: CWD };
+  for (const conversations of [undefined, {}, { w1: "p8" }, { w1: "p6" }, { w1: "p3" }, { w3: "p6" }]) {
+    assert.deepEqual(conversationOf({ focused: focusOn(viewer), panes, conversations }), first, JSON.stringify(conversations));
+  }
+});
+
+test("a focused terminal is read whatever conversation sent the file", () => {
+  const second = agentPane("p5", "w1", "t5", "/work/b");
+  const panes = [...PANES, second];
+  assert.deepEqual(conversationOf({ focused: focusOn(conversation), panes, conversations: { w1: "p5" } }), { pane: "p1", terminal: "t1", cwd: CWD });
+});
+
 test("a remote conversation keeps its machine address", () => {
   const remote = [agentPane("p7", "w4", "nuc/t3", "/home/me/app"), viewerPane("p8", "w4")];
   assert.deepEqual(conversationOf({ focused: focusOn(remote[1]), panes: remote }), { pane: "p7", terminal: "nuc/t3", cwd: "/home/me/app" });
@@ -216,6 +240,29 @@ test("without a shown side viewer in its tab a pick splits the conversation to t
   assert.deepEqual(openTargetOf({ conversation: "p1", panes: alone }), { split: { pane: "p1", direction: "right" } });
   const zoomed = [{ ...conversation, zoomed: true }, viewer];
   assert.deepEqual(openTargetOf({ conversation: "p1", panes: zoomed }), { split: { pane: "p1", direction: "right" } });
+});
+
+// A pick of /b/plan.md in the conversation studio/p7 of the remote space studio/s3, at AT.
+const AT = 1800000000;
+const PICK = { file: "/b/plan.md", space: "s3", conversation: "studio/p7" };
+const ID = `${AT}-picker-ab12`;
+
+test("a pick's request names the conversation as this screen does, for the viewers on this screen", () => {
+  assert.deepEqual(pickedRequest({ id: ID, at: AT, ...PICK }), { id: `${AT}-picker-ab12`, file: "/b/plan.md", at: AT, space: "s3", conversation: "studio/p7" });
+  assert.deepEqual(pickedRequest({ id: ID, at: AT, ...PICK, space: "s1", conversation: "p1" }).conversation, "p1");
+});
+
+test("a pick's new viewer splits off the conversation, and its props keep the conversation without the machine and the opening's id", () => {
+  assert.deepEqual(pickedSplit({ ...PICK, id: ID }), { pane: "studio/p7", direction: "right", mod: "side-viewer", props: { file: "/b/plan.md", space: "s3", conversation: "p7", id: ID } });
+  assert.deepEqual(pickedSplit({ ...PICK, id: ID, space: "s1", conversation: "p1" }).props, { file: "/b/plan.md", space: "s1", conversation: "p1", id: ID });
+});
+
+test("the new viewer finds the picked conversation on a screen that calls the machine by another name", () => {
+  const { props } = pickedSplit({ ...PICK, id: ID });
+  const start = (machine) =>
+    takeOpening({ conversations: {}, openings: [], props, spaces: [{ id: `${machine}/s3`, machine }], panes: [{ pane: `${machine}/p7`, tab: `${machine}/tab5`, terminal: `${machine}/t7` }], viewer: null, focused: null });
+  assert.deepEqual(start("mini").conversations, { "mini/tab5": "mini/p7" });
+  assert.deepEqual(start("studio").conversations, { "studio/tab5": "studio/p7" });
 });
 
 // `hc read t9999 --lines 1` for a terminal that is gone: exit 3, on stderr.

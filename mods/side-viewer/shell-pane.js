@@ -5,9 +5,10 @@
 // while that pane still shows the same terminal, and which zsh there it has prepared.
 // The shell is on the viewer's machine: a split of a viewer in another machine's space opens
 // it there, so the handoff file, the zsh and the home are that machine's (file-access.js).
-import { hc, run, panes, focused, props, appHome, notify, machines, writeTextFile } from "herdr";
-import { handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, insertText, insertPlan, pressOutcome, waitsOf, machineOfAddress, cutOff, stateOfGet, handoffLook, handoffTaken, noticeOf, viewerPaneOf, liveShell, openedShell, splitOf, shellFolder } from "./terminal-insert.js";
+import { hc, run, panes, focused, props, appHome, notify, machines, writeTextFile, shared } from "herdr";
+import { handoffOf, keymapOf, HANDOFF_THERE, FIND_ZSH, zshOf, insertText, insertPlan, pressOutcome, waitsOf, machineOfAddress, cutOff, stateOfGet, handoffLook, handoffTaken, noticeOf, viewerPaneOf, liveShell, openedShell, splitOf, shellFolder } from "./terminal-insert.js";
 import { accessOf } from "./file-access.js";
+import { CONVERSATIONS_KEY, sentConversation } from "./sent-conversation.js";
 
 // How long a new pane may take to show up in panes(), and a new shell to reach its prompt.
 const WAIT_MS = 5000;
@@ -19,8 +20,10 @@ const zshes = new Map();
 
 export class ShellPane {
   constructor() {
-    // { pane, terminal, prepared } of the shell pane this viewer opened, or null. `prepared`:
-    // the zsh there that has the insert widget, as shellOf() gives it ({ pid, argv }), or null.
+    // { pane, terminal, prepared, keymap } of the shell pane this viewer opened, or null.
+    // `prepared`: the zsh there that has the insert widget, as shellOf() gives it
+    // ({ pid, argv }), or null. `keymap`: what the last prepare line taken there left in the
+    // keymap file (keymapOf), or null, so the next prepare line knows how to clear a draft.
     this.shell = null;
     // A press while one is under way is dropped, so two presses cannot open two panes.
     this.working = false;
@@ -33,9 +36,12 @@ export class ShellPane {
   insert(command, { file, viewerTab, tr }, cx) {
     if (this.working) return;
     this.working = true;
+    // The sent conversations as they are at the press: a file sent while a remote zsh is looked
+    // up must not move this command's new shell to another conversation's folder.
+    const conversations = shared(CONVERSATIONS_KEY);
     cx.spawn(async (cx) => {
       try {
-        const notice = await this.put(command, file, viewerTab, tr, cx);
+        const notice = await this.put(command, file, viewerTab, tr, conversations, cx);
         if (notice) notify(notice);
       } catch {
         notify(noticeOf({ state: "failed" }, tr));
@@ -48,7 +54,7 @@ export class ShellPane {
   // Returns the notice to show, or null when the command went in. The machine is the kept
   // shell's, else the viewer's (machineOfAddress); a machine Herdr already lists as unavailable
   // gets nothing, and a remote step refused for the connection says so too.
-  async put(command, file, viewerTab, tr, cx) {
+  async put(command, file, viewerTab, tr, conversations, cx) {
     const all = panes();
     const kept = liveShell(this.shell, all);
     const viewer = kept ? null : viewerPaneOf({ props: props(), focused: focused(), panes: all });
@@ -57,13 +63,13 @@ export class ShellPane {
     if (cutOff({ machine, machines: machines() })) return noticeOf({ state: "unreachable", machine }, tr);
     const trouble = (failure) => noticeOf(cutOff({ machine, failure }) ? { state: "unreachable", machine } : { state: "failed" }, tr);
     try {
-      return await this.putOn(machine, kept, viewer, all, command, file, viewerTab, tr, trouble, cx);
+      return await this.putOn(machine, kept, viewer, all, conversations, command, file, viewerTab, tr, trouble, cx);
     } catch (error) {
       return trouble(error);
     }
   }
 
-  async putOn(machine, kept, viewer, all, command, file, viewerTab, tr, trouble, cx) {
+  async putOn(machine, kept, viewer, all, conversations, command, file, viewerTab, tr, trouble, cx) {
     const access = accessOf(machine);
     if (kept) {
       const state = await this.settled(kept.terminal, machine, cx);
@@ -75,11 +81,14 @@ export class ShellPane {
     const { zsh, failure } = await this.zshOn(access);
     if (failure) return trouble(failure);
     if (zsh === null) return noticeOf({ state: "noZsh" }, tr);
-    const folder = shellFolder({ viewerTab, file, viewer, panes: all, shell: this.shell, home: await access.home() });
+    // Beside two conversations the shell starts with the one that sent the file.
+    const tab = all.find((p) => p.pane === viewer)?.tab;
+    const conversation = sentConversation(conversations, tab, all)?.pane ?? null;
+    const folder = shellFolder({ viewerTab, file, viewer, panes: all, shell: this.shell, conversation, home: await access.home() });
     run("pane.split", splitOf(viewer, folder, zsh));
     const opened = await this.appeared(all, viewer, cx);
     if (!opened) return noticeOf({ state: "failed" }, tr);
-    this.shell = { ...opened, prepared: null };
+    this.shell = { ...opened, prepared: null, keymap: null };
     const state = await this.settled(opened.terminal, machine, cx);
     if (state.state === "busy" || state.state === "unreachable") return noticeOf(state, tr);
     if (state.state !== "ready") return noticeOf({ state: "failed" }, tr);
@@ -129,10 +138,14 @@ export class ShellPane {
   // The file is on the shell's machine, read, written and removed through `access`.
   //   state: the shell's ready state (shellState), remembered once the shell took a command.
   //   trouble(failure): the notice for a failed step, the connection's or not.
+  // A prepare line that was taken has left the zsh's keymap in the keymap file, which is read
+  // and removed then; a key press, or a prepare line not taken, leaves the kept keymap as it is.
   async send(shell, command, state, fresh, access, tr, trouble, cx) {
-    const { folder, file } = handoffOf({ terminal: shell.terminal, app: appHome(), home: access.remote ? await access.home() : null });
+    const { folder, file, keymapFile } = handoffOf({ terminal: shell.terminal, app: appHome(), home: access.remote ? await access.home() : null });
     const stale = (await access.read(file).catch(() => null)) != null;
-    const plan = insertPlan({ terminal: shell.terminal, file, state, prepared: shell.prepared, fresh, stale, tr });
+    // New for every press, so a keymap file an earlier press left is never read as this one's.
+    const mark = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    const plan = insertPlan({ terminal: shell.terminal, file, keymapFile, mark, state, prepared: shell.prepared, keymap: shell.keymap, fresh, stale, tr });
     if (plan.notice) return plan.notice;
     const written = await this.write(access, folder, file, insertText(command));
     if (written !== true) return trouble(written);
@@ -148,11 +161,22 @@ export class ShellPane {
       if (look !== "taken") await access.run("rm", ["-f", "--", file]).catch(() => null);
     }
     if (look === "unreachable") return noticeOf({ state: "unreachable", machine: access.machine }, tr);
-    const outcome = pressOutcome({ left: look === "left", state, keyed: plan.wait === waits.key, tr });
+    const keyed = plan.kind === "key";
+    const outcome = pressOutcome({ left: look === "left", state, keyed, tr });
     shell.prepared = outcome.prepared;
     if (outcome.notice) return outcome.notice;
+    if (!keyed) shell.keymap = await this.keymapLeft(access, keymapFile, mark);
     run("pane.focus", { pane: shell.pane });
     return null;
+  }
+
+  // The keymap a taken prepare line marked `mark` left in `file` (keymapOf), the file then
+  // removed. A read that fails, the connection's too, or a file without this mark gives null:
+  // the command already went in, and the next prepare line clears a draft the safe way.
+  async keymapLeft(access, file, mark) {
+    const text = await access.read(file).catch(() => null);
+    await access.run("rm", ["-f", "--", file]).catch(() => null);
+    return keymapOf(text, mark);
   }
 
   // Whether the handoff file was taken within `wait` ms of the clock, looking every `step` ms:

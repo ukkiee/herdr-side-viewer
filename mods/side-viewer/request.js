@@ -2,10 +2,12 @@
 // under `node --test`.
 //
 // open.sh writes REQUEST_FILE into the data folder, {"id": "...", "file": "/abs/path",
-// "at": <unix seconds>, "space": "<space value>"}, and sends `side-viewer.show`. The viewer
-// that takes the request creates answerFile(id) there. open.sh waits about 0.4 s for that
-// file and opens a new pane when it does not appear, because the command only reaches viewers
-// that are showing. The path picker sends the same request.
+// "at": <unix seconds>, "space": "<space value>", "conversation": "<pane id>"}, and sends
+// `side-viewer.show`. The viewer that takes the request creates answerFile(id) there. open.sh
+// waits about 0.4 s for that file and opens a new pane when it does not appear, because the
+// command only reaches viewers that are showing. The path picker sends the same request.
+// The conversation is the pane the file was opened from (sent-conversation.js). A request
+// without one, as an older router writes, is taken all the same.
 //
 // The space value (machine.js) says whose file it is: only a viewer of that space takes it.
 // A side without one is on this Mac, so it matches the other side only while that is on
@@ -39,7 +41,8 @@ function forViewer(asked, own, spaces) {
 // `text` is what reading REQUEST_FILE gave (null when it is not there). `answered` is the id
 // this viewer took last, `now` the time in milliseconds, `space` the viewer's space value
 // (null without one), `spaces` Herdr's spaces().
-// Returns { id, file } for a request to take, or null.
+// Returns { id, file, conversation } for a request to take (conversation null when it names
+// none), or null.
 export function requestFrom(text, { answered, now, space = null, spaces = [] }) {
   if (typeof text !== "string") return null;
   let request;
@@ -57,7 +60,8 @@ export function requestFrom(text, { answered, now, space = null, spaces = [] }) 
   const asked = request.space ?? null;
   if (asked !== null && typeof asked !== "string") return null;
   if (!forViewer(asked || null, space || null, spaces)) return null;
-  return { id, file };
+  const conversation = typeof request.conversation === "string" && request.conversation ? request.conversation : null;
+  return { id, file, conversation };
 }
 
 // Takes the waiting request, if there is one for this viewer. `files` is the data folder's
@@ -66,7 +70,7 @@ export function requestFrom(text, { answered, now, space = null, spaces = [] }) 
 // viewers woken by one command only the first gets it, and none gets it once open.sh has
 // given up and taken the name itself.
 // `space` and `spaces` are as for requestFrom.
-// Returns { id, file }, or null.
+// Returns { id, file, conversation }, or null.
 export async function takeRequest(files, { folder, answered, now, space, spaces }) {
   let text;
   try {

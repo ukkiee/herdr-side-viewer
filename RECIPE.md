@@ -122,16 +122,51 @@ The mod shows files, not agents, so it has no agent statuses.
 
 - **Opening.** A cmd-click on a path reaches the router through macOS. The router notes
   which app is in front and runs `open.sh <file> <front app>`. If that app's path contains
-  `Herdr.app` (or its name is `herdr-app`), `open.sh` reads the focused space from
+  `Herdr.app` (or its name is `herdr-app`), `open.sh` reads the focused space and the
+  focused pane (`focused_pane`, the conversation the path was clicked in) from
   `herdr-app status`. A space of this Mac (an id with no `/`) gets the file in a side
   viewer; a remote space (`<machine>/<id>`) sends it to the original app, since a viewer
   there shows that machine's files. Any other front app: the original app.
 - **Reuse.** A side viewer showing in the current tab takes the file: the pane count stays
   and only the content changes. With no viewer showing (none, or only in another tab), a
   new pane splits off to the right of the focused pane about 0.4 s later. A viewer takes
-  only a request for its own space (request.js): the request and the new pane's props carry
-  the space value, and a side without one (a viewer opened before spaces were sent) counts
-  as this Mac.
+  only a request for its own space (request.js): the request
+  (`{"id","file","at","space","conversation"}`) and the new pane's props
+  (`{file, space, id, conversation}`, `id` the request's id, naming this opening) carry the
+  space value, and a side without one (a viewer
+  opened before spaces were sent) counts as this Mac. `conversation` is the focused pane,
+  sent only when it is a plain id (`[A-Za-z0-9_-]`); with none (a layout's terminal block has
+  focus, `focused_pane` null) it is left out and the file opens all the same. A request
+  without a string `conversation` (an older router) is taken with none.
+- **Sent conversation** (sent-conversation.js). Herdr's shared state
+  `side-viewer.conversations` is `{ <tab id>: <pane id> }`: per tab, the conversation pane
+  that last sent a file to its viewers. A viewer that takes a request naming a conversation,
+  or first starts with an opening naming one (`afterRequest`, `afterStart`), writes that pane under the tab
+  `panes()` puts it in (nothing when `panes()` does not list it). Props carry the pane id
+  without its `<machine>/` prefix (ADR 0002); the viewer puts back the prefix its space id has
+  on this screen, and takes none while its space is not listed. A request naming none, or a
+  first start with an opening naming none, takes out the viewer's tab (`forgottenTabOf`: its
+  pane by `viewerPaneOf`, else the focused tab). Each opening counts once, whenever its copy
+  first starts (its tab may first show long after the split): the viewer adds `{ id, tab }`
+  to shared state `side-viewer.openings`, a list, latest last, where `tab` is the tab whose
+  entry it wrote or took out, or null while that tab is not known. Every opening of a tab `panes()`
+  lists is kept, so a viewer still on screen never loses its own; of the rest (tabs gone,
+  a remote tab hidden while its machine is cut off, or null), the latest 50 are kept. A bare
+  id in that list, as an earlier viewer kept it, counts as `{ id, tab: null }`. A copy that
+  starts again with an id already there (a mod file was saved, the app restarted and its tab
+  shows) neither writes nor takes out anything; if that id's `tab` is null (a bare id
+  included), it only fills in the tab `panes()` puts the props' conversation in, once
+  `panes()` lists that pane. It never fills it from the focus or a viewer found by it
+  (`viewerPaneOf` guesses the viewer's own pane from the focus, which may sit on another
+  tab's viewer), and an opening naming no conversation stays with no tab. A copy whose own
+  opening is left with no tab keeps it, and fills it in the same way when it takes a request
+  and that pane shows, without starting again; the props' conversation is not written again.
+  Props without an `id` (an older router's) change nothing. Each write also drops tabs `panes()`
+  no longer has, and the map and the list are set only when they change, since `setShared` draws every mod
+  again. The picker popup never writes it. The shell pane's folder and the picker's
+  conversation follow the tab's entry while that pane is a terminal in the tab; a pane that
+  closed or moved to another tab falls back to the tab's first agent terminal. One tab with
+  two viewers shares one entry.
 - **Falling back.** The file opens in its original app instead when `herdr-app` is not at
   `~/.local/bin/herdr-app`, the mod is not installed in the app home, the path holds a
   control character, `herdr-app status` fails, takes over 5 seconds or gives no plain space
@@ -141,7 +176,8 @@ The mod shows files, not agents, so it has no agent statuses.
 - **Path picker** (`cmd-o`, bound to `mod.open:side-viewer`). The copy Herdr opens as the
   popup (`props().overlay`) is the picker, not a viewer. Once, as it opens, it takes the
   conversation from `focused()` and `panes()` (path-picker.js `conversationOf`): a focused
-  terminal; for a focused side viewer, a terminal in its tab, an agent's first; anything else
+  terminal; for a focused side viewer, its tab's sent conversation (`shared`) while it is a
+  terminal there, else a terminal in its tab, an agent's first; anything else
   says `대화 터미널을 누른 뒤 다시 눌러 주세요`. The machine is the focused space's
   (machine.js). A machine `machines()` lists as `unavailable` gets the "can't reach" line at
   once. Otherwise, in order: the machine's home (`sh` there; a Windows machine fails here),
@@ -156,8 +192,12 @@ The mod shows files, not agents, so it has no agent statuses.
 - **Opening a pick** (main.js `openPicked`). With no viewer showing in the conversation's
   tab (`openTargetOf`; one behind another pane's zoom doesn't count), the popup closes and
   `pane.split {pane: <conversation>, direction: "right", mod: "side-viewer", props: {file,
-  space}}` runs. Otherwise the picker writes the same request as `open.sh`
-  (`{"id","file","at","space"}`, id `<seconds>-picker-<random>`), runs
+  space, conversation, id}}` runs (path-picker.js `pickedSplit`): `pane` is the
+  conversation's address on this screen, the props' `conversation` its id without the
+  `<machine>/` prefix, and `id` the opening's id. Otherwise the picker writes the
+  same request as `open.sh` (`pickedRequest`, `{"id","file","at","space","conversation"}`, id
+  `<seconds>-picker-<random>`, also the split's `id`, `conversation` the conversation's address on this screen, read
+  only by viewers on this screen), runs
   `side-viewer.show`, looks for `answer-<id>` 8 times every 50 ms, and closes once it is
   there. No answer: it takes the answer's name itself and splits as above. A failed request
   write splits too.
@@ -287,8 +327,9 @@ The mod shows files, not agents, so it has no agent statuses.
   {direction: "down", pane: <viewer>, argv: [<zsh> -c 'cd -- "$1" 2>/dev/null; exec
   "$2" -l' zsh <folder> <zsh>]}` (`<zsh>` is `/bin/zsh` on this Mac) and finds it by comparing
   `panes()` (up to 5 s). The folder: in a viewer tab
-  the document's; beside a conversation the `cwd` of a terminal pane in the same tab, an
-  agent's first; else the home of the viewer's machine. The command (without its last
+  the document's; beside a conversation the `cwd` of a terminal pane in the same tab other
+  than this viewer's shell pane, the tab's sent conversation first, then an agent's; else
+  the home of the viewer's machine. The command (without its last
   newline) is written to the handoff file. On this Mac that is
   `data/side-viewer/shell/<terminal>.txt` (folder made with `umask 077`; `writeTextFile`
   with the file's current text, or null, as `expected`, tried twice). On another machine it
@@ -300,12 +341,24 @@ The mod shows files, not agents, so it has no agent statuses.
   <terminal> ctrl+alt+f12`. Instead of that key, a zsh not yet prepared gets the prepare line
   with `hc send`: a zle widget `_side_viewer_insert` that pushes a draft aside (`zle
   push-line`), reads the file into `BUFFER`, puts the cursor at its end and removes the file,
-  bound to `\e[24;7~` in the emacs, viins and vicmd keymaps; then `print -rz` of the file's
-  text (shown at the next prompt, above a draft pushed aside before), the file removed, and
-  `clear`. The viewer remembers the pid and argv of the zsh it prepared (`hc get`'s
-  `foreground` at the prompt); a shell just opened is prepared without alt+q, a zsh with
-  another pid or argv in the same pane, or one that left an earlier file, is prepared again
-  after `hc keys <terminal> alt+q`. Then the viewer waits for the file to go (500 ms after
+  bound to `\e[24;7~` in the emacs, viins and vicmd keymaps; then `command rm -f -- <keymap
+  file>` and `{ print -r -- <mark>; bindkey -lL main } >| <keymap file> 2>/dev/null` (the
+  keymap file is the handoff file's name with `.keymap`, in the same folder; `<mark>` is new
+  for every press, the time and a random part in `[A-Za-z0-9_-]`; the file is removed first,
+  so a read-only one is written anew), then `print -rz` of the file's text (shown at the next prompt, above a
+  draft pushed aside before), the file removed, and `clear`. The viewer remembers the pid and
+  argv of the zsh it prepared (`hc get`'s `foreground` at the prompt), and, once a prepare
+  line's handoff file is taken, reads the keymap file on that machine, removes it (`rm -f`)
+  and remembers its keymap only when the file's first line is this press's mark and exactly
+  one line follows: `bindkey -A emacs main` is emacs, `bindkey -A viins main` or
+  `bindkey -A vicmd main` is vi. Another mark or none (an old file the line could neither
+  remove nor write over), anything else after the mark, more lines, no file or a failed read
+  is not known. A key
+  press, or a prepare line not taken, leaves it as it was; a shell just opened starts not
+  known. A shell just opened is prepared with no key first; a zsh with another pid or argv in
+  the same pane, or one that left an earlier file, is prepared again after `hc keys
+  <terminal> alt+q` when the remembered keymap is emacs, else after `hc keys <terminal>
+  ctrl+c`, with no wait before the line. Then the viewer waits for the file to go (500 ms after
   the key, 3 s after the prepare line, looking every 50 ms; for a shell on another machine
   1500 ms, 5000 ms and every 100 ms, each look a file read there; the waits are clock time,
   the reads included). A file still there is removed (`rm -f` on its machine, also when an
@@ -327,7 +380,24 @@ The mod shows files, not agents, so it has no agent statuses.
   remembered for that machine. When none is found, no pane opens, the machine is asked again
   at the next press, and the notification is `터미널에 넣지 못했습니다` / `그 기계에 zsh가 없어 넣을 수 없습니다. 복사 버튼으로 붙여
   넣으세요.`
-  The next `>_` uses the same pane while it shows the same terminal. When `hc get`'s `foreground` is not zsh, nothing is sent and a Herdr
+  The next `>_` uses the same pane while it shows the same terminal. `hc get`'s `foreground`
+  tells the shell's state: none yet, or exactly the split's argv above (any folder), is
+  starting, asked again every 100 ms for up to 5 s. A zsh's other arguments are read in order
+  as zsh reads them: a word starting with `-` or `+` is options (a `--name` long option is a
+  name alone; in a short bundle, letters and digits, an `o` takes the rest, or the next word
+  when nothing is left, as an option's name, so `-oemacs`, `-foemacs` and `-o emacs` hold no
+  `c`), and the word `--` or `-`, or the first word that is not an option, ends them. A zsh
+  with the `c` flag on runs a line (`-c`, `-fc`, `-ic`, `-4c`, `-cf`); one with neither `c`
+  nor `s` and an argument left runs that argument as a script file (`zsh task.zsh`,
+  `zsh -o emacs task.zsh`). Either is busy and gets no key and no prepare line. With `s`, or
+  no argument left, it is at its prompt and ready (`zsh -l`, `-zsh`, `zsh -f`, `zsh --emacs`,
+  `zsh -s foo`, and `zsh -fis -- -c`, whose `-c` is an argument). Anything else is busy too,
+  any other `-c` run included (`python3 -c …`, `sh -c 'a; b'`). This reading is exact only
+  for `zsh <file>`, `-c`, a one-dash short bundle holding `c`, arguments after `--`, arguments
+  after `-s`, and programs other than zsh. Other zsh option syntax (`+c`, `--no-stdin`,
+  `--stdin`, `--emulate`, `-b`, an option turned on by name such as `-o stdin`) can be read
+  wrong: a zsh running something can count as ready, or one at its prompt as busy.
+  A busy shell gets nothing at once, no pane opens, and a Herdr
   notification says `터미널에 넣지 않았습니다` / `셸에서 다른 프로그램(<name>)이 실행
   중입니다. 끝난 뒤 다시 누르세요.`; when no pane can be opened or found,
   `터미널에 넣지 못했습니다` / `셸 pane을 열거나 찾지 못했습니다.`.
@@ -406,8 +476,10 @@ The mod shows files, not agents, so it has no agent statuses.
   "frame": "none" } }` (focusable for cmd+S; the overlay is the path picker, the whole
   window, with the card drawn by the mod: a popup's `width` in px doesn't shrink with the
   window). Opened with `pane.split {direction: "right", mod: "side-viewer", props:
-  {file, space}}`; `props.file` is the absolute path to show, `props.space` the space id
-  without its `<machine>/` prefix (no machine name, ADR 0002). A viewer tab's props are
+  {file, space, id, conversation?}}`; `props.file` is the absolute path to show, `props.space`
+  the space id without its `<machine>/` prefix (no machine name, ADR 0002), `props.id` the
+  opening's id (`[A-Za-z0-9_-]`, the request's id), `props.conversation` the pane id of the conversation that sent
+  it, also without its `<machine>/` prefix. A viewer tab's props are
   `{file, viewerTab: true, handoff?, space?}`.
 - `keys.json` (repository root): `{"global": {"cmd-o": "mod.open:side-viewer"}}`, the key
   `install.sh` merges into the person's.
@@ -429,7 +501,9 @@ The mod shows files, not agents, so it has no agent statuses.
   `markdown-blocks.js` (markdown → blocks), `code-blocks.js` (fence language → label,
   colors, shell; wrapped rows and editor height; card fill), `markdown-images.js` (picture
   paths and sizes), `svg-preview.js` (edited svg previews), `terminal-insert.js` (`>_`'s
-  folder, shell state, commands, notices), `viewer-tab.js` (props, handoff file, tab
+  folder, shell state, commands, notices), `sent-conversation.js` (the shared-state keys
+  `side-viewer.conversations` and `side-viewer.openings`; taking an opening once,
+  remembering, forgetting and finding a tab's sent conversation), `viewer-tab.js` (props, handoff file, tab
   placement and name), `checkbox.js` (turning over a task line), `i18n.js` (the language
   from `AppleLanguages`, the asking-again delays, the translator `tr`), `machine.js` (the
   space value, the viewer's machine, the existence and home commands and their answers,
@@ -456,10 +530,12 @@ The mod shows files, not agents, so it has no agent statuses.
 - `mods/side-viewer/open.sh`: the branch the router calls. It first reads the focused
   space from `herdr-app status` (time limit `SIDE_VIEWER_TIMEOUT`, 5 seconds) and sends the
   file to the original app for a remote space or an answer without a plain id. Then it writes
-  `request.json` (`{"id","file","at","space"}`) into the data folder, runs
+  `request.json` (`{"id","file","at","space","conversation"}`, `conversation` the status's
+  `focused_pane` when it is a plain id, else left out) into the data folder, runs
   `herdr-app do side-viewer.show`, waits 8 × 0.05 s for the viewer's `answer-<id>` file,
   and otherwise runs `herdr-app do pane.split --direction right --mod side-viewer --props
-  '{"file":"…","space":"…"}'`. Answer files older than a minute are deleted on the next run.
+  '{"file":"…","space":"…","id":"…","conversation":"…"}'` (`id` the request's id,
+  `conversation` left out the same way). Answer files older than a minute are deleted on the next run.
 - `mods/side-viewer/router/`: `main.swift` (the app: receives files, reads and sets one
   default app at a time), `takeover.sh` (make-default, restore, status; `system_lang` picks
   the language and `say` holds every line it prints in both), `open-original.sh`,
@@ -497,20 +573,26 @@ The mod shows files, not agents, so it has no agent statuses.
   for the language; `install.sh` uses `node` to merge `keys.json`.
 - Files outside the mod folder, all under the app home's `data/side-viewer/`:
   `original-apps.tsv` (`<extension><TAB><bundle id>` per line), `request.json`
-  (`{"id","file","at","space"}`, from `open.sh` or the picker), `answer-<id>`,
+  (`{"id","file","at","space","conversation"}`, from `open.sh` or the picker; `conversation`
+  only when there is one), `answer-<id>`,
   `images/<path hash>-<bytes>-<modified>.<kind>` (copies of images and of
   pictures in markdown, mode 600; for another machine the hash is of `<machine>:<path>`, and
   `<copy>.<pid>.part` holds the bytes while they arrive; one a killed copy left is swept
   with the copies), `previews/` (edited svg sources, same names, folder mode
   700), `handoff-<id>.json` (`{"id","file","at","edit"}`, deleted by the tab that reads
   it), `shell/<terminal>.txt` (the command for `>_` to a shell on this Mac, folder mode
-  700, deleted by the shell's widget as it reads it), and `remote-saves/<ms>-<random>.txt` (the text of a save
+  700, deleted by the shell's widget as it reads it), `shell/<terminal>.keymap` (a prepare
+  line's mark and its zsh's keymap, written there, deleted by the viewer once it reads it after that
+  line's command is taken; one a prepare line not taken left is written over by the next),
+  and `remote-saves/<ms>-<random>.txt` (the text of a save
   to another machine, folder mode 700, deleted when the write ends; one older than 10
   minutes, left by a quit, goes at the next remote save). A copy or preview is deleted when a newer one of the same file replaces it, or when
   not shown for 30 days. The viewer reads whichever file it is asked to show and writes the
   file it saves, on its machine. On another machine `>_` writes
   `~/.cache/side-viewer/shell/<terminal>.txt` there instead (folder mode 700 and file mode
-  600, both set on every write, deleted the same way); nothing of it lands in this Mac's data folder.
+  600, both set on every write, deleted the same way), and its prepare line
+  `~/.cache/side-viewer/shell/<terminal>.keymap` beside it (read and deleted the same way);
+  nothing of it lands in this Mac's data folder.
 - `install.sh`: runs `herdr-app check` on the mod folder, runs `build.sh`, then copies the
   mod folder into the app home (`keys-merge.js` goes along, unused there). Then, under
   `Shortcut keys`, `node` runs `keys-merge.js` on the app home's `keys.json` and the
@@ -597,10 +679,19 @@ Platform:
   widget's push-line works in every keymap, so a vi-keymap draft is never run. zsh only.
   The one line still sent with `hc send` is the prepare line, and it puts that press's command
   in itself (`print -rz`), so no key can arrive while zle is not reading and be echoed as
-  `^[[24;7~`. It goes to a shell just opened (no draft yet), or after alt+q when the pane's
-  zsh looks new (`zsh` run there, or `exec zsh` with other argv) or left the last file. In
-  that case alt+q is not push-line in a vi keymap, so a draft can run with the prepare line,
-  and `clear` wipes that shell's screen (README, Limits). `exec` keeps the pid, so `exec zsh`
+  `^[[24;7~`. It goes to a shell just opened (no draft yet), or after a key that clears the
+  draft when the pane's zsh looks new (`zsh` run there, or `exec zsh` with other argv) or
+  left the last file, and `clear` wipes that shell's screen (README, Limits). alt+q is
+  push-line in emacs but Esc then q in vi, which can run a draft with the prepare line, so
+  alt+q goes only when the last prepare line there left emacs; vi or not known gets ctrl+c,
+  which drops the draft without running it. `hc send` waits for the output to settle (about
+  200 ms) before it pastes, so the line after ctrl+c needs no wait of its own. The keymap
+  is the last prepared zsh's, read when it was prepared: a new zsh with
+  vi keys after one prepared with emacs keys (`bindkey -v` run after the prepare, or other
+  settings) still gets alt+q (README, Limits). A terminal whose interrupt character was
+  changed (`stty intr`) does not clear its input line on ctrl+c, so with vi or not known a
+  draft can run along with the prepare line (README, Limits): the viewer checks only that
+  `hc keys` succeeded. `exec` keeps the pid, so `exec zsh`
   with the same argv as the zsh prepared is only caught after its press: the unbound key
   leaves `;7~` in the input line and the file stays, which the wait above turns into a
   notification and a prepare on the next press. A shell on another machine reads its file
@@ -631,6 +722,9 @@ Platform:
 - `setShared` redraws every mod, which is how one viewer's language read reaches all of
   them; there is no per-copy language. Whether `side-viewer.lang` survives an app restart
   was not seen: if it doesn't, a viewer can show English for a moment until its own read.
+- `side-viewer.openings` is kept in Herdr's `shared.json` (persisted, `herdr.d.ts`). When
+  Herdr starts with it empty (a broken file it set aside), each viewer copy that starts again
+  takes its opening once more, and the tab's sent conversation can go back to it.
   The English header (`Changed on disk` with `Reload` and `Overwrite`) in a narrow pane and
   the English notifications at Herdr's notification width were not seen either.
 
@@ -748,7 +842,7 @@ Limits and assumptions:
 
 Each step is one check, done by hand in the app; nothing drives the Herdr window. The
 words on screen and the command output are as a Korean screen shows them (macOS's first
-preferred language Korean); steps 45 and 46 check English. Step 67 gives the extensions
+preferred language Korean); steps 45 and 46 check English. Step 69 gives the extensions
 back, so it comes last.
 
 ### Install, router and viewing
@@ -1176,9 +1270,54 @@ echo 'docs/samples/code-sample.md:12 and `box.svg`'
     # No such file or directory, or only other terminals' files
     ```
 
+### Shell pane keymaps
+
+Step 67 is in a space on this Mac, in the shell pane below the side viewer beside the
+conversation (step 35).
+
+67. A new zsh is prepared by the keymap of the one prepared before it. Clear the line
+    (ctrl+C) here and below. The draft is a command that leaves a marker file only if it
+    runs, since the prepare line's `clear` would wipe anything it printed. It ends with `;`
+    so that, if it runs joined to the prepare line, `touch` still runs and leaves the file.
+    - Run `rm -f /tmp/side-viewer-check-draft-ran` first.
+    - Run `zsh -f -o emacs` and click `>_` with the line empty: the command goes in. Clear
+      the line, then run `ls ~/.config/herdr-app/data/side-viewer/shell/`: there is no
+      `.keymap` file for this pane's terminal, as the viewer read and deleted it.
+    - Run `zsh -f -o emacs` again, type `touch /tmp/side-viewer-check-draft-ran;` without
+      Enter and click `>_`: the input line holds the command. Clear it: the `touch` draft
+      comes back at the next prompt. Clear that too, then run `ls
+      /tmp/side-viewer-check-draft-ran`: no such file, so the draft did not run.
+    - Clear the line, run `zsh -f -o vi` and click `>_` with the line empty: the command
+      goes in. Clear the line.
+    - Run `zsh -f -o vi` again, type `touch /tmp/side-viewer-check-draft-ran;` without Enter
+      (insert mode) and click `>_`: the input line holds the command. Clear it: the next
+      prompt is empty, as the draft was erased. Run `ls /tmp/side-viewer-check-draft-ran`: no
+      such file, so the draft did not run.
+    - Clear the line, run `rm -f /tmp/side-viewer-check-draft-ran`, and run `exit` four
+      times, back to the shell pane's first zsh.
+
+### Two conversations in one tab
+
+Step 68 is in a space on this Mac, with the router built from this checkout (`./install.sh`).
+In one tab put two agent conversations side by side, A started in `~/side-viewer-check` and
+B in the repository, and have each print the absolute path of the repository's
+`docs/samples/code-sample.md` and one path of its own that the other did not print. Close
+any side viewer and shell pane in that tab first.
+
+68. A side viewer follows the conversation that last sent it a file.
+    - In B, cmd-click the code sample: a side viewer opens right of B. Click `>_` on a
+      `Shell` card, clear the line (ctrl+C) and run `pwd`: B's folder. Click the side viewer
+      and press `cmd-o`: the rows hold B's own path, not A's. Esc.
+    - Close the shell pane. In A, cmd-click the code sample: the side viewer takes it (the
+      pane count stays). `>_`, ctrl+C, `pwd`: A's folder. Click the viewer, `cmd-o`: A's
+      own path is listed, not B's. Esc.
+    - Close the shell pane, then close A's pane. Click the viewer, `>_`, ctrl+C, `pwd`: B's
+      folder (the tab's agent). Click the viewer, `cmd-o`: B's own path is listed.
+    - Close the shell pane and the tab. `herdr-app status` reports no mod error.
+
 ### Giving the extensions back
 
-67. `router --restore` announces its windows, and exactly that many follow, each just after
+69. `router --restore` announces its windows, and exactly that many follow, each just after
     its line `확인 창 i/N: <extensions> (지금 Side Viewer Router → <original app>)` (i from 1
     to N in order, N the first line's, the extensions that window's); pick the original
     app in each (the button that names the other app, not the router). `바뀜` lists only

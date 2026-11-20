@@ -6,26 +6,22 @@
 // shell's handoff file. A zsh not yet prepared gets a line (prepareLine) that defines a zsh
 // widget on a key nobody uses and puts this first command in itself; later presses only
 // press that key. No line is left to run, nothing stays on screen, and a draft is pushed
-// aside in any keymap.
+// aside in any keymap. A prepare line also leaves the zsh's keymap in a file beside the
+// handoff file, so preparing a new zsh in that terminal later clears a draft without running
+// it (insertPlan).
 import { wordsOf } from "./i18n.js";
 import { saveFailureOf, unavailable } from "./remote-results.js";
 
-// The folder that holds the handoff files, under the app's folder `app` (appHome()).
-export const insertFolderOf = (app) => `${app}/data/side-viewer/shell`;
-
-// The handoff file of terminal `terminal`. One per terminal, so two viewers' shells never share
-// one; a remote address's "/" would make a subfolder.
-export const insertFileOf = (app, terminal) =>
-  `${insertFolderOf(app)}/${safeName(terminal)}.txt`;
-const safeName = (terminal) => terminal.replace(/[^A-Za-z0-9_-]/g, "_");
-
-// The handoff folder and file, { folder, file }, for the shell at hc address `terminal`. A zsh
-// reads the file on its own machine: here the app's data folder (`app`, appHome()), on another
-// machine `.cache/side-viewer/shell` in its home (`home`, that machine's home folder).
+// The handoff folder, file and keymap file, { folder, file, keymapFile }, for the shell at hc
+// address `terminal`. A zsh reads and writes them on its own machine: here the app's data
+// folder (`app`, appHome()), on another machine `.cache/side-viewer/shell` in its home (`home`,
+// that machine's home folder). The keymap file is where a prepare line leaves the zsh's keymap.
+// One pair per terminal, so two viewers' shells never share one; a remote address's "/" would
+// make a subfolder, so it becomes "_".
 export function handoffOf({ terminal, app, home }) {
-  if (!isRemote(terminal)) return { folder: insertFolderOf(app), file: insertFileOf(app, terminal) };
-  const folder = `${home}/.cache/side-viewer/shell`;
-  return { folder, file: `${folder}/${safeName(terminal)}.txt` };
+  const folder = isRemote(terminal) ? `${home}/.cache/side-viewer/shell` : `${app}/data/side-viewer/shell`;
+  const name = `${folder}/${terminal.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+  return { folder, file: `${name}.txt`, keymapFile: `${name}.keymap` };
 }
 
 // Run on the other machine as `sh -c HANDOFF_THERE sh <folder> <file> <text>`: the handoff file
@@ -44,19 +40,45 @@ const WIDGET = "_side_viewer_insert";
 // draft aside with push-line (zsh brings it back at the next prompt), puts the file's text in
 // the input line with the cursor at its end, and removes the file so a stray press puts nothing
 // in. It is bound in the vi keymaps too, so a draft there is never run.
+// It writes this press's mark `mark` and then the zsh's main keymap (`bindkey -lL main`) to
+// `keymapFile`, even under noclobber, so the viewer knows how to clear a draft the next time it
+// prepares a zsh there (keymapOf). It removes the old keymap file first, so a read-only one is
+// written anew; one it can neither remove nor write over keeps an earlier press's mark, and the
+// viewer takes its keymap as not known. It does that before it removes the handoff file, since
+// the viewer reads the keymap file once the handoff file is gone.
 // The line then puts this press's text in itself with `print -z`, which zle shows at the next
 // prompt: a key sent right after the line could reach the shell before zle reads again and be
 // echoed as "^[[24;7~". A draft pushed aside before the line sits under it on the buffer stack,
 // so it comes back after the command. `clear` wipes the line from the screen; the leading
 // space keeps it out of the history where histignorespace is on.
-export function prepareLine(file) {
-  const bind = (keymap) => `bindkey -M ${keymap} '\\e[24;7~' ${WIDGET};`;
+export function prepareLine(file, keymapFile, mark) {
+  const bind = (name) => `bindkey -M ${name} '\\e[24;7~' ${WIDGET};`;
   const path = quoted(file);
   return ` ${WIDGET}() { local f=${path}; [[ -r "$f" ]] || return 0; [[ -n $BUFFER ]] && zle push-line;` +
     ` BUFFER="$(<"$f")"; command rm -f -- "$f"; CURSOR=$#BUFFER }; zle -N ${WIDGET};` +
     ` ${bind("emacs")} ${bind("viins")} ${bind("vicmd")}` +
+    ` command rm -f -- ${quoted(keymapFile)}; { print -r -- ${quoted(mark)}; bindkey -lL main } >| ${quoted(keymapFile)} 2>/dev/null;` +
     ` [[ -r ${path} ]] && print -rz -- "$(<${path})"; command rm -f -- ${path}; clear`;
 }
+
+// The keymap this press's prepare line left in the keymap file, from its text `text` (null:
+// no file) and the press's mark `mark` (prepareLine): "emacs", "vi" (insert or command mode),
+// or null when it can't be told. The file's first line must be `mark`: a file an earlier press
+// left, one this line could neither remove nor write over, carries another mark or none, and
+// its keymap may be another zsh's. Then `bindkey -lL main` prints the keymap main is linked to
+// as one line, `bindkey -A <name> main`; any other text, more lines included, is not known.
+export function keymapOf(text, mark) {
+  if (typeof mark !== "string" || !MARK.test(mark)) return null;
+  const head = `${mark}\n`;
+  const body = String(text ?? "");
+  if (!body.startsWith(head)) return null;
+  const name = /^bindkey -A (\S+) main\n?$/.exec(body.slice(head.length))?.[1];
+  if (name === "emacs") return "emacs";
+  return name === "viins" || name === "vicmd" ? "vi" : null;
+}
+
+// A press's mark: letters, digits, "_" and "-", so it stays one line of the keymap file.
+const MARK = /^[A-Za-z0-9_-]+$/;
 
 // What goes into the handoff file for `command`: the block as written, without its last newline.
 export const insertText = (command) => command.replace(/\n+$/, "");
@@ -93,25 +115,33 @@ export const machineOfAddress = (address) => (isRemote(address) ? address.slice(
 
 // What to do to put the handoff file's text into terminal `terminal`, as
 // { commands: hc argument lists in order, notice: what to tell instead, or null,
-//   wait: how long the handoff file may stay before the press counts as not taken (ms) }.
+//   wait: how long the handoff file may stay before the press counts as not taken (ms),
+//   kind: "key" (only the key), "prepare" (a prepare line), or null (nothing goes out) }.
+//   file, keymapFile: the shell's handoff and keymap files (handoffOf); mark: this press's
+//   mark, which a prepare line writes in the keymap file (prepareLine), new for every press;
 //   state: shellState() of the terminal now; prepared: shellOf() the zsh last prepared there,
-//   or null; fresh: the shell was just opened by this viewer, so it has no draft;
+//   or null; keymap: what the last prepare line there left (keymapOf), or null;
+//   fresh: the shell was just opened by this viewer, so it has no draft;
 //   stale: an earlier press's handoff file was still there, so that zsh did not take it.
 // A zsh other than the one prepared, or one that left the file, lacks the widget, so it is
-// prepared again. Its draft is pushed aside with alt+q first, or `hc send` would run it
-// together with the prepare line; in a vi keymap alt+q is not push-line, so that one case can
-// still run a draft. A fresh shell gets no alt+q: sent before zsh reads its keys it would only
-// show up on screen as "^[q". A shell on another machine (its address's prefix) is treated the
-// same, with that machine's waits (waitsOf); `file` is then the handoff file there.
+// prepared again, and a draft there must not reach `hc send`, which would run it together with
+// the prepare line. In emacs alt+q pushes it aside, and zsh brings it back after the command.
+// In vi alt+q is Esc then q, which can run it, so a vi zsh, or one whose keymap is not known,
+// gets ctrl+c: the draft is dropped, never run. No wait is needed before the line, as `hc send`
+// waits for the output to settle first. A fresh shell gets neither: sent before zsh reads its
+// keys, alt+q would only show up on screen as "^[q". A shell on another machine (its address's
+// prefix) is treated the same, with that machine's waits (waitsOf); the files are then there.
 // tr: the translator the notice is worded with (i18n.js).
-export function insertPlan({ terminal, file, state, prepared, fresh, stale, tr }) {
-  if (state.state === "busy") return { commands: [], notice: noticeOf(state, tr), wait: 0 };
+export function insertPlan({ terminal, file, keymapFile, mark, state, prepared, keymap, fresh, stale, tr }) {
+  if (state.state === "busy") return { commands: [], notice: noticeOf(state, tr), wait: 0, kind: null };
   const waits = waitsOf(machineOfAddress(terminal));
   if (!stale && sameShell(prepared, state)) {
-    return { commands: [["keys", terminal, INSERT_KEY]], notice: null, wait: waits.key };
+    return { commands: [["keys", terminal, INSERT_KEY]], notice: null, wait: waits.key, kind: "key" };
   }
-  const prepare = ["send", terminal, prepareLine(file)];
-  return { commands: fresh ? [prepare] : [["keys", terminal, "alt+q"], prepare], notice: null, wait: waits.prepare };
+  const prepare = ["send", terminal, prepareLine(file, keymapFile, mark)];
+  if (fresh) return { commands: [prepare], notice: null, wait: waits.prepare, kind: "prepare" };
+  const clear = keymap === "emacs" ? "alt+q" : "ctrl+c";
+  return { commands: [["keys", terminal, clear], prepare], notice: null, wait: waits.prepare, kind: "prepare" };
 }
 
 // After a press, whether the zsh took it: `left` says the handoff file was still there once
@@ -135,15 +165,59 @@ const quoted = (text) => `'${text.replaceAll("'", "'\\''")}'`;
 // only zsh has zle widgets. A ready shell's pid and arguments tell one zsh from another in the
 // same terminal (shellOf).
 // A shell from splitOf is "starting" until its short zsh has become the login shell, and so
-// is a terminal hc has no foreground for yet.
+// is a terminal hc has no foreground for yet. Only splitOf's exact argv counts as that short
+// zsh (any folder): any other zsh running a line or a script (runsSomething) is a program the
+// person started, and a line or key sent to it would reach that program.
 //   { state: "ready", pid, argv } | { state: "busy", program } | { state: "starting" } | { state: "gone" }
 export function shellState(info) {
   if (info?.state !== "live") return { state: "gone" };
   const foreground = info.foreground;
-  if (!foreground || foreground.argv?.[1] === "-c") return { state: "starting" };
+  if (!foreground || isStartingZsh(foreground.argv)) return { state: "starting" };
   const program = String(foreground.name ?? "").split("/").pop();
-  return /^-?zsh$/.test(program) ? { state: "ready", pid: foreground.pid, argv: foreground.argv } : { state: "busy", program };
+  const runs = runsSomething((foreground.argv ?? []).slice(1));
+  return /^-?zsh$/.test(program) && !runs ? { state: "ready", pid: foreground.pid, argv: foreground.argv } : { state: "busy", program };
 }
+
+// Whether zsh arguments `args` (argv without argv[0]) make it run something rather than sit at
+// a prompt, read in order as zsh reads them. A word starting with `-` or `+` is options: a
+// `--name` long option is a name alone; a short bundle's letters and digits turn flags on
+// (`-`) or off (`+`), and an `o` in it takes the rest, or the next word when nothing is left,
+// as an option's name, so the c of `-oemacs` runs nothing. The word `--` or `-`, or the first
+// word that is not an option, ends them, and what follows are arguments. The c flag runs a
+// line (`-c`, `-fc`, `-4c`); without c or s, the first argument is a script file it runs
+// (`zsh task.zsh`). With s, or no argument left, it reads commands from the terminal, so the
+// `-c` of `zsh -fis -- -c` is only an argument.
+function runsSomething(args) {
+  const flags = new Set();
+  let at = 0;
+  for (; at < args.length; at++) {
+    const word = String(args[at]);
+    if (word === "--" || word === "-") {
+      at++;
+      break;
+    }
+    if (!/^[-+]/.test(word)) break;
+    if (word.startsWith("--")) continue;
+    const on = word[0] === "-";
+    const letters = word.slice(1);
+    for (let i = 0; i < letters.length; i++) {
+      const letter = letters[i];
+      if (letter === "o") {
+        if (i === letters.length - 1) at++;
+        break;
+      }
+      if (!/[A-Za-z0-9]/.test(letter)) continue;
+      if (on) flags.add(letter);
+      else flags.delete(letter);
+    }
+  }
+  if (flags.has("c")) return true;
+  return !flags.has("s") && at < args.length;
+}
+
+// splitOf's argv: [zsh, "-c", START_SCRIPT, "zsh", folder, zsh].
+const isStartingZsh = (argv) =>
+  Array.isArray(argv) && argv.length === 6 && argv[1] === "-c" && argv[2] === START_SCRIPT && argv[3] === "zsh" && argv[5] === argv[0];
 
 // The state of the terminal on machine `machine` (null: this Mac) from `hc get <t> --json`'s
 // answer `answer` ({ code, stdout, stderr }): shellState of what it printed, or, when it failed,
@@ -221,9 +295,13 @@ export function splitOf(viewer, folder, zsh = ZSH) {
   return {
     direction: "down",
     pane: viewer,
-    argv: [zsh, "-c", 'cd -- "$1" 2>/dev/null; exec "$2" -l', "zsh", folder, zsh],
+    argv: [zsh, "-c", START_SCRIPT, "zsh", folder, zsh],
   };
 }
+
+// The short zsh's line in splitOf. shellState tells that zsh by this exact text, so the two
+// must share it.
+const START_SCRIPT = 'cd -- "$1" 2>/dev/null; exec "$2" -l';
 
 // Where a zsh may be when the login shell's PATH has none, in the order they are taken.
 const ZSH_PATHS = ["/bin/zsh", "/usr/bin/zsh", "/usr/local/bin/zsh", "/opt/homebrew/bin/zsh"];
@@ -247,12 +325,13 @@ export function zshOf(stdout) {
 }
 
 // The folder a new shell pane starts in. In a viewer tab, the shown document's folder. Beside
-// a conversation, that conversation terminal's live folder: the viewer was split off it, so it
-// is a terminal pane in the viewer's own tab, an agent's before a plain shell's, and never the
-// shell this viewer opened. Home when there is none.
+// a conversation, that conversation terminal's live folder: a terminal pane with a folder in the
+// viewer's own tab, never the shell this viewer opened. Of those, the sent conversation
+// (sent-conversation.js) first, then an agent's before a plain shell's. Home when there is none.
 //   viewer: the viewer's pane id or null; panes: herdr panes(); shell: { pane, terminal } or null;
+//   conversation: the sent conversation's pane id or null;
 //   home: the home folder of the viewer's machine, another machine's when the shell opens there
-export function shellFolder({ viewerTab, file, viewer, panes, shell, home }) {
+export function shellFolder({ viewerTab, file, viewer, panes, shell, conversation: sent = null, home }) {
   if (viewerTab) {
     if (!file) return home;
     const folder = file.slice(0, file.lastIndexOf("/"));
@@ -261,7 +340,7 @@ export function shellFolder({ viewerTab, file, viewer, panes, shell, home }) {
   const tab = panes.find((p) => p.pane === viewer)?.tab;
   if (!tab) return home;
   const terminals = panes.filter((p) => p.tab === tab && p.terminal && p.cwd && p.pane !== shell?.pane);
-  const conversation = terminals.find((p) => p.program?.agent || p.status) ?? terminals[0];
+  const conversation = terminals.find((p) => p.pane === sent) ?? terminals.find((p) => p.program?.agent || p.status) ?? terminals[0];
   return conversation?.cwd ?? home;
 }
 

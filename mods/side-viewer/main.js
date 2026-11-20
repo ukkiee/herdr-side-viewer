@@ -1,5 +1,5 @@
 // Side viewer: shows one file in a pane beside the conversation. open.sh opens it with
-// `pane.split {direction: "right", mod: "side-viewer", props: {file, space?}}`.
+// `pane.split {direction: "right", mod: "side-viewer", props: {file, space?, id, conversation?}}`.
 // This file holds the viewer's state and most of its talk with Herdr: reading, saving,
 // taking requests from open.sh, watching and viewer tabs. The shown file is read on the
 // machine of the viewer's space (machine.js) through file-access.js. Two parts that keep their
@@ -10,7 +10,8 @@
 // The decisions live in modules without Herdr imports, each with its own tests: document.js,
 // views.js, image-copies.js, svg-preview.js, history.js, request.js, links.js, original.js,
 // edit-state.js, viewer-tab.js, checkbox.js, markdown-blocks.js, code-blocks.js,
-// markdown-images.js, terminal-insert.js, machine.js and remote-results.js.
+// markdown-images.js, terminal-insert.js, sent-conversation.js, machine.js and
+// remote-results.js.
 import { View } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
 import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes, notify, shared, setShared, machines, closeOverlay } from "herdr";
@@ -39,7 +40,8 @@ import { MarkdownImages } from "./markdown-image-loader.js";
 import { LANGS, translator, systemLang, askAgainAfter } from "./i18n.js";
 import { machineOf } from "./machine.js";
 import { accessOf } from "./file-access.js";
-import { openTargetOf } from "./path-picker.js";
+import { openTargetOf, pickedRequest, pickedSplit } from "./path-picker.js";
+import { CONVERSATIONS_KEY, OPENINGS_KEY, afterStart, afterRequest } from "./sent-conversation.js";
 import { PathPicker } from "./picker-view.js";
 
 // Where the system's language is remembered in Herdr's shared state ("ko" | "en").
@@ -53,6 +55,12 @@ const REMOTE_CHECK_MS = 3000;
 const REMOTE_CHECK_TIMEOUT_MS = 10000;
 // What a read was on (readOn) when the viewer's space was not listed: no access.
 const UNLISTED = "unlisted";
+
+// Sets shared state `key` only when `after` differs from `before`: setting it draws every mod again.
+function setChanged(key, before, after) {
+  if (JSON.stringify(after) !== JSON.stringify(before)) setShared(key, after);
+}
+
 // How long a new viewer tab is looked for in spaces(), and how often.
 const PLACE_WAIT_MS = 3000;
 const PLACE_STEP_MS = 50;
@@ -135,6 +143,10 @@ export default class SideViewer extends View {
     // The space value its opener gave (machine.js), which never changes. Without one the
     // viewer is on this Mac.
     this.space = props()?.space ?? given?.space ?? null;
+    // A viewer split off a conversation carries its opening (open.sh, the path picker). Only
+    // the first start of that opening changes the sent conversation (sent-conversation.js
+    // takeOpening), however often this copy starts again.
+    this.takeOpened(given);
     // A viewer tab starts with an empty history, as every new copy does: back only returns
     // to files opened in this tab.
     this.show(given?.file ?? props()?.file, cx);
@@ -281,6 +293,7 @@ export default class SideViewer extends View {
         const request = await takeRequest(files, { folder, answered: this.answered, now: Date.now(), space: this.space, spaces: spaces() });
         if (!request) continue;
         this.answered = request.id;
+        this.keepSent(request.conversation);
         this.show(request.file, cx);
         this.nameTab();
         this.watch(cx);
@@ -288,27 +301,55 @@ export default class SideViewer extends View {
     });
   }
 
+  // The sent conversation (sent-conversation.js afterRequest): `conversation`, the pane that
+  // sent this viewer a file, is remembered for its tab; null, a request that names none, takes
+  // this viewer's tab out. This copy's opening still kept with no tab (this.unfilled) gets the
+  // tab of the conversation its props named once that pane shows. Setting shared state draws
+  // every mod again, so each value is set only when it changes.
+  keepSent(conversation) {
+    const conversations = shared(CONVERSATIONS_KEY);
+    const openings = shared(OPENINGS_KEY);
+    const after = afterRequest({ conversation, unfilled: this.unfilled, props: props(), focused: focused(), panes: panes(), spaces: spaces(), conversations, openings });
+    setChanged(CONVERSATIONS_KEY, conversations ?? {}, after.conversations ?? {});
+    setChanged(OPENINGS_KEY, openings, after.openings);
+    this.unfilled = after.unfilled;
+  }
+
+  // The opening in this copy's props, taken on its first start only (sent-conversation.js
+  // afterStart): its conversation remembered for the tab, or the viewer's tab forgotten. An
+  // opening left with no tab is kept in this.unfilled for the requests this copy takes.
+  takeOpened(given) {
+    const conversations = shared(CONVERSATIONS_KEY);
+    const openings = shared(OPENINGS_KEY);
+    const after = afterStart({ given, props: props(), focused: focused(), panes: panes(), spaces: spaces(), conversations, openings });
+    setChanged(CONVERSATIONS_KEY, conversations ?? {}, after.conversations ?? {});
+    setChanged(OPENINGS_KEY, openings, after.openings);
+    this.unfilled = after.unfilled;
+  }
+
   // The path picker's pick, opened the way open.sh opens a cmd-clicked file: a side viewer
   // showing in the conversation's tab takes it as a request (request.js) within about 0.4 s,
   // else a new viewer splits off right of the conversation pane. Both carry the space value,
-  // so only a viewer of the conversation's space takes the file. The popup closes only once
+  // so only a viewer of the conversation's space takes the file, and the conversation, which
+  // that viewer remembers as the tab's sent conversation. The popup closes only once
   // that is settled: a closed copy's tasks are cancelled, and the wait would end with them.
   //   conversation: the conversation's pane id; space: its space value (machine.js)
   openPicked({ file, conversation, space }, cx) {
+    // One id names both the request and the split's opening, as open.sh does.
+    const at = Math.floor(Date.now() / 1000);
+    const id = `${at}-picker-${Math.random().toString(36).slice(2, 10)}`;
     const split = () => {
       closeOverlay(props().overlay);
-      run("pane.split", { pane: conversation, direction: "right", mod: "side-viewer", props: { file, space } });
+      run("pane.split", pickedSplit({ file, space, conversation, id }));
     };
     if (openTargetOf({ conversation, panes: panes() }).split) return split();
     cx.spawn(async (cx) => {
       const folder = `${appHome()}/data/side-viewer`;
-      const at = Math.floor(Date.now() / 1000);
-      const id = `${at}-picker-${Math.random().toString(36).slice(2, 10)}`;
       const answer = `${folder}/${answerFile(id)}`;
       try {
         const request = `${folder}/${REQUEST_FILE}`;
         const before = await readTextFile(request).catch(() => null);
-        await writeTextFile(request, `${JSON.stringify({ id, file, at, space })}\n`, before);
+        await writeTextFile(request, `${JSON.stringify(pickedRequest({ id, file, at, space, conversation }))}\n`, before);
         run("side-viewer.show");
         for (let tries = 8; tries > 0; tries--) {
           await cx.sleep(50);
@@ -846,7 +887,8 @@ export default class SideViewer extends View {
   }
 
   // A shell code block's `>_`: into the shell pane below this viewer, which starts in the
-  // conversation's folder, or in the document's folder when the viewer is a tab of its own.
+  // folder of the conversation that sent the file (else the tab's agent), or in the document's
+  // folder when the viewer is a tab of its own.
   insertIntoTerminal(command, cx) {
     this.shellPane.insert(command, { file: this.file, viewerTab: this.viewerTab === true, tr: this.words() }, cx);
   }

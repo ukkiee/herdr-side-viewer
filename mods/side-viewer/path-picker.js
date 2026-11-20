@@ -1,7 +1,7 @@
 // The path picker's decisions. No Herdr imports, so it runs under `node --test`.
 //
 // The picker uses them in this order:
-//   conversationOf({ focused, panes }) -> { pane, terminal, cwd } | null
+//   conversationOf({ focused, panes, conversations }) -> { pane, terminal, cwd } | null
 //     the conversation to read; null: ask for a click on a conversation terminal
 //   pathCandidates({ text, cwd, home, groups }) -> string[]
 //     absolute paths from that terminal's text (`hc read <terminal> --lines 1000`), latest first,
@@ -23,6 +23,8 @@
 //     where the pick opens: the side viewer shown in the conversation's tab, else a split
 import { viewOf } from "./views.js";
 import { failureOf } from "./remote-results.js";
+import { sentConversation } from "./sent-conversation.js";
+import { spaceValue } from "./machine.js";
 
 // How many candidates go to the existence check at most. False ones ("Next.js", a path that
 // was only mentioned) drop out there, so this is larger than what the picker shows.
@@ -139,15 +141,17 @@ const MOD = "side-viewer";
 // The conversation whose text the picker reads, as { pane, terminal, cwd }, or null when the
 // focus is on none (a viewer tab, another mod, no pane): the picker then asks for a click on a
 // conversation terminal. A focused terminal is it. A focused side viewer stands for its tab's
-// conversation, an agent's terminal before a plain shell's.
+// conversation: the sent conversation while it is a terminal in the tab, else an agent's
+// terminal before a plain shell's.
 //   focused: herdr focused(); panes: herdr panes()
-export function conversationOf({ focused, panes }) {
+//   conversations: shared(CONVERSATIONS_KEY), the sent conversations (sent-conversation.js)
+export function conversationOf({ focused, panes, conversations }) {
   if (!focused?.pane) return null;
   const here = panes.find((p) => p.pane === focused.pane);
   if (focused.terminal) return { pane: focused.pane, terminal: focused.terminal, cwd: here?.cwd ?? focused.cwd ?? null };
   if (here?.mod !== MOD) return null;
   const terminals = panes.filter((p) => p.tab === here.tab && p.terminal);
-  const found = terminals.find((p) => p.program?.agent || p.status) ?? terminals[0];
+  const found = sentConversation(conversations, here.tab, panes) ?? terminals.find((p) => p.program?.agent || p.status) ?? terminals[0];
   return found ? { pane: found.pane, terminal: found.terminal, cwd: found.cwd ?? null } : null;
 }
 
@@ -161,6 +165,22 @@ export function openTargetOf({ conversation, panes }) {
   const zoomed = inTab.find((p) => p.zoomed);
   const viewer = inTab.find((p) => p.mod === MOD && (!zoomed || zoomed === p));
   return viewer ? { viewer: viewer.pane } : { split: { pane: conversation, direction: "right" } };
+}
+
+// The request a pick writes for a side viewer showing in the conversation's tab (request.js).
+// Only viewers on this screen read it, so the conversation keeps its address here.
+//   conversation: the conversation's pane id; space: its space value (machine.js); at: unix seconds
+export function pickedRequest({ id, file, at, space, conversation }) {
+  return { id, file, at, space, conversation };
+}
+
+// The pane.split a pick asks for when no side viewer shows in the conversation's tab. Mod props
+// are stored as given, and a machine may have another name on another screen (ADR 0002), so the
+// props keep the conversation's id without its machine prefix, as the space value does, and
+// `id`, the opening's id, which the viewer takes on its first start only (sent-conversation.js
+// takeOpening).
+export function pickedSplit({ file, space, conversation, id }) {
+  return { pane: conversation, direction: "right", mod: MOD, props: { file, space, conversation: spaceValue(conversation), id } };
 }
 
 // The paths written in one line, in order. A code span with spaces is also tried whole, for

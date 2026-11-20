@@ -10,7 +10,21 @@ const fresh = { answered: null, now: NOW };
 
 test("a request names the file to show and the id to answer with", () => {
   const request = requestFrom(text({ id: "1800000000-4242", file: "/work/notes/plan.md", at: AT }), fresh);
-  assert.deepEqual(request, { id: "1800000000-4242", file: "/work/notes/plan.md" });
+  assert.deepEqual(request, { id: "1800000000-4242", file: "/work/notes/plan.md", conversation: null });
+});
+
+test("a request names the conversation pane that sent the file", () => {
+  const request = requestFrom(text({ id: "a1", file: "/a.md", at: AT, conversation: "p23db72f7" }), fresh);
+  assert.deepEqual(request, { id: "a1", file: "/a.md", conversation: "p23db72f7" });
+  const remote = requestFrom(text({ id: "a1", file: "/a.md", at: AT, conversation: "mini/p7" }), fresh);
+  assert.equal(remote.conversation, "mini/p7");
+});
+
+test("a request without a usable conversation is still taken, with no conversation", () => {
+  for (const conversation of [undefined, null, "", 7, true, { pane: "p1" }, ["p1"]]) {
+    const request = requestFrom(text({ id: "a1", file: "/a.md", at: AT, conversation }), fresh);
+    assert.deepEqual(request, { id: "a1", file: "/a.md", conversation: null }, String(conversation));
+  }
 });
 
 test("the request and the answer have fixed names in the data folder", () => {
@@ -50,7 +64,7 @@ test("a request without an absolute file path is ignored", () => {
 test("a request this viewer already answered is not taken again", () => {
   const same = text({ id: "a1", file: "/a.md", at: AT });
   assert.equal(requestFrom(same, { answered: "a1", now: NOW }), null);
-  assert.deepEqual(requestFrom(same, { answered: "a0", now: NOW }), { id: "a1", file: "/a.md" });
+  assert.deepEqual(requestFrom(same, { answered: "a0", now: NOW }), { id: "a1", file: "/a.md", conversation: null });
 });
 
 test("a request nobody is waiting on any more is ignored", () => {
@@ -68,7 +82,7 @@ test("a request stamped slightly ahead of the viewer's clock is still taken, a f
 });
 
 test("a request without a time is ignored", () => {
-  assert.equal(requestFrom(text({ id: "a1", file: "/a.md" }), fresh), null);
+  assert.equal(requestFrom(text({ id: "a1", file: "/a.md", conversation: null }), fresh), null);
   assert.equal(requestFrom(text({ id: "a1", file: "/a.md", at: "soon" }), fresh), null);
 });
 
@@ -84,7 +98,7 @@ const SPACES = [
 ];
 const asked = (space) => text({ id: "a1", file: "/a.md", at: AT, ...(space === undefined ? {} : { space }) });
 const viewerIn = (space) => ({ ...fresh, space, spaces: SPACES });
-const TAKEN = { id: "a1", file: "/a.md" };
+const TAKEN = { id: "a1", file: "/a.md", conversation: null };
 
 test("a viewer takes a request for its own space and leaves one for another space", () => {
   assert.deepEqual(requestFrom(asked(HERE), viewerIn(HERE)), TAKEN);
@@ -148,14 +162,14 @@ const here = { folder: "/data", answered: null, now: NOW };
 
 test("a viewer that takes a request leaves the answer the asker waits for", async () => {
   const data = waiting();
-  assert.deepEqual(await takeRequest(data.files, here), { id: "a1", file: "/a.md" });
+  assert.deepEqual(await takeRequest(data.files, here), { id: "a1", file: "/a.md", conversation: null });
   assert.ok(data.held.has("/data/answer-a1"));
 });
 
 test("of two viewers showing in one tab, only the first takes the request", async () => {
   const data = waiting();
   const taken = [await takeRequest(data.files, here), await takeRequest(data.files, here)];
-  assert.deepEqual(taken, [{ id: "a1", file: "/a.md" }, null]);
+  assert.deepEqual(taken, [{ id: "a1", file: "/a.md", conversation: null }, null]);
 });
 
 test("a request the asker has already closed is not taken", async () => {

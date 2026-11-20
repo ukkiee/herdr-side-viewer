@@ -16,14 +16,18 @@ const HERDR_FRONT = "/Users/someone/Applications/Herdr.app";
 const SPACE = "spfcbfd8b278fa8d8e02972c005e05b6ea";
 const REMOTE_SPACE = "mac-box/spa386c8aedeec27b60120366586cddf4b";
 
-// What `herdr-app status` prints, with the focused space put in.
-const status = (space) => `{
+// The conversation pane in focus in the scenes, as `herdr-app status` names it.
+const FOCUSED = "p23db72f74892a7f5384d6d59c613df75";
+
+// What `herdr-app status` prints, with the focused space and pane put in. A layout's terminal
+// block in focus is no pane, so focused_pane is null then.
+const status = (space, focused = FOCUSED) => `{
   "zoom": 1.0,
   "font_size": 12.0,
   "ui_font_size": 13.0,
   "space": ${JSON.stringify(space)},
   "tab": "tbca4cf9795325cd722ebb026fd1dc3d96",
-  "focused_pane": "p23db72f74892a7f5384d6d59c613df75",
+  "focused_pane": ${JSON.stringify(focused)},
   "layout": "main-git",
   "agent": "t2s5",
   "floats": {},
@@ -55,7 +59,8 @@ exit "$(cat "$FAKE_STATE/herdr-exit" 2>/dev/null || echo 0)"
 `;
 
 // Stands in for the side viewers showing in the tab: each takes the waiting request the way
-// main.js does, through request.js, and logs the file it would show. FAKE_NOW, when set, is
+// main.js does, through request.js, and logs the file it would show and the conversation it
+// would remember. FAKE_NOW, when set, is
 // the time in milliseconds the viewers believe it is.
 const FAKE_VIEWERS = `
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
@@ -68,7 +73,9 @@ const now = process.env.FAKE_NOW ? Number(process.env.FAKE_NOW) : Date.now();
 const count = Number(readFileSync(process.env.FAKE_STATE + "/viewers", "utf8"));
 for (let i = 0; i < count; i++) {
   const request = await takeRequest(files, { folder: process.env.SIDE_VIEWER_DATA, answered: null, now });
-  if (request) appendFileSync(process.env.FAKE_STATE + "/viewer.log", request.file + "\\n");
+  if (!request) continue;
+  appendFileSync(process.env.FAKE_STATE + "/viewer.log", request.file + "\\n");
+  appendFileSync(process.env.FAKE_STATE + "/conversation.log", String(request.conversation) + "\\n");
 }
 `;
 
@@ -76,6 +83,12 @@ for (let i = 0; i < count; i++) {
 const FAKE_OPEN = `#!/bin/sh
 for a in "$@"; do printf '%s\\n' "$a"; done >> "$FAKE_STATE/open.log"
 `;
+
+// A new pane's props without `id`, the opening's id, which changes from run to run.
+const withoutId = (json) => {
+  const { id: _id, ...rest } = JSON.parse(json);
+  return rest;
+};
 
 function world({ herdr = true, installed = true, record } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "side-viewer-open-"));
@@ -152,6 +165,8 @@ function world({ herdr = true, installed = true, record } = {}) {
     },
     // The files the showing viewers took, in order.
     shownInViewer: () => lines("viewer.log"),
+    // The conversations the showing viewers took with those files, "null" for none.
+    conversationsInViewer: () => lines("conversation.log"),
     // What `open` was called with, one argument per entry.
     openArgs: () => lines("open.log"),
   };
@@ -161,8 +176,29 @@ test("with Herdr in front, the file opens in a side viewer pane split to the rig
   const w = world();
   const r = w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(w.splitArgs(), ["do", "pane.split", "--direction", "right", "--mod", "side-viewer", "--props", `{"file":"/work/notes/plan.md","space":"${SPACE}"}`]);
+  assert.deepEqual(w.splitArgs().slice(0, 7), ["do", "pane.split", "--direction", "right", "--mod", "side-viewer", "--props"]);
+  assert.deepEqual(withoutId(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE, conversation: FOCUSED });
   assert.deepEqual(w.openArgs(), []);
+});
+
+test("a new pane's props carry the opening's id, the request's own, and no time", () => {
+  const w = world();
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  const props = JSON.parse(w.splitArgs()[7]);
+  const request = JSON.parse(readFileSync(join(w.env.SIDE_VIEWER_DATA, "request.json"), "utf8"));
+  assert.match(props.id, /^[A-Za-z0-9_-]+$/);
+  assert.equal(props.id, request.id);
+  assert.equal("at" in props, false);
+  assert.equal(typeof request.at, "number");
+});
+
+test("each opening gets its own id", () => {
+  const w = world();
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  const first = JSON.parse(w.splitArgs()[7]).id;
+  const v = world();
+  v.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.notEqual(JSON.parse(v.splitArgs()[7]).id, first);
 });
 
 test("a side viewer showing in the current tab takes the file, and no pane is opened", () => {
@@ -332,7 +368,7 @@ test("a path with spaces, quotes, a backslash and Korean reaches the viewer and 
   w.open(file, HERDR_FRONT);
   const args = w.splitArgs();
   assert.equal(args.length, 8);
-  assert.deepEqual(JSON.parse(args[7]), { file, space: SPACE });
+  assert.deepEqual(withoutId(args[7]), { file, space: SPACE, conversation: FOCUSED });
 
   const showing = world();
   showing.viewersShowing();
@@ -401,8 +437,47 @@ test("a new pane and a waiting request both carry the focused space", () => {
   const w = world();
   w.open("/work/notes/plan.md", HERDR_FRONT);
   assert.equal(w.statusAsked(), 1);
-  assert.deepEqual(JSON.parse(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE });
+  assert.deepEqual(withoutId(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE, conversation: FOCUSED });
   const request = JSON.parse(readFileSync(join(w.env.SIDE_VIEWER_DATA, "request.json"), "utf8"));
   assert.equal(request.space, SPACE);
   assert.equal(request.file, "/work/notes/plan.md");
+});
+
+test("a new pane and a waiting request both carry the focused pane as the conversation", () => {
+  const w = world();
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.equal(JSON.parse(w.splitArgs()[7]).conversation, FOCUSED);
+  const request = JSON.parse(readFileSync(join(w.env.SIDE_VIEWER_DATA, "request.json"), "utf8"));
+  assert.equal(request.conversation, FOCUSED);
+});
+
+test("a showing viewer takes the request with its conversation", () => {
+  const w = world();
+  w.viewersShowing();
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.deepEqual(w.shownInViewer(), ["/work/notes/plan.md"]);
+  assert.deepEqual(w.conversationsInViewer(), [FOCUSED]);
+});
+
+test("a showing viewer takes a request without a plain focused pane as one with no conversation", () => {
+  const w = world();
+  w.statusSays(status(SPACE, null));
+  w.viewersShowing();
+  w.open("/work/notes/plan.md", HERDR_FRONT);
+  assert.deepEqual(w.shownInViewer(), ["/work/notes/plan.md"]);
+  assert.deepEqual(w.conversationsInViewer(), ["null"]);
+});
+
+test("without a plain focused pane, the file opens as before with no conversation", () => {
+  const noLine = status(SPACE).replace(/^.*"focused_pane".*\n/m, "");
+  for (const out of [status(SPACE, null), status(SPACE, ""), status(SPACE, "p1/../x"), status(SPACE, "p 1"), status(SPACE, 'p1","x":"y'), noLine]) {
+    const w = world();
+    w.statusSays(out);
+    const r = w.open("/work/notes/plan.md", HERDR_FRONT);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(withoutId(w.splitArgs()[7]), { file: "/work/notes/plan.md", space: SPACE }, out);
+    const request = JSON.parse(readFileSync(join(w.env.SIDE_VIEWER_DATA, "request.json"), "utf8"));
+    assert.equal("conversation" in request, false, out);
+    assert.deepEqual(w.openArgs(), [], out);
+  }
 });
