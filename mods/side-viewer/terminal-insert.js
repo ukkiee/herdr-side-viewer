@@ -64,6 +64,15 @@ export function prepareLine(file, keymap) {
     ` [[ -r ${path} ]] && print -rz -- "$(<${path})"; command rm -f -- ${path}; clear`;
 }
 
+// The keymap a prepare line left in the keymap file, from its text `text` (null: no file):
+// "emacs", "vi" (insert or command mode), or null when it can't be told. `bindkey -lL main`
+// prints the keymap main is linked to as `bindkey -A <name> main`.
+export function keymapOf(text) {
+  const name = /^bindkey -A (\S+) main$/m.exec(String(text ?? ""))?.[1];
+  if (name === "emacs") return "emacs";
+  return name === "viins" || name === "vicmd" ? "vi" : null;
+}
+
 // What goes into the handoff file for `command`: the block as written, without its last newline.
 export const insertText = (command) => command.replace(/\n+$/, "");
 

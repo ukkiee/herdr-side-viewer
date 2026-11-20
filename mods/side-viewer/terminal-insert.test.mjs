@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { insertFileOf, insertFolderOf, handoffOf, HANDOFF_THERE, FIND_ZSH, zshOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, cutOff, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf, stateOfGet, handoffLook, handoffTaken } from "./terminal-insert.js";
+import { insertFileOf, insertFolderOf, handoffOf, keymapOf, HANDOFF_THERE, FIND_ZSH, zshOf, prepareLine, insertText, insertPlan, pressOutcome, shellOf, isRemote, machineOfAddress, waitsOf, cutOff, KEY_WAIT_MS, PREPARE_WAIT_MS, shellState, noticeOf, shellFolder, viewerPaneOf, liveShell, openedShell, splitOf, stateOfGet, handoffLook, handoffTaken } from "./terminal-insert.js";
 import { translator } from "./i18n.js";
 import { en as alertsEn, ko as alertsKo } from "./messages-alerts.js";
 
@@ -164,6 +164,23 @@ test("single quotes, Korean, symbols and backslashes go into the handoff file as
 
 // A zsh waiting at its prompt, as splitOf starts it.
 const ready = (pid) => ({ state: "ready", pid, argv: ["/bin/zsh", "-l"] });
+// `bindkey -lL main` as zsh prints it: `zsh -f` and a login zsh, then after `bindkey -v`.
+test("the keymap file of an emacs zsh says emacs", () => {
+  assert.equal(keymapOf("bindkey -A emacs main\n"), "emacs");
+});
+
+test("the keymap file of a vi zsh says vi, in insert or command mode", () => {
+  assert.equal(keymapOf("bindkey -A viins main\n"), "vi");
+  assert.equal(keymapOf("bindkey -A vicmd main\n"), "vi");
+});
+
+test("an empty keymap file, none, or another keymap is not known", () => {
+  assert.equal(keymapOf(""), null);
+  assert.equal(keymapOf(null), null);
+  assert.equal(keymapOf("bindkey -A mykeys main\n"), null);
+  assert.equal(keymapOf("emacs"), null);
+});
+
 const KEY = ["keys", "t7", "ctrl+alt+f12"];
 
 test("a shell just opened is prepared, and the prepare line itself puts the command in; no key, no Enter", () => {
