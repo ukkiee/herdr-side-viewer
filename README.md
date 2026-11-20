@@ -26,8 +26,8 @@ opens the one you pick, which is also how files open in a space on another machi
   changes on disk.
 - **Viewer tab**: the header's `Open in New Tab` button gives the file a tab of its own.
 - **`>_` on shell blocks**: types a code block's command into a shell pane below the viewer,
-  without running it (except in two cases where a zsh's keys differ from the ones the viewer
-  remembers, see [Limits](#limits)).
+  without running it (except when a zsh's keys differ from the ones the viewer remembers, or
+  the terminal's interrupt character was changed, see [Limits](#limits)).
 - **Path picker** (`cmd-o`): a popup of the file paths in the focused conversation; pick
   one to open it beside the conversation (see [The path picker](#the-path-picker-cmd-o)).
 - **Remote spaces**: in a space on a Linux machine or another Mac, the viewer shows, edits
@@ -260,10 +260,11 @@ There is no switch.
 - **Herdr's shared state**: the viewer keeps the language last read under
   `side-viewer.lang` (`"en"` or `"ko"`), which every viewer reads, and the conversation pane
   that last sent a file to each tab under `side-viewer.conversations`
-  (`{ "<tab id>": "<pane id>" }`), with tabs that are gone taken out. The ids of the latest
-  50 new viewers it opened are under `side-viewer.openings`, so a viewer that starts again
-  (after a mod file is saved or the app restarts) does not put back a conversation another
-  file was sent from since.
+  (`{ "<tab id>": "<pane id>" }`), with tabs that are gone taken out. Each new viewer it
+  opened is listed under `side-viewer.openings` as `{ "id": "<opening id>", "tab": "<tab
+  id>" }` (`tab` is null when it changed no tab), all of those of tabs still open and the
+  latest 50 of the rest, so a viewer that starts again (after a mod file is saved or the app
+  restarts) does not put back a conversation another file was sent from since.
 - **Your files**: the mod writes a file when you save it or click a checkbox in it, on the
   machine of the viewer's space.
 - **Another machine's home**: `>_` in a remote space writes its command to
@@ -485,7 +486,10 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
   wrong, a zsh with vi keys gets alt+q, and its typed text can run along with that line. One
   is the same zsh changing its keys after it was taught (`bindkey -v`) and being taught
   again, as by the `>_` after that notification. The other is a new zsh with vi keys after
-  one taught with emacs keys (say, a new zsh started with other settings). Clear the prompt
+  one taught with emacs keys (say, a new zsh started with other settings). The same can
+  happen with vi keys, or when the keymap is not known, if the terminal's interrupt
+  character was changed (`stty intr`): `ctrl+c` then does not clear the prompt, and typed
+  text can run along with that line. Clear the prompt
   before a `>_` that teaches a zsh again: the first after starting a new zsh, and the one
   after that notification.
 - **`>_` needs zsh, on another machine too.** A machine with none gets no shell pane, only a

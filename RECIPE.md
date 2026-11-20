@@ -147,10 +147,14 @@ The mod shows files, not agents, so it has no agent statuses.
   on this screen, and takes none while its space is not listed. A request naming none, or a
   first start with an opening naming none, takes out the viewer's tab (`forgottenTabOf`: its
   pane by `viewerPaneOf`, else the focused tab). Each opening counts once, whenever its copy
-  first starts (its tab may first show long after the split): the viewer adds its `id` to
-  shared state `side-viewer.openings` (a list, the latest 50 kept), and a copy that starts
-  again with an id already there (a mod file was saved, the app restarted and its tab shows)
-  neither writes nor takes out anything. Props without an `id` (an older router's) change
+  first starts (its tab may first show long after the split): the viewer adds `{ id, tab }`
+  to shared state `side-viewer.openings`, a list, latest last, where `tab` is the tab whose
+  entry it wrote or took out, or null when it changed none. Every opening of a tab `panes()`
+  lists is kept, so a viewer still on screen never loses its own; of the rest (tabs gone,
+  a remote tab hidden while its machine is cut off, or null), the latest 50 are kept. A bare
+  id in that list, as an earlier viewer kept it, counts as `{ id, tab: null }`. A copy that
+  starts again with an id already there (a mod file was saved, the app restarted and its tab
+  shows) neither writes nor takes out anything. Props without an `id` (an older router's) change
   nothing. Each write also drops tabs `panes()`
   no longer has, and the map and the list are set only when they change, since `setShared` draws every mod
   again. The picker popup never writes it. The shell pane's folder and the picker's
@@ -331,9 +335,10 @@ The mod shows files, not agents, so it has no agent statuses.
   <terminal> ctrl+alt+f12`. Instead of that key, a zsh not yet prepared gets the prepare line
   with `hc send`: a zle widget `_side_viewer_insert` that pushes a draft aside (`zle
   push-line`), reads the file into `BUFFER`, puts the cursor at its end and removes the file,
-  bound to `\e[24;7~` in the emacs, viins and vicmd keymaps; then `bindkey -lL main >|
-  <keymap file> 2>/dev/null` (the keymap file is the handoff file's name with `.keymap`, in
-  the same folder), then `print -rz` of the file's text (shown at the next prompt, above a
+  bound to `\e[24;7~` in the emacs, viins and vicmd keymaps; then `command rm -f -- <keymap
+  file>` and `bindkey -lL main >| <keymap file> 2>/dev/null` (the keymap file is the handoff
+  file's name with `.keymap`, in the same folder; removed first, so an old one the line can't
+  write over, left read-only, is never read as this zsh's keymap), then `print -rz` of the file's text (shown at the next prompt, above a
   draft pushed aside before), the file removed, and `clear`. The viewer remembers the pid and
   argv of the zsh it prepared (`hc get`'s `foreground` at the prompt), and, once a prepare
   line's handoff file is taken, reads the keymap file on that machine, removes it (`rm -f`)
@@ -368,12 +373,17 @@ The mod shows files, not agents, so it has no agent statuses.
   넣으세요.`
   The next `>_` uses the same pane while it shows the same terminal. `hc get`'s `foreground`
   tells the shell's state: none yet, or exactly the split's argv above (any folder), is
-  starting, asked again every 100 ms for up to 5 s; a zsh with no `-c` among its arguments,
-  read as zsh reads them (`-c` alone, or a `c` in a bundle of one-dash short options, letters
-  and digits, read from the left: `-fc`, `-ic`, `-4c`; an `o` there takes the rest as an
-  option's name, so `-oemacs` and `-foemacs` hold no `c`; a `--` long option is not read),
-  is ready; anything else is busy, any other `-c` run included (`python3 -c …`,
-  `sh -c 'a; b'`, a `zsh -c 'a; b'` or `zsh -fc 'a; b'` too). A busy shell gets nothing at once, no pane opens, and a Herdr
+  starting, asked again every 100 ms for up to 5 s. A zsh's other arguments are read in order
+  as zsh reads them: a word starting with `-` or `+` is options (a `--name` long option is a
+  name alone; in a short bundle, letters and digits, an `o` takes the rest, or the next word
+  when nothing is left, as an option's name, so `-oemacs`, `-foemacs` and `-o emacs` hold no
+  `c`), and the word `--` or `-`, or the first word that is not an option, ends them. A zsh
+  with the `c` flag on runs a line (`-c`, `-fc`, `-ic`, `-4c`, `-cf`); one with neither `c`
+  nor `s` and an argument left runs that argument as a script file (`zsh task.zsh`,
+  `zsh -o emacs task.zsh`). Either is busy and gets no key and no prepare line. With `s`, or
+  no argument left, it is at its prompt and ready (`zsh -l`, `-zsh`, `zsh -f`, `zsh --emacs`,
+  `zsh -s foo`, and `zsh -fis -- -c`, whose `-c` is an argument). Anything else is busy too,
+  any other `-c` run included (`python3 -c …`, `sh -c 'a; b'`). A busy shell gets nothing at once, no pane opens, and a Herdr
   notification says `터미널에 넣지 않았습니다` / `셸에서 다른 프로그램(<name>)이 실행
   중입니다. 끝난 뒤 다시 누르세요.`; when no pane can be opened or found,
   `터미널에 넣지 못했습니다` / `셸 pane을 열거나 찾지 못했습니다.`.
@@ -664,7 +674,10 @@ Platform:
   200 ms) before it pastes, so the line after ctrl+c needs no wait of its own. The keymap
   is the last prepared zsh's, read when it was prepared: a new zsh with
   vi keys after one prepared with emacs keys (`bindkey -v` run after the prepare, or other
-  settings) still gets alt+q (README, Limits). `exec` keeps the pid, so `exec zsh`
+  settings) still gets alt+q (README, Limits). A terminal whose interrupt character was
+  changed (`stty intr`) does not clear its input line on ctrl+c, so with vi or not known a
+  draft can run along with the prepare line (README, Limits): the viewer checks only that
+  `hc keys` succeeded. `exec` keeps the pid, so `exec zsh`
   with the same argv as the zsh prepared is only caught after its press: the unbound key
   leaves `;7~` in the input line and the file stays, which the wait above turns into a
   notification and a prepare on the next press. A shell on another machine reads its file
