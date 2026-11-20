@@ -477,11 +477,13 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
   line, text typed at the prompt is cleared by the keymap the last taught zsh there had: with
   emacs keys it is moved aside with alt+q and comes back after the command; with vi keys, or
   when the keymap is not known, `ctrl+c` erases it, so it is lost but never run. The viewer
-  learns a keymap only when it teaches a zsh, so if the new zsh has vi keys while the one
-  taught before it had emacs keys (say, `bindkey -v` run after it was taught, or a new zsh
-  started with other settings), it gets alt+q and its typed text can run along with that
-  line. Clear the prompt before the first `>_` after starting a new
-  zsh.
+  learns a keymap only when it teaches a zsh, so in two cases the keymap it remembers is
+  wrong, a zsh with vi keys gets alt+q, and its typed text can run along with that line. One
+  is the same zsh changing its keys after it was taught (`bindkey -v`) and being taught
+  again, as by the `>_` after that notification. The other is a new zsh with vi keys after
+  one taught with emacs keys (say, a new zsh started with other settings). Clear the prompt
+  before a `>_` that teaches a zsh again: the first after starting a new zsh, and the one
+  after that notification.
 - **`>_` needs zsh, on another machine too.** A machine with none gets no shell pane, only a
   notification; use the copy button there.
 - **No keyboard navigation** between blocks, no `cmd+E` for the source switch, no filling in
