@@ -57,8 +57,7 @@ test("code files get their editor language", () => {
 });
 
 test("html files, with the extensions macOS gives the same file type, open in the code view with HTML colors", () => {
-  // macOS files html, htm, shtml and shtm under one type (public.html), so taking over
-  // html brings all four to the router.
+  // macOS files html, htm, shtml and shtm under one type (public.html); all four are listed.
   for (const name of ["page.html", "page.htm", "page.shtml", "page.shtm", "INDEX.HTML"]) {
     assert.deepEqual(viewOf(`/work/${name}`, groups), { view: "code", language: "html" }, name);
   }
@@ -385,7 +384,7 @@ test("a read that can be drawn, or a file without edits, keeps the read's own co
   assert.deepEqual(editedContentOf("/work/shot.png", { state: "missing" }, viewOf("/work/shot.png", groups), "x"), { state: "missing" });
 });
 
-test("only drawn content offers a new tab; a notice offers the original app and Finder alone", () => {
+test("only drawn content offers a new tab; a notice offers the default app and Finder alone", () => {
   for (const state of ["markdown", "code", "image", "svg"]) assert.equal(opensInTab(state), true, state);
   for (const state of ["none", "loading", "empty", "missing", "unreadable", "unsupported", "large"]) {
     assert.equal(opensInTab(state), false, state);

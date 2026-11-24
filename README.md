@@ -2,12 +2,13 @@
 
 **English** | [한국어](README.ko.md)
 
-A side viewer for the [Herdr](https://herdr.dev) desktop app, macOS only. Cmd-click a file
-path in an agent's conversation and the file opens in a pane to the right of it, instead of
-in another app. Read markdown drawn block by block, read and edit code with syntax colors,
-look at images, save with cmd+S, give a file a tab of its own, and put a document's shell
-command into a terminal's input line. `cmd-o` lists the paths a conversation printed and
-opens the one you pick, which is also how files open in a space on another machine.
+A side viewer for the [Herdr](https://herdr.dev) desktop app (0.1.17 or newer), macOS only.
+Cmd-click a file path in an agent's conversation and the file opens in a pane to the right of
+it, instead of in another app, also in a space on another machine. Read markdown drawn block
+by block, read and edit code with syntax colors, look at images, save with cmd+S, give a file
+a tab of its own, and put a document's shell command into a terminal's input line. `cmd-o`
+lists the paths a conversation printed and opens the one you pick, for the paths a cmd-click
+can't reach.
 
 ![Side Viewer](preview.png)
 
@@ -24,6 +25,8 @@ opens the one you pick, which is also how files open in a space on another machi
 - **One viewer per tab**: a viewer already showing in the tab takes the next file, so panes
   don't pile up, and `←` goes back to the file before. The viewer reloads when the file
   changes on disk.
+- **Loading**: while a newly opened file is read, or an edited svg's preview is written, a
+  small turning arc shows at the top left of the body, where a notice's text starts.
 - **Viewer tab**: the header's `Open in New Tab` button gives the file a tab of its own.
 - **`>_` on shell blocks**: types a code block's command into a shell pane below the viewer,
   without running it (except when a zsh's keys differ from the ones the viewer remembers, or
@@ -33,26 +36,46 @@ opens the one you pick, which is also how files open in a space on another machi
 - **Remote spaces**: in a space on a Linux machine or another Mac, the viewer shows, edits
   and saves that machine's files, and `>_` types into a shell there (see
   [Remote spaces](#remote-spaces)).
-- **Outside Herdr** (Finder, another terminal) the same files keep opening in the app they
-  opened in before.
+- **Outside Herdr** (Finder, another terminal) files keep opening in their default apps, as
+  macOS decides: Side Viewer changes no default app.
 
-### How it works
+### How a cmd-click opens a file
 
-Herdr hands a cmd-clicked path to macOS, which opens it in the default app for that kind of
-file. So this repo ships a small background app, the **router**, that you make the default
-app for a list of extensions. For each file it receives, it looks at which app is in front:
-Herdr sends the file to the side viewer, anything else sends it to the **original app**,
-the one that was the default before. The router takes over only when you run the take-over
-command below (the one exception is under [Limits](#limits)), and one command gives
-everything back.
+The mod is a **link handler**: Herdr hands it the cmd-clicks on terminal links that match the
+rule in [`mods/side-viewer/mod.json`](mods/side-viewer/mod.json) (a path ending in one of
+the [extensions](#extensions)), and
+[`mods/side-viewer/link.js`](mods/side-viewer/link.js) decides what to do with each. Herdr
+does this only in a personal layout (see [Turn on cmd-click](#turn-on-cmd-click)).
+
+- **Which files.** A path in any terminal whose file has an extension in the
+  [list](#extensions) and is a file on that terminal's machine.
+- **Path forms.** Absolute paths, `~/…` (the home of the terminal's machine), paths
+  relative to the clicked terminal's folder, paths with a line number (`a.md:12`,
+  `a.md:12:3`, `a.md:12-20`; the number is dropped), paths in backticks, paths with ASCII
+  punctuation after them, and `file://` links a program printed for that machine.
+- **Letters stuck to the end make it no path.** `plan.md를` does not open; with a space,
+  `plan.md 를`, it does.
+- **Bare file names are not links.** Herdr does not make `RECIPE.md` or `c.json:3` a link,
+  so a cmd-click on them does nothing; [the path picker](#the-path-picker-cmd-o) finds them.
+- **Where it opens.** Beside the clicked conversation, the pane you clicked in, not the
+  focused one. A side viewer showing in that tab takes the file, so no pane is added;
+  otherwise a new viewer splits off to the right of the conversation. That pane becomes the
+  conversation that last sent a file to the tab. A terminal a layout draws without a pane
+  has no conversation: a viewer showing in its space takes the file, and with none the click
+  goes on as below.
+- **Everything else goes on.** A path the viewer can't show, or a file that doesn't exist,
+  goes on to Herdr's usual opener on this Mac (the file's default app) and does nothing in a
+  remote space.
+- **Remote spaces.** On Linux and macOS machines a cmd-click works the same, on that
+  machine's files. On a Windows machine it does nothing.
 
 ### The path picker (cmd-o)
 
 `cmd-o` opens a popup at the top of the window with the file paths the focused conversation
 printed, and opens the one you pick in the side viewer. It works the same in a space on this
-Mac and in a [remote space](#remote-spaces), where it is the way in: a cmd-click there opens
-nothing, because the file is not on this Mac. On this Mac it also opens files whose
-extension the router has not taken over.
+Mac and in a [remote space](#remote-spaces). It is there for what a cmd-click can't reach:
+bare file names (`RECIPE.md`), paths scrolled off the screen, and use from the keyboard
+alone.
 
 - **Which paths.** From the focused terminal's screen and the 1000 lines above it: absolute
   paths, `~` paths, paths relative to the terminal's folder, paths with a line number
@@ -71,22 +94,23 @@ extension the router has not taken over.
   still a terminal in the tab, else the tab's conversation (an agent's terminal first).
   Anywhere else without a terminal (a viewer tab, another mod) it says
   `Click a conversation terminal, then press again.`
-- **Its other lines**: `Finding…`, `This conversation shows no file path to open.`,
+- **Its other lines**: a small turning arc while it looks, at the left where these lines
+  start, `This conversation shows no file path to open.`,
   `No path matches.`, the two remote notices below, and `Couldn't look for paths: <reason>`
   for any other failure (the terminal closed, say).
 
 ### Remote spaces
 
 A side viewer reads and writes the files of the machine its space is on. In a space on
-another machine connected to Herdr, open a file with `cmd-o`; links, `←` and viewer tabs
-then stay on that machine. Linux and macOS machines are supported.
+another machine connected to Herdr, open a file with a cmd-click or `cmd-o`; links, `←` and
+viewer tabs then stay on that machine. Linux and macOS machines are supported.
 
 - **The same as on this Mac**: markdown (rendered and source), code, images with the svg
   switch, pictures in markdown (relative to the document's folder, or absolute, on that
   machine), the size limits and notices, editing, cmd+S, checkboxes, `Changed on disk`,
   the save failures, and `Open in New Tab`, which opens the tab in the same remote space and
   takes unsaved edits along.
-- **No `Open in Original App` or `Show in Finder`** in the header: both act on this Mac,
+- **No `Open in Default App` or `Show in Finder`** in the header: both act on this Mac,
   where the file is not.
 - **Changes show within about 3 seconds.** Every 3 seconds the viewer asks the machine for
   the file's checksum and reads the file again only when it changed. With unsaved edits it
@@ -108,11 +132,9 @@ then stay on that machine. Linux and macOS machines are supported.
   the same way. Once the machine is back, the status goes and the viewer reads the file
   again at its next check.
 - **Just after Herdr starts**, a remote viewer whose space Herdr hasn't listed yet shows
-  `Loading…` and reads and saves nothing; it reads the file once the space is listed.
+  a turning arc and reads and saves nothing; it reads the file once the space is listed.
 - **Windows machines are not supported.** The viewer and the picker show
-  `Files on Windows machines can't be shown yet.`
-- **The router stays out of remote spaces.** A file that reaches the router while a remote
-  space has focus (a path that also exists on this Mac, say) opens in its original app.
+  `Files on Windows machines can't be shown yet.`, and a cmd-click there does nothing.
 - **`>_` types into a shell on that machine.** The shell pane opens there, in the folder of
   the conversation terminal beside the viewer on that machine, the one that last sent a file
   to the tab first (in a viewer tab, the document's folder; without either, that machine's
@@ -175,8 +197,7 @@ while a file is drawn, not on a notice such as `Too large to open in the viewer.
 viewer of this file, and switches to it. The tab is named after the file and follows it
 through links, `←` and new files. It starts with an empty history. The same file opens a new
 tab every time. Unsaved edits move with the file: the new tab shows them with their status,
-and the viewer you left shows the disk text. While a viewer tab is on screen, a cmd-clicked
-file opens in it, not in a new pane.
+and the viewer you left shows the disk text.
 
 ### The markdown view
 
@@ -227,7 +248,7 @@ file opens in it, not in a new pane.
 
 ### Language
 
-The viewer and the router's commands speak Korean when macOS's first preferred language
+The viewer speaks Korean when macOS's first preferred language
 (the first entry of `defaults read -g AppleLanguages`) is Korean, and English otherwise.
 There is no switch.
 
@@ -237,20 +258,19 @@ There is no switch.
   viewer, or `Open in New Tab`); they don't read it again on their own.
 - **When it can't be read**, a viewer keeps the language it had (English the first time)
   and asks again after 1, 3 and 10 seconds, then every 15 seconds until it gets an answer.
-- **The router's commands** read it once per run, and speak English when they can't.
 - **Not translated**: code block labels (`Shell`, `JavaScript` and so on), file names and
   paths, the error Herdr gives (shown when hovering `Couldn't save`), and the header's
   `Side Viewer` when no file is open.
 
 ## Before you add it
 
-- **Programs**: the router is built on your machine from
-  [`mods/side-viewer/router/main.swift`](mods/side-viewer/router/main.swift) and signed ad
-  hoc. The mod and the router run shell commands (`sh`, `open`, `stat`, `cp`, `rm` and the
-  like, and `herdr-app`), and read the files you open. To pick the language, the viewer and
-  the router's commands run `defaults read -g AppleLanguages`. The path picker reads the
-  focused terminal with `hc read` and checks which paths are files with one `sh` on that
-  terminal's machine.
+- **Programs**: the mod is plain JavaScript run by Herdr; nothing is built. It runs shell
+  commands (`sh`, `open`, `stat`, `cp`, `rm`, `sleep` and the like, and `herdr-app`), and
+  reads the files you open. To pick the language, the viewer runs
+  `defaults read -g AppleLanguages`. For a cmd-click, Herdr runs the mod's `handleLink`
+  (`link.js`), which checks that the file exists with one `sh` on the clicked terminal's
+  machine. The path picker reads the focused terminal with `hc read` and checks which paths
+  are files with one `sh` on that terminal's machine.
 - **Programs on another machine**: in a remote space the viewer runs, on that machine
   through Herdr, `sh` (with `stat`, `head`, `od`, `uname`, `printf`) and `cksum`, and
   reads files there. To save a file there or copy a picture's bytes it runs Herdr's `hc`
@@ -277,16 +297,17 @@ There is no switch.
   `<machine>_<terminal>.keymap` beside it, which the viewer reads and deletes once the shell
   has taken the command.
 - **Herdr's keys**: `install.sh` adds `cmd-o` to Herdr's `keys.json` (see [Install](#install)).
+- **Herdr's layout**: Herdr adds `side-viewer` to the `link_handlers` of the personal layout
+  in use (see [Turn on cmd-click](#turn-on-cmd-click)).
 - **Terminal**: the `>_` button opens a zsh pane and types into it through Herdr's `hc`
   (`hc send`, `hc keys`, `hc get`). A shell it opens gets one line binding an insert widget
   to `ctrl+alt+F12`, and a new zsh started there gets it again.
 - **Network**: the mod opens no connection of its own. A file on another machine is read
   and written through Herdr's connection to that machine. A web or mail link you click in a
   document is handed to macOS.
-- **Data folder** (`~/.config/herdr-app/data/side-viewer/`): the mod and the router write:
-  - `original-apps.tsv`, the record of original apps;
-  - `request.json` and `answer-<id>`, the request passed from the router or the path
-    picker to the viewer;
+- **Data folder** (`~/.config/herdr-app/data/side-viewer/`): the mod writes:
+  - `request.json` and `answer-<id>`, the request a cmd-click or the path picker passes to
+    a viewer already showing;
   - `images/`, copies of the images you view and of the pictures inside markdown documents,
     those from another machine too;
   - `remote-saves/`, the text of a save to another machine on its way there, deleted once
@@ -309,21 +330,36 @@ How it is built and what to watch for: [RECIPE.md](RECIPE.md).
 
 ## Install
 
-Needs the Herdr app (`herdr-app` on your `PATH`) and Xcode's command line tools
-(`xcode-select --install`), which build the router.
+Needs macOS, the Herdr app **0.1.17 or newer** (`herdr-app` on your `PATH`), and a
+**personal layout** (see [Turn on cmd-click](#turn-on-cmd-click)). Node is optional: it
+merges the `cmd-o` key.
 
 ```sh
 git clone https://github.com/ukkiee/herdr-side-viewer
 cd herdr-side-viewer && ./install.sh
 ```
 
-`install.sh` runs `herdr-app check` on the mod, builds
-`~/Applications/Side Viewer Router.app`, and copies the mod into
-`~/.config/herdr-app/mods/side-viewer` (or `$HERDR_APP_HOME`). If the check or the build
-fails, the mod and the router that were installed stay as they were. It does not run the
-take-over command below; building alone can still make the router the default for an
-extension no other app claims (see "Building alone can change a default" under
-[Limits](#limits)). **Run it again after `git pull` to update.**
+`install.sh` checks the Herdr version (`herdr-app --version`), runs `herdr-app check` on the
+mod, and copies the mod into `~/.config/herdr-app/mods/side-viewer` (or `$HERDR_APP_HOME`),
+taking out files an older version left there. An older Herdr or a failed check stops it
+before anything is copied, and the mod that was installed stays as it was; for an older
+Herdr it says `Side Viewer needs Herdr 0.1.17 or newer`. It also prints a note when the
+layout in use is one Herdr ships, when the Herdr window is not open (the layout is then not
+checked), and when the router app of an older version is still installed (see
+[Upgrading from the router](#upgrading-from-the-router)). **Run it again after `git pull`
+to update.**
+
+### Turn on cmd-click
+
+Herdr hands cmd-clicks to a mod's link handler only in a **personal layout**. The first time
+Herdr sees Side Viewer on a personal layout, it adds the mod to that layout's root:
+`"link_handlers": ["side-viewer"]`.
+
+- **A layout Herdr ships** (`main`, `terminals`, `win98`) has to be cloned first:
+  `herdr-app do layout.clone --name <name>` makes `<name>-copy` and switches to it, and Herdr turns the
+  viewer on there.
+- **Taken out of `link_handlers`** by hand, the mod stays out: add `"side-viewer"` back to
+  that list yourself.
 
 ### The cmd-o shortcut
 
@@ -343,132 +379,48 @@ extension no other app claims (see "Building alone can change a default" under
 default shortcuts only to a keys file nobody edited; once this line is in, any new default
 key has to be added by hand.
 
-### Take over the extensions
+### Upgrading from the router
 
-The router's commands are flags of its binary. A shell function saves typing:
-
-```sh
-router() { "$HOME/Applications/Side Viewer Router.app/Contents/MacOS/SideViewerRouter" "$@"; }
-
-router --make-default        # markdown and image extensions
-router --make-default code   # the same, plus the code extensions
-```
-
-macOS asks you to confirm every change of a default app, once per file type, and no app can
-answer for you. Extensions of one file type (`jpg`, `jpeg`, `jpe`) share one window. The
-command first prints how many windows are coming (`macOS will show N confirmation windows.`) and then
-sends the requests one at a time, waiting up to 300 seconds for each answer. It asks only for
-what the router does not hold yet, so N can be smaller than the counts below.
-
-Just before each request it prints one line naming the window that comes next:
-`Window i/N: <extensions> (now <current app> → <new app>)`, with the same N as the first line,
-for example `Window 1/1: md (now TextEdit → Side Viewer Router)`. An app shows as the
-name Finder gives it, as its bundle id when macOS can't find it, or as `-` when the extension
-has no default app.
-
-In each window pick **Side Viewer Router**. If you pick the button that keeps the current
-app, that extension stays as it was, and the command lists it under `Chose to keep`
-rather than as a failure. Changed extensions are listed under `Changed`, real failures
-under `Failed` with the reason.
-
-Before asking, the command records each extension's original app in
-`~/.config/herdr-app/data/side-viewer/original-apps.tsv`. Running it again never replaces
-that record with the router itself.
-
-Exit codes: `0` everything asked for changed (or nothing needed changing), `1` a request
-failed, `2` wrong usage, `3` nothing failed but you kept the current app for some.
-
-### Taking over the code extensions
-
-Code files, `html` among them, open in the viewer (and can be edited there) only once the
-router holds the code group. Nothing does that for you, `./install.sh` included: whether
-and when to run it is your choice.
-
-1. See where things stand: `router --status`. Code extensions that still name another
-   app are the ones that will be asked about.
-2. Run `router --make-default code`. On a Mac where the router holds nothing yet that is at
-   most **35 windows**: 7 for markdown and images and **28 for code**. The first line it
-   prints gives the real number.
-3. In every window pick **Side Viewer Router**. The `html` window names your browser as
-   the current app; picking the router there is what sends `html` files to the viewer.
-   Outside Herdr they still open in that browser.
-4. Check the output: `Changed` for what changed, `Chose to keep` for any window where the
-   current app was kept. Run the command again to be asked about those only.
-
-To undo it, `router --restore` (below) gives everything back, the browser's `html`
-included.
-
-### Give them back
+An older version opened cmd-clicked files through a background app,
+`~/Applications/Side Viewer Router.app`, made the default app for the extensions. If it is
+still installed, give those extensions back to their apps **before you delete it**: the
+record it gives them back from is of no use without the app.
 
 ```sh
-router --restore
+"$HOME/Applications/Side Viewer Router.app/Contents/MacOS/SideViewerRouter" --restore
 ```
 
-asks macOS to return every extension the router still holds to its original app. The
-windows come up again, once per file type, and this time you have to pick **the original
-app**: keeping the current one leaves the router in place for that extension. An extension
-whose default you changed yourself in the meantime is left alone. If a recorded original
-app has been uninstalled since, the command says so and asks for a sibling extension's app
-instead, or for TextEdit (Preview for images).
-
-The same `Window i/N` line comes before each window, with the original app as the new app.
-When that app is gone, the line that says so is followed by the same window's line again,
-naming the app asked for instead:
-
-```text
-Window 1/2: md (now Side Viewer Router → com.example.Gone)
-md: original app com.example.Gone not found, switching to com.apple.TextEdit.
-Window 1/2: md (now Side Viewer Router → TextEdit)
-```
-
-**Run it before you delete the router app**: the record it restores from is of no use
-without the command.
-
-### See where things stand
-
-```sh
-router --status
-```
-
-prints one line per extension, separated by tabs: the extension, its current default app,
-and the recorded original app (`-` when there is none), as bundle ids.
-
-```
-md	dev.ukkiee.side-viewer-router	com.apple.TextEdit
-png	com.apple.Preview	-
-```
-
-Here `md` is with the router and `png` is not.
+1. macOS shows one confirmation window per file type. Before each, the command prints
+   `Window i/N: <extensions> (now Side Viewer Router → <app>)` (in Korean on a Mac set to
+   Korean).
+2. In each window pick the app that line names, **not Side Viewer Router**.
+3. Extensions no other app claims (`rbw` and `cp`, for example) stay with the router until
+   the app is deleted.
+4. Delete `~/Applications/Side Viewer Router.app`, then run `./install.sh`.
 
 ## Extensions
 
 The list lives in [`mods/side-viewer/extensions.json`](mods/side-viewer/extensions.json);
-the router and the viewer both read it.
+the link rule in `mod.json` is made from it, and the viewer reads it.
 
-| Group | Extensions | Taken over by |
-|---|---|---|
-| markdown | `md` `markdown` `mdx` | `--make-default` |
-| image | `png` `jpg` `jpeg` `jpe` `gif` `webp` `svg` `svgz` | `--make-default` |
-| code | `log` `json` `jsonc` `yaml` `yml` `toml` `js` `mjs` `jscript` `javascript` `cjs` `jsx` `ts` `tsx` `css` `scss` `py` `go` `rs` `rb` `rbw` `java` `jav` `kt` `swift` `c` `h` `cpp` `cp` `c++` `cc` `cxx` `sh` `zsh` `sql` `xml` `csv` `html` `htm` `shtml` `shtm` | `--make-default code` |
-
-Some are there only because macOS sets default apps per file type, so they come along with
-a sibling: `jpe` with `jpg`, `svgz` with `svg`, `jscript` and `javascript` with `js`, `rbw`
-with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `shtm` with
-`html`. `xhtml` is a file type of its own and is not in the list.
+| Shown as | Extensions |
+|---|---|
+| Markdown | `md` `markdown` `mdx` |
+| Image | `png` `jpg` `jpeg` `jpe` `gif` `webp` `svg` `svgz` |
+| Code | `log` `json` `jsonc` `yaml` `yml` `toml` `js` `mjs` `jscript` `javascript` `cjs` `jsx` `ts` `tsx` `css` `scss` `py` `go` `rs` `rb` `rbw` `java` `jav` `kt` `swift` `c` `h` `cpp` `cp` `c++` `cc` `cxx` `sh` `zsh` `sql` `xml` `csv` `html` `htm` `shtml` `shtm` |
 
 ## Limits
 
 - **macOS only**, for the Herdr app this runs in. Remote spaces can be on Linux or macOS
   machines; **Windows machines are not supported** (the viewer says so).
+- **Herdr 0.1.17 or newer, in a personal layout.** In a layout Herdr ships, a cmd-click
+  never reaches the viewer (see [Turn on cmd-click](#turn-on-cmd-click)).
 - **Line numbers are ignored.** Clicking or picking `app.ts:12` shows the file from the top.
-- **Everything not in the list opens as it does today**: files without an extension,
-  extensions outside the list, and `txt`, `diff` and `patch`, which are left out on purpose
-  (`txt` would drag in extensionless text files such as `README`; `diff` and `patch` share a
-  file type but can have different original apps).
-- **`html` may go back to the browser (not verified).** macOS may hand `html` back to the
-  browser when you change your default browser. `router --status` then shows the browser
-  for `html`, and cmd-clicked `html` files open there; `router --make-default code` asks for
-  it again.
+- **Everything not in the list opens in its default app**: files without an extension and
+  extensions outside the list, `txt`, `diff` and `patch` among them. In a remote space a
+  cmd-click on them does nothing.
+- **Every `.ts` file opens as code**, a `.ts` video (MPEG-2) too. The header's
+  `Open in Default App` hands it to the app macOS would use.
 - **`html` is shown as code**, never drawn as a page.
 - **Not drawn in markdown**: `mermaid` diagrams (shown as a code card), math, GitHub alert
   boxes, HTML tags, definition lists, pictures from the web (`https`), and pictures inside a
@@ -499,11 +451,11 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
   notification; use the copy button there.
 - **No keyboard navigation** between blocks, no `cmd+E` for the source switch, no filling in
   of `{{placeholders}}` in commands.
-- **A path with text stuck to its end doesn't open.** Herdr reads the letters right after a
-  path as part of it (`/tmp/notes/plan.md에서`), so it finds no file. With a space after the
-  path it opens.
-- **A cmd-click in a remote space opens nothing.** The file is not on this Mac, so nothing
-  reaches the router; use `cmd-o`.
+- **A path with letters stuck to its end doesn't open.** `/tmp/notes/plan.md에서` is not
+  taken for a path, so the click opens nothing. With a space after the path it opens.
+- **A bare file name can't be cmd-clicked.** Herdr makes no link of `RECIPE.md` or
+  `c.json:3` without a folder in front, so the click does nothing; use `cmd-o`.
+- **A cmd-click on a Windows machine does nothing**, as the viewer can't show its files.
 - **A remote save has a gap of under a second.** The viewer reads the file there again just
   before writing it, so a change that lands in between is overwritten without
   `Changed on disk`.
@@ -517,29 +469,8 @@ with `rb`, `jav` with `java`, `cp` `c++` `cc` `cxx` with `cpp`, `htm` `shtml` `s
   link to any other local file only shows it in Finder (in a remote space, see
   [Remote spaces](#remote-spaces)).
 - **Too big to draw**: text over 1 MB and images over 20 MB get a notice instead. On this
-  Mac the header's buttons still open the file in its original app or show it in Finder. An `svg`
+  Mac the header's buttons still open the file in its default app or show it in Finder. An `svg`
   over 1 MB is drawn but has no source switch.
-- **Restore can merge apps within one file type.** macOS keeps one default per file type,
-  yet two extensions of a type can open in different apps (seen with `js` and `mjs`; also
-  possible for `svg`/`svgz`, `rb`/`rbw`, `cpp`/`cp`). While the router holds them, each
-  still goes to its own original app. After `--restore` they all open in the original app
-  of the extension that comes first in the list.
-- **Building alone can change a default.** An extension that no installed app claims
-  (seen with `mdx`, `jsonc`, `rbw`, `cp`) goes to the router as soon as it is built, before
-  any `--make-default`. Those have no original app on record, so the router opens them in
-  TextEdit (Preview for images). One with a sibling extension of the same file type (`rb`
-  for `rbw`, `cpp` for `cp`) stays with the router after `--restore`, which lists it under
-  `Stayed with the router`: macOS sets defaults per file type, and no app but the router claims that
-  extension itself. The router keeps opening it in TextEdit or Preview, and deleting the
-  router app frees it. One without such a sibling (`mdx`, `jsonc`) goes to TextEdit or
-  Preview.
-- **`.ts` video files pass through the router too.** macOS classes `.ts` as MPEG-2 video.
-  Outside Herdr they still reach the original app.
-- **Every file with a taken-over extension passes through the router**, also from Finder.
-  It hands the file on to the original app and quits.
-- **The router looks in the default places**: `~/.local/bin/herdr-app` and
-  `~/.config/herdr-app`. With Herdr elsewhere, or if Herdr doesn't answer within 5 seconds,
-  the file opens in its original app.
 - **English and Korean only**, picked from macOS's first preferred language with no switch
   (see [Language](#language)). Viewers already open follow a changed system language only
   once a new viewer opens.

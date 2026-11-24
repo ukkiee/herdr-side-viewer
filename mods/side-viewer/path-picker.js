@@ -203,7 +203,9 @@ function pathOf(word) {
   return word.match(PATH)?.[1] ?? null;
 }
 
-function resolved(path, cwd, home) {
+// `path` as an absolute path: an absolute one as it is, a ~/ one under `home`, any other under
+// `cwd`. Null when the home or the folder it needs is null. Also link-target.js's.
+export function resolved(path, cwd, home) {
   if (path.startsWith("/")) return normalized(path);
   if (path.startsWith("~")) return path.startsWith("~/") && home ? normalized(`${home}/${path.slice(2)}`) : null;
   return cwd ? normalized(`${cwd}/${path}`) : null;

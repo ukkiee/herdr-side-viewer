@@ -58,7 +58,7 @@ test("a space value is matched whole, not as the end of a longer id", () => {
   assert.deepEqual(machineOf({ space: NUC.slice(4) }, SPACES), UNLISTED);
 });
 
-test("a remote file's header has no original app and no Finder, only the new tab", () => {
+test("a remote file's header has no default app and no Finder, only the new tab", () => {
   assert.deepEqual(headerActions({ remote: true, newTab: true }), ["newTab"]);
   assert.deepEqual(headerActions({ remote: true, newTab: false }), []);
 });
@@ -118,6 +118,6 @@ test("a file the user cannot write is told apart before a save, a writable or ne
 });
 
 test("a file on this Mac keeps every header action", () => {
-  assert.deepEqual(headerActions({ remote: false, newTab: true }), ["newTab", "original", "finder"]);
-  assert.deepEqual(headerActions({ remote: false, newTab: false }), ["original", "finder"]);
+  assert.deepEqual(headerActions({ remote: false, newTab: true }), ["newTab", "defaultApp", "finder"]);
+  assert.deepEqual(headerActions({ remote: false, newTab: false }), ["defaultApp", "finder"]);
 });

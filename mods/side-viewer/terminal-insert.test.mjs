@@ -348,7 +348,7 @@ test("a busy shell on another machine gets nothing, only the same notice as here
   const busy = { state: "busy", program: "sleep" };
   assert.deepEqual(insertPlan({ terminal: THERE, file: FILE_THERE, keymapFile: KEYMAP_THERE, mark: MARK, state: busy, prepared: null, fresh: false, stale: false, tr: ko }), {
     commands: [],
-    notice: { title: "터미널에 넣지 않았습니다", body: "셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.", level: "warning" },
+    notice: { title: "터미널에 넣지 않았어요", body: "셸에서 다른 프로그램(sleep)이 실행 중이에요. 끝난 뒤 다시 누르세요.", level: "warning" },
     wait: 0,
     kind: null,
   });
@@ -380,16 +380,16 @@ test("a key press whose handoff file is still there forgets the zsh and says the
 test("a prepare line that has not taken the handoff file in time sends no key, so its notice says only that the shell was not ready", () => {
   assert.deepEqual(pressOutcome({ left: true, state: ready(40), keyed: false, tr: ko }), { prepared: null, notice: noticeOf({ state: "unready" }, ko) });
   assert.deepEqual(noticeOf({ state: "unready" }, ko), {
-    title: "터미널에 넣지 못했습니다",
-    body: "셸이 아직 명령을 받을 준비가 되지 않았습니다. 잠시 뒤 다시 누르세요.",
+    title: "터미널에 넣지 못했어요",
+    body: "셸이 아직 명령을 받을 준비가 안 됐어요. 잠시 뒤 다시 누르세요.",
     level: "error",
   });
 });
 
 test("the notice for a shell that did not take the command", () => {
   assert.deepEqual(noticeOf({ state: "unprepared" }, ko), {
-    title: "터미널에 넣지 못했습니다",
-    body: "셸이 명령을 받지 않았습니다(exec zsh 등으로 다시 시작됨). 입력 칸에 ;7~가 남았다면 지우고 다시 누르세요.",
+    title: "터미널에 넣지 못했어요",
+    body: "셸이 다시 시작돼서(exec zsh 등) 명령을 받지 않았어요. 입력 칸에 ;7~가 남았다면 지우고 다시 누르세요.",
     level: "error",
   });
 });
@@ -401,8 +401,8 @@ test("there is no notice refusing another machine's shell any more", () => {
 
 test("no zsh on that machine: the notice says so and points to the copy button", () => {
   assert.deepEqual(noticeOf({ state: "noZsh" }, ko), {
-    title: "터미널에 넣지 못했습니다",
-    body: "그 기계에 zsh가 없어 넣을 수 없습니다. 복사 버튼으로 붙여 넣으세요.",
+    title: "터미널에 넣지 못했어요",
+    body: "그 기계에 zsh가 없어서 넣을 수 없어요. 복사 버튼으로 복사해서 붙여 넣으세요.",
     level: "error",
   });
   assert.deepEqual(noticeOf({ state: "noZsh" }, translator("en")), {
@@ -414,8 +414,8 @@ test("no zsh on that machine: the notice says so and points to the copy button",
 
 test("a machine that can't be reached: the notice names it, in the viewer's words", () => {
   assert.deepEqual(noticeOf({ state: "unreachable", machine: "mini" }, ko), {
-    title: "터미널에 넣지 못했습니다",
-    body: "mini 기계에 연결할 수 없어요",
+    title: "터미널에 넣지 못했어요",
+    body: "mini 기계에 연결할 수 없어요.",
     level: "error",
   });
   assert.deepEqual(noticeOf({ state: "unreachable", machine: "mini" }, translator("en")), {
@@ -454,7 +454,7 @@ const LOST = gotError("timeout", "request timed out after 10000 ms");
 
 test("a terminal on another machine whose `hc get` failed for the connection is unreachable, not gone", () => {
   assert.deepEqual(stateOfGet({ machine: "mini", answer: LOST }), { state: "unreachable", machine: "mini" });
-  assert.deepEqual(noticeOf(stateOfGet({ machine: "mini", answer: LOST }), ko).body, "mini 기계에 연결할 수 없어요");
+  assert.deepEqual(noticeOf(stateOfGet({ machine: "mini", answer: LOST }), ko).body, "mini 기계에 연결할 수 없어요.");
 });
 
 test("any other `hc get` failure, or one here, is a terminal that is gone; an answer is read as the shell's state", () => {
@@ -602,14 +602,14 @@ test("a terminal that has ended, or could not be asked about, is gone", () => {
 
 test("a busy shell's notice says what runs there and what to do", () => {
   assert.deepEqual(noticeOf({ state: "busy", program: "sleep" }, ko), {
-    title: "터미널에 넣지 않았습니다",
-    body: "셸에서 다른 프로그램(sleep)이 실행 중입니다. 끝난 뒤 다시 누르세요.",
+    title: "터미널에 넣지 않았어요",
+    body: "셸에서 다른 프로그램(sleep)이 실행 중이에요. 끝난 뒤 다시 누르세요.",
     level: "warning",
   });
 });
 
 test("a shell pane that could not be opened or found says so", () => {
-  assert.deepEqual(noticeOf({ state: "failed" }, ko), { title: "터미널에 넣지 못했습니다", body: "셸 pane을 열거나 찾지 못했습니다.", level: "error" });
+  assert.deepEqual(noticeOf({ state: "failed" }, ko), { title: "터미널에 넣지 못했어요", body: "셸 pane을 열거나 찾지 못했어요.", level: "error" });
 });
 
 test("the notices in English, the program's name kept as it is", () => {

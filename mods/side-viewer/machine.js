@@ -1,7 +1,7 @@
 // The viewer's machine: the computer its space lives on, whose files it shows. No Herdr
 // imports, so it runs under `node --test`; file-access.js runs what this module works out.
 //
-// Whoever opens a viewer (open.sh, the path picker, "Open in a new tab") puts the space
+// Whoever opens a viewer (open-beside.js, "Open in a new tab") puts the space
 // value in its props: the space id without its `<machine>/` prefix. The machine's name is
 // never put there (ADR 0002), so the viewer finds its space in spaces() and takes its
 // `machine`. A viewer without the value is on this Mac; one whose space is not listed yet
@@ -75,9 +75,9 @@ export const NOT_WRITABLE = 'test -e "$1" && ! test -w "$1"';
 // with a PATH that lacks ~/.local/bin. A command that needs a redirection starts with it.
 export const FIND_HC = 'hc=$(command -v hc) || hc="$HOME/.local/bin/hc"';
 
-// The header's actions, left to right (header.js). "Open in the original app" and "Show in
+// The header's actions, left to right (header.js). "Open in the default app" and "Show in
 // Finder" act on this Mac, where a remote file is not, so a remote file has neither.
 // `newTab`: whether the content can open in a tab (views.js opensInTab).
 export function headerActions({ remote, newTab }) {
-  return [...(newTab ? ["newTab"] : []), ...(remote ? [] : ["original", "finder"])];
+  return [...(newTab ? ["newTab"] : []), ...(remote ? [] : ["defaultApp", "finder"])];
 }

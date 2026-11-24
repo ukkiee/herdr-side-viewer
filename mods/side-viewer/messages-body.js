@@ -5,7 +5,6 @@
 export const en = {
   "body.large": "Too large to open in the viewer.",
   "body.none": "No file to open.",
-  "body.loading": "Loading…",
   "body.empty": "This file is empty.",
   "body.missing": "This file no longer exists.",
   "body.unreadable": "Can't read this file.",
@@ -16,14 +15,13 @@ export const en = {
 };
 
 export const ko = {
-  "body.large": "뷰어에서 열기에는 너무 큽니다.",
-  "body.none": "열 파일이 없습니다.",
-  "body.loading": "불러오는 중…",
-  "body.empty": "이 파일은 비어 있습니다.",
-  "body.missing": "이 파일은 더 이상 없습니다.",
-  "body.unreadable": "이 파일을 읽을 수 없습니다.",
-  "body.unsupported": "이 종류의 파일은 뷰어에서 열 수 없습니다.",
-  "body.imageFailed": "그림을 못 읽음: {src}",
+  "body.large": "너무 커서 뷰어에서 열 수 없어요.",
+  "body.none": "열 파일이 없어요.",
+  "body.empty": "이 파일은 비어 있어요.",
+  "body.missing": "이 파일이 없어졌어요.",
+  "body.unreadable": "이 파일을 읽을 수 없어요.",
+  "body.unsupported": "뷰어에서 열 수 없는 종류의 파일이에요.",
+  "body.imageFailed": "그림을 읽지 못했어요: {src}",
   "body.unreachable": "{machine} 기계에 연결할 수 없어요.",
   "body.windows": "Windows 기계의 파일은 아직 볼 수 없어요.",
 };

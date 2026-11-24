@@ -1,14 +1,15 @@
-// Side viewer: shows one file in a pane beside the conversation. open.sh opens it with
+// Side viewer: shows one file in a pane beside the conversation. A cmd-click (link.js) or
+// the path picker opens it through open-beside.js with
 // `pane.split {direction: "right", mod: "side-viewer", props: {file, space?, id, conversation?}}`.
 // This file holds the viewer's state and most of its talk with Herdr: reading, saving,
-// taking requests from open.sh, watching and viewer tabs. The shown file is read on the
+// taking open requests (request.js), watching and viewer tabs. The shown file is read on the
 // machine of the viewer's space (machine.js) through file-access.js. Two parts that keep their
 // own state and call Herdr themselves sit beside it: shell-pane.js (a shell code block's `>_`)
 // and markdown-image-loader.js (the document's image copies). Drawing is in header.js,
 // code-card.js and the views' modules (markdown-view.js, code-view.js,
 // image-view.js, notice-view.js), which get what to show and callbacks from here.
 // The decisions live in modules without Herdr imports, each with its own tests: document.js,
-// views.js, image-copies.js, svg-preview.js, history.js, request.js, links.js, original.js,
+// views.js, image-copies.js, svg-preview.js, history.js, request.js, links.js,
 // edit-state.js, viewer-tab.js, checkbox.js, markdown-blocks.js, code-blocks.js,
 // markdown-images.js, terminal-insert.js, sent-conversation.js, machine.js and
 // remote-results.js.
@@ -26,9 +27,8 @@ import { toggleCheckbox } from "./checkbox.js";
 import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, LIST } from "./image-copies.js";
 import { PREVIEW_FOLDER, previewName, pictureOf } from "./svg-preview.js";
 import { start, open, back, canGoBack } from "./history.js";
-import { takeRequest, REQUEST_FILE, answerFile } from "./request.js";
+import { takeRequest } from "./request.js";
 import { watchedFolder, linkAction, touches, unshownNotice } from "./links.js";
-import { openOriginalCommands } from "./original.js";
 import { renderHeader } from "./header.js";
 import { renderMarkdown, markdownCache } from "./markdown-view.js";
 import { CodeCards } from "./code-card.js";
@@ -40,7 +40,7 @@ import { MarkdownImages } from "./markdown-image-loader.js";
 import { LANGS, translator, systemLang, askAgainAfter } from "./i18n.js";
 import { machineOf } from "./machine.js";
 import { accessOf } from "./file-access.js";
-import { openTargetOf, pickedRequest, pickedSplit } from "./path-picker.js";
+import { openBeside } from "./open-beside.js";
 import { CONVERSATIONS_KEY, OPENINGS_KEY, afterStart, afterRequest } from "./sent-conversation.js";
 import { PathPicker } from "./picker-view.js";
 
@@ -76,7 +76,7 @@ export default class SideViewer extends View {
     }
     this.file = null;
     this.visits = start();
-    // The id of the last request this copy took from open.sh.
+    // The id of the last open request this copy took (request.js).
     this.answered = null;
     this.content = { state: "none" };
     // Counts content replacements: the markdown element needs a new id to draw new text.
@@ -143,7 +143,7 @@ export default class SideViewer extends View {
     // The space value its opener gave (machine.js), which never changes. Without one the
     // viewer is on this Mac.
     this.space = props()?.space ?? given?.space ?? null;
-    // A viewer split off a conversation carries its opening (open.sh, the path picker). Only
+    // A viewer split off a conversation carries its opening (open-beside.js). Only
     // the first start of that opening changes the sent conversation (sent-conversation.js
     // takeOpening), however often this copy starts again.
     this.takeOpened(given);
@@ -272,7 +272,7 @@ export default class SideViewer extends View {
     } catch {}
   }
 
-  // Taking files from open.sh while this copy is showing: `side-viewer.show` wakes it, and
+  // Taking files from open-beside.js while this copy is showing: `side-viewer.show` wakes it, and
   // the request waits in the data folder (request.js). Only a request for this viewer's space
   // is taken, since a file on another machine than the space's is not one it can show.
   listen(cx) {
@@ -327,48 +327,12 @@ export default class SideViewer extends View {
     this.unfilled = after.unfilled;
   }
 
-  // The path picker's pick, opened the way open.sh opens a cmd-clicked file: a side viewer
-  // showing in the conversation's tab takes it as a request (request.js) within about 0.4 s,
-  // else a new viewer splits off right of the conversation pane. Both carry the space value,
-  // so only a viewer of the conversation's space takes the file, and the conversation, which
-  // that viewer remembers as the tab's sent conversation. The popup closes only once
-  // that is settled: a closed copy's tasks are cancelled, and the wait would end with them.
+  // The path picker's pick, opened beside the conversation as a cmd-click opens a file
+  // (open-beside.js). The popup closes only once that is settled: a closed copy's tasks are
+  // cancelled, and the wait would end with them.
   //   conversation: the conversation's pane id; space: its space value (machine.js)
   openPicked({ file, conversation, space }, cx) {
-    // One id names both the request and the split's opening, as open.sh does.
-    const at = Math.floor(Date.now() / 1000);
-    const id = `${at}-picker-${Math.random().toString(36).slice(2, 10)}`;
-    const split = () => {
-      closeOverlay(props().overlay);
-      run("pane.split", pickedSplit({ file, space, conversation, id }));
-    };
-    if (openTargetOf({ conversation, panes: panes() }).split) return split();
-    cx.spawn(async (cx) => {
-      const folder = `${appHome()}/data/side-viewer`;
-      const answer = `${folder}/${answerFile(id)}`;
-      try {
-        const request = `${folder}/${REQUEST_FILE}`;
-        const before = await readTextFile(request).catch(() => null);
-        await writeTextFile(request, `${JSON.stringify(pickedRequest({ id, file, at, space, conversation }))}\n`, before);
-        run("side-viewer.show");
-        for (let tries = 8; tries > 0; tries--) {
-          await cx.sleep(50);
-          if ((await readTextFile(answer).catch(() => null)) !== null) {
-            closeOverlay(props().overlay);
-            return;
-          }
-        }
-        // Taking the answer's name ends the request, so a viewer that wakes now cannot take
-        // the file as well as the new pane. A viewer that took it first leaves the name taken.
-        await writeTextFile(answer, `${id}\n`, null);
-      } catch {
-        if ((await readTextFile(answer).catch(() => null)) !== null) {
-          closeOverlay(props().overlay);
-          return;
-        }
-      }
-      split();
-    });
+    cx.spawn((cx) => openBeside({ file, conversation, space, kind: "picker", sleep: (ms) => cx.sleep(ms), settle: () => closeOverlay(props().overlay) }));
   }
 
   // Changing the shown file. Every way of opening a file ends here, and it is the only place
@@ -871,19 +835,9 @@ export default class SideViewer extends View {
     cx.notify();
   }
 
-  // Names the app with `open -b`, so the file cannot come back through the router.
-  openOriginal(cx) {
-    const file = this.file;
-    if (!file) return;
-    cx.spawn(async () => {
-      const read = (path) => readTextFile(path).catch(() => null);
-      const record = await read(`${appHome()}/data/side-viewer/original-apps.tsv`);
-      const extensions = await read(`${appHome()}/mods/side-viewer/extensions.json`);
-      for (const [command, args] of openOriginalCommands(file, record, extensions)) {
-        const result = await exec(command, args).catch(() => null);
-        if (result?.code === 0) return;
-      }
-    });
+  // The app macOS opens the file with, as a double click in Finder would.
+  openDefaultApp(_cx) {
+    if (this.file) exec("open", [this.file]).catch(() => null);
   }
 
   // A shell code block's `>_`: into the shell pane below this viewer, which starts in the
@@ -1045,7 +999,7 @@ export default class SideViewer extends View {
       onDiscard: (cx) => this.discard(cx),
       onOverwrite: (cx) => this.overwrite(cx),
       onNewTab: (cx) => this.openTab(cx),
-      onOriginal: (cx) => this.openOriginal(cx),
+      onDefaultApp: (cx) => this.openDefaultApp(cx),
       onFinder: (cx) => this.revealInFinder(cx),
     };
   }

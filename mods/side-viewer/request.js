@@ -1,13 +1,13 @@
-// The handoff from open.sh to a viewer that is already showing. No Herdr imports, so it runs
+// The handoff from open-beside.js to a viewer that is already showing. No Herdr imports, so it runs
 // under `node --test`.
 //
-// open.sh writes REQUEST_FILE into the data folder, {"id": "...", "file": "/abs/path",
+// open-beside.js writes REQUEST_FILE into the data folder, {"id": "...", "file": "/abs/path",
 // "at": <unix seconds>, "space": "<space value>", "conversation": "<pane id>"}, and sends
-// `side-viewer.show`. The viewer that takes the request creates answerFile(id) there. open.sh
+// `side-viewer.show`. The viewer that takes the request creates answerFile(id) there. It
 // waits about 0.4 s for that file and opens a new pane when it does not appear, because the
-// command only reaches viewers that are showing. The path picker sends the same request.
+// command only reaches viewers that are showing. A cmd-click and the path picker both send it.
 // The conversation is the pane the file was opened from (sent-conversation.js). A request
-// without one, as an older router writes, is taken all the same.
+// without one is taken all the same.
 //
 // The space value (machine.js) says whose file it is: only a viewer of that space takes it.
 // A side without one is on this Mac, so it matches the other side only while that is on
@@ -20,13 +20,18 @@ export const REQUEST_FILE = "request.json";
 // The id becomes part of a file name, so it may not carry a path.
 const ID = /^[A-Za-z0-9_-]+$/;
 
-// open.sh stops waiting after about 0.4 s. A request older than this was left by an asker
+// open-beside.js stops waiting after about 0.4 s. A request older than this was left by an asker
 // that has already opened the file some other way.
 const MAX_AGE_SECONDS = 5;
 
 export function answerFile(id) {
   return `answer-${id}`;
 }
+
+// Run as `sh -c CLEAR_ANSWERS sh <folder>` before a request. Answers are left behind so a
+// second viewer cannot take a request twice; a minute is long past MAX_AGE_SECONDS, so the
+// older ones go. It always exits 0: a file it could not remove is tried again next time.
+export const CLEAR_ANSWERS = 'find "$1" -maxdepth 1 -type f -name "answer-*" -mmin +1 -exec rm -f {} + 2>/dev/null; exit 0';
 
 // Whether a request for the space value `asked` is for the viewer of the space value `own`.
 // Either may be null. `spaces` is Herdr's spaces(). A viewer whose space is not listed yet
@@ -67,8 +72,8 @@ export function requestFrom(text, { answered, now, space = null, spaces = [] }) 
 // Takes the waiting request, if there is one for this viewer. `files` is the data folder's
 // access: read(path) gives the text or null, create(path, text) makes a new file and rejects
 // when the name is taken. Creating the answer is what takes the request, so of several
-// viewers woken by one command only the first gets it, and none gets it once open.sh has
-// given up and taken the name itself.
+// viewers woken by one command only the first gets it, and none gets it once open-beside.js
+// has given up and taken the name itself.
 // `space` and `spaces` are as for requestFrom.
 // Returns { id, file, conversation }, or null.
 export async function takeRequest(files, { folder, answered, now, space, spaces }) {
