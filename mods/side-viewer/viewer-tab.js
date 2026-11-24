@@ -4,7 +4,7 @@
 // "Open in a new tab" makes the tab with `tab.new {name, space, mod: "side-viewer", props}`.
 // Props are saved with the tab, so they carry only the file, the opener's space value
 // (machine.js) and, when the file had unsaved edits, the id of a handoff file in the data
-// folder that holds them (as request.js does for open.sh): { file, viewerTab: true, handoff?,
+// folder that holds them (as request.js does for open-beside.js): { file, viewerTab: true, handoff?,
 // space? }. The handoff file is {"id": "...", "file": "/abs/path", "at": <unix seconds>, "edit": {disk, text, bar?}},
 // the entry of edit-state.js's takeEdit.
 

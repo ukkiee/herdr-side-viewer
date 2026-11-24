@@ -14,6 +14,7 @@ import { CONVERSATIONS_KEY } from "./sent-conversation.js";
 import { accessOf } from "./file-access.js";
 import { unavailable } from "./remote-results.js";
 import { wordsOf } from "./i18n.js";
+import { spinner } from "./notice-view.js";
 
 // Room above the card, logical px: where Herdr's own picker popup sits below the window's top.
 const CARD_TOP = 40;
@@ -108,10 +109,9 @@ export class PathPicker {
     cx.notify();
   }
 
-  // The status line in place of the list, or null when the list shows.
+  // The status line in place of the list, or null when the list or the spinner shows.
   statusLine(shown, tr) {
     const words = wordsOf(tr);
-    if (this.state === "finding") return words("picker.finding");
     if (this.state === "none") return words("picker.none");
     if (this.state === "elsewhere") return words("picker.elsewhere");
     if (this.state === "unreachable") return words("body.unreachable", { machine: this.machine });
@@ -171,9 +171,17 @@ export class PathPicker {
             .on_click(() => this.close())
             .child("Esc")),
       )
-      .child(status === null
-        ? v_flex().id("svp-list").flex_none().h(listHeightOf(shown.length, viewport?.height, zoom)).overflow_y_scrollbar().track_scroll(this.scroll)
-          .children(shown.map((path, i) => this.renderRow(t, path, i)))
-        : div().flex_none().px(10).pb(6).text_color(t.muted).child(status));
+      .child(this.state === "finding" ? this.renderSpinner(t)
+        : status === null
+          ? v_flex().id("svp-list").flex_none().h(listHeightOf(shown.length, viewport?.height, zoom)).overflow_y_scrollbar().track_scroll(this.scroll)
+            .children(shown.map((path, i) => this.renderRow(t, path, i)))
+          : div().flex_none().px(10).pb(6).text_color(t.muted).child(status));
+  }
+
+  // While paths are being found: a spinner where the status line starts, as far below the
+  // filter as above the card's edge. The card puts CARD_GAP above the row and CARD_PAD below
+  // it, so the 4px on top evens the two out.
+  renderSpinner(t) {
+    return h_flex().flex_none().h(20).pt(CARD_PAD - CARD_GAP).px(10).items_center().text_color(t.muted).child(spinner(14));
   }
 }

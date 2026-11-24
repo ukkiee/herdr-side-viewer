@@ -1,41 +1,39 @@
 #!/bin/sh
-# Installs or updates the side viewer mod in the Herdr app's home and builds the router app.
-# Run it again after `git pull`.
-# It never runs the take-over command. That is a separate command, printed at the end, because
-# macOS asks the person to confirm every change and they should choose when that happens.
-# Building can still make the router the default app for an extension no other app claims
-# (README.md, "Limits": "Building alone can change a default").
+# Installs or updates the side viewer mod in the Herdr app's home. Run it again after `git pull`.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 home=${HERDR_APP_HOME:-$HOME/.config/herdr-app}
-app=${SIDE_VIEWER_ROUTER_APP:-$HOME/Applications/Side Viewer Router.app}
+# Where an older version built its router app, as it chose it.
+router=${SIDE_VIEWER_ROUTER_APP:-$HOME/Applications/Side Viewer Router.app}
 
 # Everything is checked before anything is copied, so a missing tool leaves no half install.
 if [ "$(uname)" != Darwin ]; then
-  echo "Side Viewer is macOS only: the router is a macOS app." >&2
+  echo "Side Viewer is macOS only." >&2
   exit 1
 fi
 if ! command -v herdr-app >/dev/null 2>&1; then
   echo "herdr-app not found on PATH: install the Herdr app (https://herdr.dev), then run this again." >&2
   exit 1
 fi
-# /usr/bin/swiftc exists even without the tools, so ask xcode-select whether they are there.
-if ! command -v swiftc >/dev/null 2>&1 || ! xcode-select -p >/dev/null 2>&1; then
-  echo "swiftc not found: install Xcode's command line tools with 'xcode-select --install', then run this again." >&2
+
+# A cmd-click reaches the viewer through a link handler (mods/side-viewer/link.js), which Herdr
+# runs from 0.1.17 on.
+version=$(herdr-app --version 2>/dev/null | awk '{ print $NF }')
+if ! awk -v have="$version" 'BEGIN {
+  if (have !~ /^[0-9]+(\.[0-9]+)*/) exit 1
+  split(have, h, "."); split("0.1.17", w, ".")
+  for (i = 1; i <= 3; i++) { if (h[i] + 0 > w[i] + 0) exit 0; if (h[i] + 0 < w[i] + 0) exit 1 }
+  exit 0 }'; then
+  echo "Side Viewer needs Herdr 0.1.17 or newer; herdr-app says '${version:-nothing}'. Update Herdr (Settings > Updates), then run this again." >&2
   exit 1
 fi
 
-# The mod is checked where it is and the router is built before anything is copied: a run
-# that fails must not leave a new mod beside an old router, or the other way round.
 herdr-app check "$here/mods/side-viewer"
 
-# The scripts and the extension list are copied into the app, hence the rebuild on every run.
-sh "$here/mods/side-viewer/router/build.sh"
-
 # The whole folder goes over: the mod reads extensions.json and its icons from the app home
-# while it runs.
+# while it runs. --delete takes out files an older version left there.
 mkdir -p "$home/mods/side-viewer"
-cp -R "$here/mods/side-viewer/." "$home/mods/side-viewer/"
+rsync -a --delete "$here/mods/side-viewer/" "$home/mods/side-viewer/"
 
 # The keys in this repository's keys.json are merged into the person's: keys-merge.js decides,
 # and a key they already use for something else stays theirs. Without Node they are told the
@@ -61,16 +59,26 @@ then
   cat "$here/keys.json"
 fi
 
-# macOS starts the router without this shell's environment, so it only finds the defaults.
-if [ ! -x "$HOME/.local/bin/herdr-app" ]; then
-  echo "Note: the router runs $HOME/.local/bin/herdr-app, which is not there. Until it is, every file opens in its original app."
-fi
-if [ "$home" != "$HOME/.config/herdr-app" ]; then
-  echo "Note: the router looks for the mod in $HOME/.config/herdr-app, not in $home."
+# Herdr turns a mod's link handler on by itself only in a personal layout. The layouts it ships
+# (these names) have to be cloned first.
+layout=$(herdr-app status 2>/dev/null | sed -n 's/^ *"layout": "\([^"]*\)".*/\1/p')
+case "$layout" in
+  main | terminals | win98)
+    echo "Note: the layout in use, '$layout', is one Herdr ships, so cmd-clicks do not reach the viewer yet."
+    echo "  Clone it with: herdr-app do layout.clone --name $layout   (Herdr shows the copy and turns the viewer on there)"
+    ;;
+  "")
+    echo "Note: the Herdr window is not open, so the layout was not checked. cmd-clicks reach the viewer only in a personal layout (README.md, \"Install\")."
+    ;;
+esac
+
+# An older version opened cmd-clicked files through this app, the default app for some
+# extensions. Deleting it first would leave those extensions with no record to give back.
+if [ -d "$router" ]; then
+  echo "Note: the router app of an older version is still installed. Give its extensions back, then delete it:"
+  echo "  \"$router/Contents/MacOS/SideViewerRouter\" --restore"
+  echo "  (README.md, \"Upgrading from the router\")"
 fi
 
 echo
-echo "Installed. The take-over command has not been run. To make the router the default app for markdown and image files:"
-echo "  \"$app/Contents/MacOS/SideViewerRouter\" --make-default"
-echo "An extension that no other app claims may already open through the router: see \"Building alone can change a default\" in README.md."
-echo "macOS asks you to confirm once per file type; the command says how many times first. README.md has the rest."
+echo "Installed."

@@ -1,7 +1,11 @@
-// node --test: reading the request open.sh leaves for a showing viewer, without Herdr.
+// node --test: reading the request open-beside.js leaves for a showing viewer, without Herdr.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { REQUEST_FILE, answerFile, requestFrom, takeRequest } from "./request.js";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, utimesSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { REQUEST_FILE, answerFile, requestFrom, takeRequest, CLEAR_ANSWERS } from "./request.js";
 
 const NOW = 1_800_000_000_000;
 const AT = NOW / 1000;
@@ -190,4 +194,22 @@ test("a request already answered by this viewer leaves no second answer", async 
   const data = waiting();
   assert.equal(await takeRequest(data.files, { ...here, answered: "a1" }), null);
   assert.equal(data.held.has("/data/answer-a1"), false);
+});
+
+test("answers older than a minute are cleared before a request; newer ones and other files stay", () => {
+  const folder = mkdtempSync(join(tmpdir(), "side-viewer-answers-"));
+  const old = Date.now() / 1000 - 120;
+  for (const name of ["answer-1-old", "request.json", "handoff-1"]) {
+    writeFileSync(join(folder, name), "x");
+    utimesSync(join(folder, name), old, old);
+  }
+  writeFileSync(join(folder, "answer-2-new"), "x");
+  const run = spawnSync("/bin/sh", ["-c", CLEAR_ANSWERS, "sh", folder]);
+  assert.equal(run.status, 0);
+  assert.deepEqual(readdirSync(folder).sort(), ["answer-2-new", "handoff-1", "request.json"]);
+});
+
+test("clearing answers in a folder that is not there still exits 0", () => {
+  const run = spawnSync("/bin/sh", ["-c", CLEAR_ANSWERS, "sh", join(tmpdir(), "side-viewer-no-such-folder")]);
+  assert.equal(run.status, 0);
 });

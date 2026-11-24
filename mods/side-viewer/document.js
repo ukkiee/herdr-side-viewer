@@ -6,7 +6,6 @@ import { wordsOf } from "./i18n.js";
 const NOTICES = {
   large: "body.large",
   none: "body.none",
-  loading: "body.loading",
   empty: "body.empty",
   missing: "body.missing",
   unreadable: "body.unreadable",
@@ -16,7 +15,7 @@ const NOTICES = {
 };
 
 // The text shown in place of the content in tr's language (i18n.js), or null for a state
-// that draws the content. `state` is a state's name, or a content whose notice names its
+// that draws no words: the content, or "loading", which shows a spinner (notice-view.js). `state` is a state's name, or a content whose notice names its
 // machine ({ state: "unreachable", machine }).
 export function noticeFor(state, tr) {
   const content = typeof state === "object" && state ? state : { state };

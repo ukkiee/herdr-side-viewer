@@ -10,13 +10,13 @@
 //   raw,          whether the markdown or svg view shows the source
 //   status,       what the shown file's edits read, or null without edits (edit-state.js statusOf):
 //                 { kind: "edited" | "failed" | "conflict", message, tip, buttons }
-//   remote,       whether the file is on another machine: no original app and no Finder then
+//   remote,       whether the file is on another machine: no default app and no Finder then
 //   tr,           the viewer's translator for the buttons' words (i18n.js)
-//   onBack, onToggleRaw, onSave, onDiscard, onOverwrite, onNewTab, onOriginal, onFinder: (cx) => void
+//   onBack, onToggleRaw, onSave, onDiscard, onOverwrite, onNewTab, onDefaultApp, onFinder: (cx) => void
 // }
 //
 // Left to right: back, file name, folder, the status and its buttons, the "rendering | source"
-// switch, then the actions (new tab, original app, Finder). Each part is one line of renderHeader.
+// switch, then the actions (new tab, default app, Finder). Each part is one line of renderHeader.
 import { div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { labelOf } from "./document.js";
@@ -89,16 +89,16 @@ function renderCell(t, id, label, selected, onToggleRaw) {
     .child(label);
 }
 
-// "Open in a new tab", "Open in the original app" and "Show in Finder", those of `actions`
+// "Open in a new tab", "Open in the default app" and "Show in Finder", those of `actions`
 // (machine.js headerActions) that apply.
-function renderActions(t, { tr, onNewTab, onOriginal, onFinder }, actions) {
+function renderActions(t, { tr, onNewTab, onDefaultApp, onFinder }, actions) {
   return h_flex().flex_none().gap(2)
-    .children(actions.map((action) => ACTIONS[action](t, { tr, onNewTab, onOriginal, onFinder })));
+    .children(actions.map((action) => ACTIONS[action](t, { tr, onNewTab, onDefaultApp, onFinder })));
 }
 
 const ACTIONS = {
   newTab: (t, { tr, onNewTab }) => renderButton(t, "side-viewer-new-tab", "new-tab", tr("header.newTab"), (_event, cx) => onNewTab(cx)),
-  original: (t, { tr, onOriginal }) => renderButton(t, "side-viewer-original", "original", tr("header.original"), (_event, cx) => onOriginal(cx)),
+  defaultApp: (t, { tr, onDefaultApp }) => renderButton(t, "side-viewer-default-app", "default-app", tr("header.defaultApp"), (_event, cx) => onDefaultApp(cx)),
   finder: (t, { tr, onFinder }) => renderButton(t, "side-viewer-finder", "finder", tr("header.finder"), (_event, cx) => onFinder(cx)),
 };
 

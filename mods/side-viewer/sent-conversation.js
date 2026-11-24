@@ -30,18 +30,18 @@ export const OPENINGS_KEY = "side-viewer.openings";
 // while its machine is cut off counts as gone, so the limit leaves room for its openings.
 export const OPENINGS_KEPT = 50;
 
-// The same characters as a request's id (open.sh, the path picker), which the opening reuses.
+// The same characters as a request's id (open-beside.js), which the opening reuses.
 const OPENING_ID = /^[A-Za-z0-9_-]+$/;
 
 // What a viewer starting with `props` does to the shared state: { conversations, openings },
-// the values given when nothing changes. open.sh and the path picker split it off with `id`,
+// the values given when nothing changes. open-beside.js splits it off with `id`,
 // the opening's id, and the conversation's pane id without its machine prefix (machine.js
 // addressOf). An id not taken yet is added to the openings; its conversation is remembered
 // for its tab (nothing when the space or the pane is not listed), and an opening without one
 // forgets the viewer's tab (forgottenTabOf). An id already taken changes no memory; if it was
 // kept with no tab, it gets its conversation's tab once panes() lists that pane (sureTabOf),
-// so it is kept like any opening of a tab on screen. Props without an id, an older router's or a viewer tab's, change
-// nothing.
+// so it is kept like any opening of a tab on screen. Props without an id, a viewer tab's or an
+// older version's, change nothing.
 //   conversations: shared(CONVERSATIONS_KEY); openings: shared(OPENINGS_KEY); spaces: Herdr's
 //   spaces(); panes: herdr panes(); viewer: the viewer's pane id or null; focused: herdr focused()
 export function takeOpening({ conversations, openings, props, spaces, panes, viewer, focused }) {

@@ -70,7 +70,7 @@ test("a remembered mod pane or the pane left out is not a conversation", () => {
   assert.equal(sentConversation({ tab1: "p2" }, "tab1", PANES, "p1"), PANES[1]);
 });
 
-// A viewer's props as open.sh or the path picker split it off, with the opening's id.
+// A viewer's props as open-beside.js splits it off, with the opening's id.
 const opened = (more) => ({ file: "/work/a/plan.md", space: "s1", conversation: "p2", id: "1800000000-41", ...more });
 // spaces(): this Mac's space s1, and the space s3 of a machine this screen calls studio.
 const SPACES = [{ id: "s1", machine: null }, { id: "studio/s3", machine: "studio" }];
@@ -127,7 +127,7 @@ test("a viewer not found among the panes forgets the focused tab for an opening 
   assert.deepEqual(start(before, opened({ conversation: undefined }), { viewer: null }).conversations, { tab1: "p2" });
 });
 
-test("props without an opening id, as an older router's, leave the memory as it was", () => {
+test("props without an opening id, as an older version's, leave the memory as it was", () => {
   const before = { conversations: { tab1: "p2" }, openings: [{ id: "1700000000-7", tab: "tab1" }] };
   for (const props of [opened({ id: undefined }), opened({ id: undefined, conversation: undefined }), opened({ id: 7 }), opened({ id: "" }), opened({ id: "a b" }), undefined]) {
     assert.deepEqual(start(before, props), before, JSON.stringify(props));

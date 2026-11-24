@@ -113,8 +113,8 @@ test("a new tab that never shows up in spaces() is announced by its name, not le
 
 test("the unplaced-tab notice in both languages names the tab by its file name", () => {
   assert.deepEqual(unplacedNotice(FILE, translator("ko")), {
-    title: "새 탭으로 넘어가지 못했습니다",
-    body: "'plan.md' 탭을 열었지만 찾지 못해 옮기거나 보이지 못했습니다. 탭 막대에서 고르세요.",
+    title: "새 탭으로 넘어가지 못했어요",
+    body: "'plan.md' 탭은 열었지만 찾지 못해서 자리를 옮기거나 보여 주지 못했어요. 탭 막대에서 고르세요.",
     level: "warning",
   });
   assert.deepEqual(unplacedNotice(FILE, translator("en")), {
