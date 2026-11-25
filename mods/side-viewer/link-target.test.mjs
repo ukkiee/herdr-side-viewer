@@ -61,6 +61,15 @@ test("raw text is a path as it stands, with a line number, backticks or punctuat
   assert.equal(file({ raw: "c.json:3" }), `${CWD}/c.json`);
 });
 
+test("words Herdr hands over after a space fall away", () => {
+  assert.equal(file({ raw: ".scratch/review/pr-draft.md 파일." }), `${CWD}/.scratch/review/pr-draft.md`);
+  assert.equal(file({ raw: "docs/plan.md 를" }), `${CWD}/docs/plan.md`);
+  assert.equal(file({ raw: "docs/plan.md:12 에서" }), `${CWD}/docs/plan.md`);
+  assert.equal(file({ raw: "`src/main.ts` 파일." }), `${CWD}/src/main.ts`);
+  assert.equal(file({ raw: "docs/plan.md를 보세요" }), null);
+  assert.equal(file({ raw: "docs/my notes.md" }), null);
+});
+
 test("letters stuck to a path's end make it no path", () => {
   assert.equal(file({ raw: "docs/plan.md를" }), null);
   assert.equal(file({ raw: "/srv/app/README.md에서" }), null);

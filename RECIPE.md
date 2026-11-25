@@ -143,9 +143,10 @@ The mod shows files, not agents, so it has no agent statuses.
   - The file (`linkFile`): `link.path` when Herdr resolved it (a path on this Mac). Else
     `link.raw`: a file URI (`file:/…`, `file:///…`, `file://<host>/…`, any case) gives its
     decoded path when its host is none, `localhost` or the terminal machine's `hostname`
-    (asked there only for such a URI); any other host passes. Plain text must be a
-    path as it stands. Backticks around it, a line number after it (`a.md:12`, `a.md:12:3`,
-    `a.md:12-20`) and ASCII punctuation after it (`.,;:!?)]'"`) fall away, and the file shows
+    (asked there only for such a URI); any other host passes. Plain text is the path up
+    to the first space: for a path it could not resolve, Herdr may hand over the words after
+    it too (`plan.md 파일.`). Backticks around it, a line number after it (`a.md:12`,
+    `a.md:12:3`, `a.md:12-20`) and ASCII punctuation after it (`.,;:!?)]'"`) fall away, and the file shows
     from the top. Letters stuck to its end make it no path: `plan.md를` passes, `plan.md 를`
     opens. A relative path is taken from `source.cwd`, the clicked terminal's folder; `~/`
     is the home of the terminal's machine, asked there with `sh` only for an unresolved `~`
@@ -823,7 +824,7 @@ path, a relative path, a path with a line number (`app.ts:12`), a `~/` path and 
 code formatting. Have it also print, each followed by a space or the end of the line, the
 absolute path of a `.txt` file, `/tmp/side-viewer-nope.md` (no such file), the markdown
 file's absolute path with `를` stuck to its end, the same path with ` 를` after a space,
-and a bare file name, `RECIPE.md`.
+its relative path with ` 파일.` after a space, and a bare file name, `RECIPE.md`.
 
 1. `./install.sh` prints `check passed`, under `Shortcut keys` the line
    `cmd-o → "mod.open:side-viewer" (global)` (or the same ending in `: already there.`, or
@@ -848,7 +849,8 @@ and a bare file name, `RECIPE.md`.
 7. Clicks that pass, with the viewer showing. The `.txt` path opens in its default app, and
    the viewer does not change. `/tmp/side-viewer-nope.md`: no side viewer opens or changes.
    The path with `를` stuck to it: no side viewer opens or changes; the same path with ` 를`
-   after a space opens in the viewer. `RECIPE.md` alone: cmd-click does nothing.
+   after a space opens in the viewer, and so does the relative path with ` 파일.`.
+   `RECIPE.md` alone: cmd-click does nothing.
 8. With a file showing, change it on disk: the content updates without a click. Delete it:
    `이 파일이 없어졌어요.` Put it back: the content returns.
 9. In a markdown document, click a link to another markdown file (relative link): it opens

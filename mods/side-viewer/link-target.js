@@ -48,10 +48,11 @@ export function uriHost(link) {
 
 // The file a click on `link` ({ kind, raw, path }) opens, or null when the viewer cannot show
 // it. A raw file URI gives its path when its host is the terminal's machine: none, localhost
-// or `host`, that machine's host name (null when unknown). Plain text must be a path
-// as it stands: backticks around it, a line number and ASCII punctuation after it fall away,
-// and a relative path is taken from `cwd`, the clicked terminal's folder. Letters stuck to
-// the end make it no path ("plan.md를"); "plan.md 를" is the clickable way to write it.
+// or `host`, that machine's host name (null when unknown). Plain text is the path up to the
+// first space: a path Herdr could not resolve may come with the words after it
+// ("plan.md 파일."). Backticks around it, a line number and ASCII punctuation after it fall
+// away, and a relative path is taken from `cwd`, the clicked terminal's folder. Letters stuck
+// to the end make it no path ("plan.md를"); "plan.md 를" is the clickable way to write it.
 //   home: the machine's home or null; groups: extensions.json
 export function linkFile({ link, cwd, home, host = null, groups }) {
   if (link?.kind !== "file") return null;
@@ -75,7 +76,7 @@ function fromRaw(raw, cwd, home, host) {
       return null;
     }
   }
-  const path = raw.trim().match(CLICKED)?.[1];
+  const path = raw.trim().split(/\s/, 1)[0].match(CLICKED)?.[1];
   return path ? resolved(path, cwd, home) : null;
 }
 
