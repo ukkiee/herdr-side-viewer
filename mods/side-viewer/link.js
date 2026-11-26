@@ -3,10 +3,10 @@
 // passes on: on this Mac to Herdr's usual opener, the file's default app; in a remote space
 // to nothing. link-target.js decides; this file asks Herdr.
 import { panes, exec, machines, appHome, readTextFile } from "herdr";
-import { accessOf } from "./file-access.js";
-import { unavailable } from "./remote-results.js";
-import { openBeside } from "./open-beside.js";
-import { linkOpening, linkFile, wantsHome, uriHost } from "./link-target.js";
+import { accessOf } from "./adapters/out/file-access.js";
+import { unavailable } from "./core/ports/remote-results.js";
+import { openBeside } from "./adapters/out/open-beside.js";
+import { linkOpening, linkFile, wantsHome, uriHost } from "./core/app/link-target.js";
 
 // A handler has no cx to sleep with, so a wait is a `sleep` run on this Mac.
 const sleep = (ms) => exec("sleep", [String(ms / 1000)]).catch(() => null);

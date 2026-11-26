@@ -270,7 +270,7 @@ Linux와 macOS 기계를 지원합니다.
   600). 셸이 입력 칸에 넣으면서 지우고, 셸이 가져가지 않으면 뷰어가 지웁니다. 준비
   줄은 그 옆의 `<기계>_<터미널>.keymap`에 그 누름의 표식과 키맵을 쓰고, 셸이 명령을 가져가면 뷰어가
   읽은 뒤 지웁니다.
-- **Herdr 단축키**: `install.sh`가 Herdr의 `keys.json`에 `cmd-o`를 더합니다([설치](#설치)
+- **Herdr 단축키**: `install.mjs`가 Herdr의 `keys.json`에 `cmd-o`를 더합니다([설치](#설치)
   참고).
 - **Herdr 레이아웃**: Herdr가 지금 쓰는 개인 레이아웃의 `link_handlers`에 `side-viewer`를
   더합니다([cmd-클릭 켜기](#cmd-클릭-켜기) 참고).
@@ -302,19 +302,19 @@ Linux와 macOS 기계를 지원합니다.
 
 ## 설치
 
-macOS, **0.1.17 이상**의 Herdr 앱(`PATH`에 `herdr-app`), **개인 레이아웃**이 필요합니다
-([cmd-클릭 켜기](#cmd-클릭-켜기) 참고). Node는 없어도 됩니다. `cmd-o` 키를 합칠 때만 씁니다.
+macOS, **0.1.17 이상**의 Herdr 앱(`PATH`에 `herdr-app`), 설치 스크립트를 돌릴 **Node**,
+**개인 레이아웃**이 필요합니다([cmd-클릭 켜기](#cmd-클릭-켜기) 참고).
 
 ```sh
 git clone https://github.com/ukkiee/herdr-side-viewer
-cd herdr-side-viewer && ./install.sh
+cd herdr-side-viewer && node install.mjs
 ```
 
-`install.sh`는 Herdr 버전(`herdr-app --version`)을 확인하고, mod에 `herdr-app check`를
-돌리고, mod를 `~/.config/herdr-app/mods/side-viewer`(또는 `$HERDR_APP_HOME`)에 복사하면서
-이전 버전이 남긴 파일을 지웁니다. Herdr가 그보다 오래됐거나 check가 실패하면 복사하기 전에
-멈추고, 설치되어 있던 mod는 그대로 둡니다. Herdr가 오래됐으면
-`Side Viewer needs Herdr 0.1.17 or newer`를 찍습니다. 지금 쓰는 레이아웃이 Herdr가 함께
+`install.mjs`는 Herdr 버전(`herdr-app --version`)을 확인하고, mod에 `herdr-app check`를
+돌리고, mod를 `~/.config/herdr-app/mods/side-viewer`(또는 `$HERDR_APP_HOME`)에 복사합니다.
+바뀐 파일만 쓰고, 테스트는 빼고, 이전 버전이 남긴 파일을 지웁니다. Herdr가 그보다
+오래됐거나 check가 실패하면 복사하기 전에 멈추고, 설치되어 있던 mod는 그대로 둡니다. Herdr가 오래됐으면
+`Side Viewer needs Herdr 0.1.17 or newer`를 찍습니다. 앱 홈의 `mods/side-viewer`가 심볼릭 링크이면(예: 개발하려고 이 체크아웃에 연결한 경우) 아무것도 바꾸지 않고 멈춥니다. 복사본을 설치하려면 링크를 지우세요. 지금 쓰는 레이아웃이 Herdr가 함께
 주는 것일 때, Herdr 창이 열려 있지 않을 때(그러면 레이아웃을 확인하지 못합니다), 이전
 버전의 라우터 앱이 아직 설치되어 있을 때([라우터가 있던 버전에서 올리기](#라우터가-있던-버전에서-올리기)
 참고)는 안내를 찍습니다. **업데이트하려면 `git pull` 뒤에 다시 실행하세요.**
@@ -333,14 +333,14 @@ Herdr는 **개인 레이아웃**에서만 cmd-클릭을 mod의 링크 핸들러�
 
 ### cmd-o 단축키
 
-`install.sh`는 경로 고르기 창의 키도 Herdr의 `keys.json`에 합칩니다. `global`에
+`install.mjs`는 경로 고르기 창의 키도 Herdr의 `keys.json`에 합칩니다. `global`에
 `"cmd-o": "mod.open:side-viewer"`입니다. 한 일은 `Shortcut keys` 아래에 찍습니다.
 
 - **이미 있으면** 그대로 두므로, 다시 실행해도 줄이 늘지 않습니다.
 - **`cmd-o`가 다른 동작에 묶여 있으면**, 어느 칸(`global`, `terminal`, `layout:*`,
   `mod:*`)이든 그대로 두고 그렇다고 알립니다. `mod.open:side-viewer`는 다른 키에 직접
   묶으세요.
-- **`keys.json`이 아직 없거나, 올바른 JSON이 아니거나, Node가 없으면** 아무것도 바꾸지 않고
+- **`keys.json`이 아직 없거나 올바른 JSON이 아니면** 아무것도 바꾸지 않고
   손으로 넣을 줄을 보여 줍니다.
 - 다른 키는 건드리지 않고, 링크인 `keys.json`은 링크로 남습니다.
 
@@ -363,7 +363,7 @@ Herdr는 **개인 레이아웃**에서만 cmd-클릭을 mod의 링크 핸들러�
    Mac에서는 영어로).
 2. 창마다 그 줄에 적힌 앱을 고르고, **Side Viewer Router는 고르지 마세요.**
 3. 다른 앱이 맡지 않는 확장자(예: `rbw`, `cp`)는 앱을 지울 때까지 라우터에 남습니다.
-4. `~/Applications/Side Viewer Router.app`을 지운 뒤 `./install.sh`를 실행합니다.
+4. `~/Applications/Side Viewer Router.app`을 지운 뒤 `node install.mjs`를 실행합니다.
 
 ## 확장자
 
