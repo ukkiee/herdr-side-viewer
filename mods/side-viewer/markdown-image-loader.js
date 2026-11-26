@@ -10,7 +10,6 @@ import { appHome } from "herdr";
 import * as fs from "fs/promises";
 import { readProbe, PROBE, blockerOf } from "./views.js";
 import { kindOf, copyName, sizeOf, FOLDER } from "./image-copies.js";
-import { parseMarkdown } from "./markdown-blocks.js";
 import { imageFileOf, imagesOf } from "./markdown-images.js";
 
 const FAILED = { failed: true };
@@ -21,11 +20,15 @@ const same = (a, b) => a?.failed === b?.failed && a?.path === b?.path
 export class MarkdownImages {
   // `sweep()` and `dropOlder(path)` are main.js's cleanup of the copies folder, shared with
   // the image view so both follow one 30-day rule. `access()` is the file access of the
-  // viewer's machine (file-access.js), asked at each copy.
-  constructor({ sweep, dropOlder, access }) {
+  // viewer's machine (file-access.js), asked at each copy. `parse(text)` is the viewer's
+  // shared parse (markdown-chunks.js, parsedOf). `changed(image, cx)` hears of a copy that is
+  // ready or failed, to draw the chunk that shows it again.
+  constructor({ sweep, dropOlder, access, parse, changed }) {
     this.sweep = sweep;
     this.dropOlder = dropOlder;
     this.access = access;
+    this.parse = parse;
+    this.changed = changed;
     // Image file -> { path, size } of its copy, or FAILED.
     this.found = new Map();
     this.pending = new Set();
@@ -35,16 +38,16 @@ export class MarkdownImages {
     this.text = null;
   }
 
-  // Copies the images of `text`, the shown text of the document `file`, and notifies when a
-  // copy is ready or fails. `again` reads images already known once more, for a new read of
-  // the document; typing copies only images not seen yet.
+  // Copies the images of `text`, the shown text of the document `file`, and tells `changed`
+  // when a copy is ready or fails. `again` reads images already known once more, for a new
+  // read of the document; typing copies only images not seen yet.
   prepare(file, text, again, cx) {
     if (!again && file === this.file && text === this.text) return;
     this.file = file;
     this.text = text;
     const files = new Set();
     if (text.includes("![")) {
-      for (const src of imagesOf(parseMarkdown(text).blocks)) {
+      for (const src of imagesOf(this.parse(text).blocks)) {
         const image = imageFileOf(src, file);
         if (image) files.add(image);
       }
@@ -63,7 +66,7 @@ export class MarkdownImages {
         this.pending.delete(image);
         if (same(this.found.get(image), result)) return;
         this.found.set(image, result);
-        cx.notify();
+        this.changed(image, cx);
       });
     }
   }

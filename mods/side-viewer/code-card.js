@@ -36,12 +36,16 @@ function codeBlocksOf(blocks, found = []) {
 const sameBlock = (card, block) => card.lang === block.lang && card.text === block.text;
 
 export class CodeCards {
-  constructor() {
+  // `parse(text)` is the viewer's shared parse (markdown-chunks.js, parsedOf).
+  constructor(parse = parseMarkdown) {
+    this.parse = parse;
     // One card per code block, in document order.
     this.cards = [];
     this.made = 0;
     // The syntax colors and font the editors were made with: their colors are fixed then.
     this.look = null;
+    // Moves on whenever the cards change, so the chunks that draw them are drawn again.
+    this.version = 0;
   }
 
   // Makes editor state for the code blocks of `text` and releases what no block uses any
@@ -49,7 +53,7 @@ export class CodeCards {
   // code view's colors, `font` the code font or null. Returns whether any card changed, so
   // the caller can redraw.
   prepare(text, { syntax, font }) {
-    const blocks = text ? codeBlocksOf(parseMarkdown(text).blocks) : [];
+    const blocks = text ? codeBlocksOf(this.parse(text).blocks) : [];
     const look = JSON.stringify([syntax, font ?? null]);
     let changed = false;
     if (look !== this.look) {
@@ -67,6 +71,7 @@ export class CodeCards {
     for (const card of spare) card.editor.release();
     if (spare.length) changed = true;
     this.cards = cards;
+    if (changed) this.version++;
     return changed;
   }
 
@@ -93,10 +98,11 @@ export class CodeCards {
     };
   }
 
-  // A cursor for one drawing of the document: blocks come in document order, the same order
-  // prepare() found them in, so each takes the next card that matches it.
-  drawing() {
-    let next = 0;
+  // A cursor for one drawing of the document, or of a chunk of it whose first code block has
+  // card `from`: blocks come in document order, the same order prepare() found them in, so
+  // each takes the next card that matches it.
+  drawing(from = 0) {
+    let next = from;
     return (block) => {
       const at = this.cards.findIndex((card, index) => index >= next && sameBlock(card, block));
       if (at < 0) return null;

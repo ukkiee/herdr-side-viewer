@@ -15,5 +15,6 @@ It takes the click as a link handler, so it needs Herdr 0.1.17 or newer.
 
 - The mod is plain JS under `mods/side-viewer/`: no dependencies, no build step. Decisions sit in modules without `herdr` imports, each with a `*.test.mjs`.
 - The Herdr mod authoring guide is outside this repo, at `~/.config/herdr-app/AGENTS.md`. Read it before writing mod code.
-- Full offline check: `node --test mods/side-viewer/`, then `herdr-app check mods/side-viewer`.
+- Full offline check: `node --test mods/side-viewer/`, then `herdr-app check mods/side-viewer`, then
+  `scripts/render-budget.sh` (Herdr stops a `render()` past 50 ms; RECIPE.md, Watch out).
 - Install: `./install.sh` (checks Herdr's version and the mod, copies the mod into the app home, merges the cmd-o key).

@@ -469,7 +469,8 @@ The mod shows files, not agents, so it has no agent statuses.
 - `mods/side-viewer/main.js`: the one `View`: state, reads, requests, the watch, edits and
   saves, the language read, the tab and shell commands' wiring. Drawing is in `header.js`,
   `markdown-view.js`, `code-card.js`, `code-view.js`, `image-view.js`, `notice-view.js`;
-  `markdown-image-loader.js` makes the copies of pictures in markdown, `shell-pane.js` runs
+  `markdown-document.js` keeps the markdown rendering's chunk views (`MarkdownChunk`, one
+  nested `View` per chunk), `markdown-image-loader.js` makes the copies of pictures in markdown, `shell-pane.js` runs
   `>_`, `picker-view.js` is the path picker (`PathPicker`: its state, the reads behind it,
   keys and drawing), `open-beside.js` opens a file beside a conversation for a cmd-click
   and a pick (the request, the wait for an answer, the split), and `file-access.js` is
@@ -484,7 +485,9 @@ The mod shows files, not agents, so it has no agent statuses.
   file, the link rule's pattern), `image-copies.js`
   (image check by first bytes, copy names, sizes, cleanup), `edit-state.js` (unsaved edits,
   disk changes, save results, the header's status, handing edits to a tab, checkbox clicks),
-  `markdown-blocks.js` (markdown → blocks), `code-blocks.js` (fence language → label,
+  `markdown-blocks.js` (markdown → blocks; `literalStart` keeps a heading or cell that starts
+  like a list one line of text), `markdown-chunks.js` (blocks → chunks of about
+  4000 characters, a chunk's first code card, the per-copy parse memo), `code-blocks.js` (fence language → label,
   colors, shell; wrapped rows and editor height; card fill), `markdown-images.js` (picture
   paths and sizes), `svg-preview.js` (edited svg previews), `terminal-insert.js` (`>_`'s
   folder, shell state, commands, notices), `sent-conversation.js` (the shared-state keys
@@ -525,14 +528,16 @@ The mod shows files, not agents, so it has no agent statuses.
 - `herdr` functions: `props`, `readTextFile`, `writeTextFile`, `nextCommand`, `home`,
   `appHome`, `theme`, `settings`, `exec`, `watchFolder`, `run`, `spaces`, `focused`,
   `panes`, `hc`, `notify`, `shared`, `setShared`, `machines`, `closeOverlay`
-  (`readTextFile` and `exec` also with `{on: <machine>}`); `cx.spawn`, `cx.timer.every`, `cx.timer.after`, `cx.notify`,
+  (`readTextFile` and `exec` also with `{on: <machine>}`); `cx.spawn`, `cx.timer.every`, `cx.timer.after`, `cx.notify`
+  (also `cx.notify(entity)` for a chunk view), `cx.new` with `entity.release()`,
   `cx.write_to_clipboard`, `cx.focus_handle`, `cx.sleep`, `cx.stop_propagation`. `gpui-kit`:
   `View`, `div`, `image`, `svg`, `PathBuilder`, `Background`. `gpui-base`: `v_flex`, `h_flex`,
   `TextView.markdown`, `Editor`, `EditorState`, `InputState`, `Input`, `ScrollHandle`. Node:
   `fs/promises` `readFile`.
 - Command for scripts: `side-viewer.show`. Herdr commands the mod runs: `pane.split`,
-  `tab.new`, `tab.move`, `tab.select`, `tab.rename`, and `side-viewer.show` from the picker
-  and the link handler; hc: `get`, `keys`, `send`, `read`. The link handler is the
+  `tab.new`, `tab.move`, `tab.select`, `tab.rename`, `side-viewer.show` from the picker
+  and the link handler, and `side-viewer.click`, which a viewer sends itself for a click inside
+  the markdown rendering (Watch out); hc: `get`, `keys`, `send`, `read`. The link handler is the
   `handleLink` export of `link.js` (Herdr 0.1.17 or newer).
 - Programs the mod runs: `sh` (with `stat`, `head`, `od`, `cp`, `touch`, `mkdir`), `open`,
   `rm`, `mkdir`, `touch`, `sleep` (also the link handler's wait), `defaults`, and
@@ -620,6 +625,35 @@ Platform:
 - `EditorState` can't be created while drawing; it is made when the text arrives and
   released when the content is replaced. Its colors are fixed when it is made.
 - `TextView.markdown` needs a new element id to draw new text.
+- Herdr 0.1.18 stops a `render()` that runs past 50 ms (its gpui-shell's render budget; an
+  event handler or a task gets 500 ms) and keeps the last drawing under "This view could not
+  be re-rendered; showing the last version that worked" with `interrupted` as the reason.
+  Herdr draws every mod again whenever spaces, agents, terminals, focus or shared state
+  change, and one `render()` over a whole document, parse included, took 14 to 22 ms for a
+  22 KB document with 45 pictures in `herdr-app check` and was stopped every time for the
+  same document three times over; in the app, beside busy agents, it was stopped for the
+  22 KB one. So the markdown rendering is drawn in chunks of about 4000 characters
+  (markdown-chunks.js), each a nested view that draws only its own blocks and only when the
+  text, the parse, its code cards, the language or the theme change or one of its pictures
+  arrives (markdown-document.js); the viewer's own `render()` draws only the title and the
+  footnotes, and the text is
+  parsed once, outside `render()`, shared by the drawing, the code cards and the picture copies. In
+  `herdr-app check` the largest chunk draws in 0 to 2 ms and the viewer's column in 0 to 1 ms,
+  for that document and for one three times as long. A single block larger than a chunk (a
+  very long table) is still drawn in one call.
+- A nested view is made with `cx.new`, told to draw with `cx.notify(entity)` and released
+  only outside drawing, and in Herdr 0.1.18 only from calls that trace back to the viewer's
+  own init: its event handlers and its tasks. One made from work a `render()` woke (a promise
+  it settled, even after a `cx.sleep`) is refused when mounted with "this Entity has been
+  released and can no longer be mounted", and `cx.notify(entity)` from there says "expects a
+  live Entity from the current application" (seen in the app with a probe view). So every
+  redraw the viewer asks for goes through `redraw`, which brings the chunk views up to date
+  first, and `render()` only mounts them; a view that still can't be mounted is drawn inline,
+  slower but whole. A click inside a chunk runs in the chunk's call: `cx.notify()` there
+  draws the chunk, not the viewer, and a task started there belongs to the chunk and ends
+  with it. So the work for a link, a checkbox or `>_` waits in the document and the chunk
+  sends `side-viewer.click`, which every showing copy's command loop hears; the one with work
+  waiting runs it there, with its own `cx`.
 - Images are drawn from copies under the app home, on the report that Herdr draws images
   only from there. Only files whose first bytes are an image's are copied.
 - `watchFolder` reports subfolders too on macOS, and real paths (`/private/tmp` for `/tmp`):
@@ -714,8 +748,8 @@ Platform:
   tests pass `translator("en")` or `translator("ko")` themselves. `i18n.test.mjs` also reads
   the sources for the wiring that unit tests do not run (`main.js`, `shell-pane.js`, the views).
 - CI (`.github/workflows/test.yml`) runs `node --test mods/side-viewer/` on macOS for every
-  push and pull request. `herdr-app check mods/side-viewer` needs the app, so it stays a
-  local step.
+  push and pull request. `herdr-app check mods/side-viewer` and `scripts/render-budget.sh`
+  need the app, so they stay local steps.
 - `setShared` redraws every mod, which is how one viewer's language read reaches all of
   them; there is no per-copy language. Whether `side-viewer.lang` survives an app restart
   was not seen: if it doesn't, a viewer can show English for a moment until its own read.
@@ -874,7 +908,9 @@ its relative path with ` 파일.` after a space, and a bare file name, `RECIPE.m
     `Finder에서 보기`.
 13. In Finder, open one of the markdown files: it opens in its default app, and no side
     viewer opens or changes.
-14. `node --test mods/side-viewer/` passes with no failures.
+14. `node --test mods/side-viewer/` passes with no failures, and `scripts/render-budget.sh`
+    passes: the viewer's column and the largest chunk of a 67 KB document each draw in at
+    most 25 ms.
 
 ### Editing, cards, tabs and language
 
