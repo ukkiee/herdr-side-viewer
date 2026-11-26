@@ -1,17 +1,29 @@
 // The markdown view's rendering. It only draws: the text comes from main.js, and a click on a
 // link goes back through onLink. The source is main.js's editor (code-view.js).
 //
-// markdown: {
-//   text,         the file's text
-//   generation,   main.js's count of content replacements
+// The document is drawn in two parts (markdown-chunks.js): renderMarkdown draws the column
+// with the title, the chunks and the footnotes, and renderChunk draws one chunk's blocks
+// inside a view of its own (markdown-document.js).
+//
+// renderMarkdown(t, {
 //   file,         the shown file, for the folder and name at the top
+//   empty,        whether the text draws nothing (views.js, rendersEmpty)
+//   chunks,       the chunks' views, in order
+//   doc,          the parse the chunks were drawn from (markdown-blocks.js), or null
+//   generation,   main.js's count of content replacements when that parse was taken
 //   onLink: (url, cx) => void
-//   codeCards,    the viewer's CodeCards (code-card.js), prepared for this text
+//   tr,
+// })
+//
+// renderChunk(t, {
+//   blocks,       the chunk's blocks
+//   start,        the index of its first block in the document
+//   doc, generation, onLink, tr,   as above
+//   takeCard,     a CodeCards drawing cursor (code-card.js) at the chunk's first card
 //   images,       the document's image copies (markdown-image-loader.js, forDocument)
 //   onTerminal: (command, cx) => void   a shell code block's `>_`
 //   onCheckbox: (line, cx) => void   a click on a checkbox, with its source line
-//   cache,        the copy's markdownCache()
-// }
+// })
 //
 // The rendering draws markdown-blocks.js's blocks one by one, each kind in its own function:
 // renderHeading, renderParagraph, renderList (renderMarker, renderCheckbox), renderQuote,
@@ -22,8 +34,7 @@ import { div, image, svg } from "gpui-kit";
 import { v_flex, h_flex, TextView } from "gpui-base";
 import { home } from "herdr";
 import { labelOf, noticeFor } from "./document.js";
-import { rendersEmpty } from "./views.js";
-import { parseMarkdown, withFootnoteMarks, literalStart } from "./markdown-blocks.js";
+import { withFootnoteMarks, literalStart } from "./markdown-blocks.js";
 import { renderCodeCard } from "./code-card.js";
 import { imageBoxOf } from "./markdown-images.js";
 import { wordsOf } from "./i18n.js";
@@ -33,40 +44,45 @@ const HEADING_SIZE = { 1: 24, 2: 19, 3: 16 };
 // One line of body text, so a list marker sits level with the item's first line.
 const LINE = 20;
 
-// The parse of the last text a viewer copy drew, as { text, doc }. Each copy keeps its own
-// (main.js): module scope is shared by every copy, which would parse over each other's.
-export function markdownCache() {
-  return { text: null, doc: null };
-}
-
-// The view is drawn again on every notify; the text only changes with a new generation.
-function documentOf(cache, text) {
-  if (cache.text !== text) Object.assign(cache, { text, doc: parseMarkdown(text) });
-  return cache.doc;
-}
-
-// tr: the viewer's translator (i18n.js), for the words the view writes itself.
-export function renderMarkdown(t, { text, generation, file, onLink, codeCards, images, onTerminal, onCheckbox, cache, tr }) {
-  const scroll = div().id("side-viewer-scroll").flex_1().min_h(0).overflow_y_scrollbar();
-  const doc = documentOf(cache, text);
-  const ctx = {
-    t, tr: wordsOf(tr), onLink, footnotes: doc.footnotes,
-    takeCard: codeCards?.drawing() ?? null,
-    images,
-    onTerminal: onTerminal ?? null,
-    onCheckbox,
+// What the drawing of blocks needs from a parse. tr: the viewer's translator (i18n.js), for
+// the words the view writes itself.
+function contextOf(t, { doc, generation, onLink, tr }) {
+  return {
+    t, tr: wordsOf(tr), onLink, footnotes: doc?.footnotes ?? [],
     // A TextView sees one block, so reference-style links need the definitions next to them.
-    references: doc.references.length ? `\n\n${doc.references.join("\n")}` : "",
+    references: doc?.references.length ? `\n\n${doc.references.join("\n")}` : "",
     // A TextView keeps drawing its first text under the same id. Unsaved edits change the
     // text without a new generation, so the id also carries a hash of what it draws.
     id: (key, drawn) => `side-viewer-md-${generation}-${key}-${hashOf(drawn)}`,
   };
+}
+
+// The scrolling column. The chunks sit in it the way blocks sit beside each other, 12 apart,
+// so the column looks as one list of blocks.
+export function renderMarkdown(t, { file, empty, chunks, doc, generation, onLink, tr }) {
+  const scroll = div().id("side-viewer-scroll").flex_1().min_h(0).overflow_y_scrollbar();
+  const ctx = contextOf(t, { doc, generation, onLink, tr });
   return scroll.child(v_flex().w_full().min_w(0).overflow_hidden().px(28).py(24).gap(12).text_size(BODY)
     .when(Boolean(file), (el) => el.child(renderTitle(t, file)))
     // A blank document has no blocks: the notice under the title says so.
-    .when(rendersEmpty(text), (el) => el.child(div().text_color(t.dim).child(noticeFor("empty", ctx.tr))))
-    .children(renderBlocks(ctx, doc.blocks, "b", 0))
-    .when(doc.footnotes.length > 0, (el) => el.child(renderFootnotes(ctx))));
+    .when(empty, (el) => el.child(div().text_color(t.dim).child(noticeFor("empty", ctx.tr))))
+    .children(chunks)
+    .when(ctx.footnotes.length > 0, (el) => el.child(renderFootnotes(ctx))));
+}
+
+// One chunk's blocks, 12 apart like the column's. Its keys and its headings' room above
+// count from the document's first block, so a chunk draws its blocks as the whole document
+// would.
+export function renderChunk(t, { blocks, start, doc, generation, onLink, takeCard, images, onTerminal, onCheckbox, tr }) {
+  const ctx = {
+    ...contextOf(t, { doc, generation, onLink, tr }),
+    takeCard: takeCard ?? null,
+    images,
+    onTerminal: onTerminal ?? null,
+    onCheckbox,
+  };
+  return v_flex().w_full().min_w(0).gap(12).text_size(BODY).text_color(t.foreground)
+    .children(renderBlocks(ctx, blocks, "b", 0, start));
 }
 
 // The folder, dimmed, then the file name.
@@ -77,9 +93,11 @@ function renderTitle(t, file) {
     .child(div().flex_none().font_semibold().child(name));
 }
 
-// `depth` counts the lists around these blocks, for the bullet's look.
-function renderBlocks(ctx, blocks, key, depth) {
-  return blocks.map((block, index) => {
+// `depth` counts the lists around these blocks, for the bullet's look. `first` is the index
+// of the first of them among their siblings.
+function renderBlocks(ctx, blocks, key, depth, first = 0) {
+  return blocks.map((block, offset) => {
+    const index = first + offset;
     const at = `${key}.${index}`;
     switch (block.type) {
       case "heading": return renderHeading(ctx, block, at, index);

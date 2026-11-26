@@ -13,7 +13,7 @@
 // edit-state.js, viewer-tab.js, checkbox.js, markdown-blocks.js, code-blocks.js,
 // markdown-images.js, terminal-insert.js, sent-conversation.js, machine.js and
 // remote-results.js.
-import { View } from "gpui-kit";
+import { View, div } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
 import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes, notify, shared, setShared, machines, closeOverlay } from "herdr";
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
@@ -30,7 +30,9 @@ import { start, open, back, canGoBack } from "./history.js";
 import { takeRequest } from "./request.js";
 import { watchedFolder, linkAction, touches, unshownNotice } from "./links.js";
 import { renderHeader } from "./header.js";
-import { renderMarkdown, markdownCache } from "./markdown-view.js";
+import { renderMarkdown, renderChunk } from "./markdown-view.js";
+import { MarkdownDocument } from "./markdown-document.js";
+import { parseMemo, parsedOf } from "./markdown-chunks.js";
 import { CodeCards } from "./code-card.js";
 import { ShellPane } from "./shell-pane.js";
 import { renderCode } from "./code-view.js";
@@ -43,6 +45,9 @@ import { accessOf } from "./file-access.js";
 import { openBeside } from "./open-beside.js";
 import { CONVERSATIONS_KEY, OPENINGS_KEY, afterStart, afterRequest } from "./sent-conversation.js";
 import { PathPicker } from "./picker-view.js";
+
+// The mod's name, as `<mod>.<command>` reaches its showing copies.
+const MOD = "side-viewer";
 
 // Where the system's language is remembered in Herdr's shared state ("ko" | "en").
 const LANG_KEY = "side-viewer.lang";
@@ -125,17 +130,24 @@ export default class SideViewer extends View {
     this.saves = new Map();
     // Checkbox clicks that came during a save, as { file, line }, taken when it ends.
     this.clicks = [];
+    // The parse of the last texts shown, shared by the drawing, the code cards and the image
+    // copies, so each text is parsed once and never while drawing (markdown-chunks.js).
+    this.parses = parseMemo();
+    const parse = (text) => parsedOf(this.parses, text);
     // The markdown view's code block cards and their editor state (code-card.js).
-    this.codeCards = new CodeCards();
-    // The markdown view's parse of the text it last drew (markdown-view.js).
-    this.markdownCache = markdownCache();
+    this.codeCards = new CodeCards(parse);
+    // The markdown rendering's chunk views (markdown-document.js).
+    this.document = new MarkdownDocument({ parse, draw: (part) => this.drawChunk(part), ring: () => run(`${MOD}.click`) });
     // The shell pane a shell code block's `>_` puts its command into (shell-pane.js).
     this.shellPane = new ShellPane();
     // The viewer's own keyboard target: cmd+S is heard on the root that tracks it, whether
     // it or the editor inside it holds the keyboard.
     this.focus = cx.focus_handle();
     // Copies of the images inside the shown markdown document (markdown-image-loader.js).
-    this.images = new MarkdownImages({ sweep: () => this.sweep(), dropOlder: (path) => this.dropOlder(path), access: () => this.access() });
+    this.images = new MarkdownImages({
+      sweep: () => this.sweep(), dropOlder: (path) => this.dropOlder(path), access: () => this.access(), parse,
+      changed: (image, cx) => this.document.imageChanged(image, cx),
+    });
     // Whether this copy is a viewer tab, a tab whose only pane is it (viewer-tab.js), rather
     // than a viewer beside a conversation. Its props say so, and they never change.
     const tab = viewerTabOf(props()) ?? viewerTabOf(given);
@@ -177,7 +189,7 @@ export default class SideViewer extends View {
       if (content.file === handoff.file) this.renderingFollows(cx);
       this.probed = null;
       this.load(cx);
-      cx.notify();
+      this.redraw(cx);
     });
   }
 
@@ -214,7 +226,7 @@ export default class SideViewer extends View {
       }
       if (handoff) this.handedOff(file, cx);
       if (place && !(await this.placeTab(before, place, cx))) notify(unplacedNotice(file, this.words()));
-      cx.notify();
+      this.redraw(cx);
     });
   }
 
@@ -286,6 +298,12 @@ export default class SideViewer extends View {
         // pane.go gave this copy the keyboard (mod.json "focusable"), or a popup over it closed.
         if (command === "focus") {
           this.focus.focus();
+          continue;
+        }
+        // A click inside the markdown rendering's chunks (markdown-document.js): every showing
+        // copy hears it, and only the one with clicks waiting has work.
+        if (command === "click") {
+          this.document.act(cx);
           continue;
         }
         if (command !== "show") continue;
@@ -415,7 +433,7 @@ export default class SideViewer extends View {
         ? editedContentOf(file, result.content, viewOf(file, this.groups), this.edits[file]?.disk)
         : result.content;
       if (result.content === null || read.step === "show" || !shown) this.apply(file, content, cx);
-      else cx.notify();
+      else this.redraw(cx);
       if (this.again) this.load(cx);
     });
   }
@@ -440,7 +458,7 @@ export default class SideViewer extends View {
       if (next.state === "svg") Object.assign(shown, { path: next.path, size: next.size });
       const text = shownText(this.edits, shown.file, next.text);
       if (shown.editor.value() !== text) shown.editor.set_value(text);
-      cx.notify();
+      this.redraw(cx);
       return;
     }
     next.file = file;
@@ -457,7 +475,7 @@ export default class SideViewer extends View {
     const text = content.state === "markdown" ? shownText(this.edits, file, content.text) : "";
     const font = settings()?.font_family;
     const look = { syntax: this.syntax(), font: typeof font === "string" && font ? font : null };
-    if (this.codeCards.prepare(text, look)) cx.notify();
+    if (this.codeCards.prepare(text, look)) this.redraw(cx);
   }
 
   // Replacing this.content. The code view's editor state is released when it goes, and the
@@ -466,7 +484,7 @@ export default class SideViewer extends View {
     this.content?.editor?.release();
     this.content = content;
     this.generation++;
-    cx.notify();
+    this.redraw(cx);
     if (content.state === "markdown") this.images.prepare(content.file, shownText(this.edits, content.file, content.text), true, cx);
     this.ensurePreview(cx);
   }
@@ -533,7 +551,7 @@ export default class SideViewer extends View {
       if (this.learning === access) this.learning = null;
       if (!folder) return;
       this.homeFor = { access, folder };
-      cx.notify();
+      this.redraw(cx);
     });
   }
 
@@ -651,7 +669,7 @@ export default class SideViewer extends View {
       const current = this.content.file === file && shownText(this.edits, file, this.content.text) === text;
       if (current && preview.path) this.dropOlder(path, PREVIEW_FOLDER).catch(() => null);
       this.ensurePreview(cx);
-      cx.notify();
+      this.redraw(cx);
     });
   }
 
@@ -691,7 +709,7 @@ export default class SideViewer extends View {
     if (content.state === "markdown") this.generation++;
     if (content.state === "markdown") this.prepareCards(content.file, content, cx);
     if (content.state === "markdown") this.images.prepare(content.file, editor.value(), false, cx);
-    if (unsaved(this.edits, content.file) !== was) cx.notify();
+    if (unsaved(this.edits, content.file) !== was) this.redraw(cx);
   }
 
   // Writes the shown file's unsaved edits through the file access of the viewer's machine.
@@ -712,7 +730,7 @@ export default class SideViewer extends View {
     this.edits = start.edits;
     const request = start.write;
     if (!request) {
-      cx.notify();
+      this.redraw(cx);
       return true;
     }
     this.saving = true;
@@ -732,7 +750,7 @@ export default class SideViewer extends View {
         }
       } finally {
         this.saving = false;
-        cx.notify();
+        this.redraw(cx);
         this.takeClicks(cx);
         this.takeSaves(cx);
       }
@@ -773,7 +791,7 @@ export default class SideViewer extends View {
     this.prepareCards(file, content, cx);
     this.images.prepare(file, text, false, cx);
     if (click.write) this.save(cx);
-    cx.notify();
+    this.redraw(cx);
   }
 
   // The checkbox clicks that waited for a save, in order. Clicks on a file no longer shown
@@ -797,7 +815,7 @@ export default class SideViewer extends View {
     if (content.file === file) this.renderingFollows(cx);
     this.probed = null;
     this.load(cx);
-    cx.notify();
+    this.redraw(cx);
   }
 
   // The conflict's "overwrite": a save that expects the disk text the conflict found. During
@@ -817,7 +835,7 @@ export default class SideViewer extends View {
     } else {
       this.save(cx, file);
     }
-    cx.notify();
+    this.redraw(cx);
   }
 
   // Keys reach here while the viewer or the editor inside it holds the keyboard.
@@ -832,7 +850,7 @@ export default class SideViewer extends View {
     if (!this.raw) this.focus.focus();
     // An svg edited in the source is drawn from its edited text.
     this.ensurePreview(cx);
-    cx.notify();
+    this.redraw(cx);
   }
 
   // The app macOS opens the file with, as a double click in Finder would.
@@ -976,7 +994,47 @@ export default class SideViewer extends View {
   setRoom(width, cx) {
     if (width === this.room) return;
     this.room = width;
+    this.redraw(cx);
+  }
+
+  // Every redraw the viewer asks for goes through here: the markdown rendering's chunk views
+  // follow what it shows first (markdown-document.js). They can't be made or changed while
+  // drawing, nor from work a render() woke, so this is where they keep up.
+  redraw(cx) {
+    this.syncDocument(cx);
     cx.notify();
+  }
+
+  syncDocument(cx) {
+    const want = this.documentWanted();
+    if (this.document && want !== undefined) this.document.sync(want, cx);
+  }
+
+  // What the markdown rendering shows, as markdown-document.js compares it: null when it is
+  // not shown, undefined while the source is, so its views stay for when it is shown again.
+  documentWanted() {
+    const content = this.content;
+    if (content?.state !== "markdown") return null;
+    if (this.raw) return undefined;
+    return {
+      file: content.file, text: shownText(this.edits, content.file, content.text),
+      generation: this.generation, cards: this.codeCards.version, lang: this.words().lang,
+    };
+  }
+
+  // One chunk of the markdown rendering, drawn in the chunk's own view (markdown-document.js).
+  // Its clicks run in the chunk's call, so the viewer's work for them goes through the
+  // document's post(), which hands it to a call of the viewer's.
+  drawChunk(part) {
+    return renderChunk(theme(), {
+      blocks: part.blocks, start: part.start, doc: part.doc, generation: part.generation,
+      onLink: (url) => this.document.post((cx) => this.followLink(url, cx)),
+      takeCard: this.codeCards.drawing(part.from),
+      images: this.images.forDocument(part.file),
+      onTerminal: (command) => this.document.post((cx) => this.insertIntoTerminal(command, cx)),
+      onCheckbox: (line) => this.document.post((cx) => this.toggleCheckbox(line, cx)),
+      tr: this.words(),
+    });
   }
 
   // What the header shows, and where its clicks go (header.js).
@@ -1011,16 +1069,20 @@ export default class SideViewer extends View {
     // wrap their lines (views.js, editorOf).
     if (editable(content.state, this.raw)) return renderCode(t, content);
     if (content.state === "markdown") {
+      const text = shownText(this.edits, content.file, content.text);
+      const shown = this.document.shown(content.file);
+      // A chunk view Herdr refuses to mount is drawn here instead: slower, but the document
+      // still shows whole.
+      const chunks = shown.views.map((view, index) => {
+        try {
+          return div().w_full().min_w(0).child(view);
+        } catch {
+          return this.drawChunk(this.document.parts[index]);
+        }
+      });
       return renderMarkdown(t, {
-        text: shownText(this.edits, content.file, content.text), generation: this.generation,
-        onLink: (url, cx) => this.followLink(url, cx),
-        file: this.file,
-        codeCards: this.codeCards,
-        images: this.images.forDocument(content.file),
-        onTerminal: (command, cx) => this.insertIntoTerminal(command, cx),
-        onCheckbox: (line, cx) => this.toggleCheckbox(line, cx),
-        cache: this.markdownCache,
-        tr,
+        file: this.file, empty: rendersEmpty(text), chunks, doc: shown.doc,
+        generation: shown.generation, onLink: (url, cx) => this.followLink(url, cx), tr,
       });
     }
     if (content.state === "image" || content.state === "svg") {
@@ -1050,6 +1112,7 @@ export default class SideViewer extends View {
         return;
       }
       if (shared(LANG_KEY) !== lang) setShared(LANG_KEY, lang);
+      this.syncDocument(cx);
     });
   }
 
