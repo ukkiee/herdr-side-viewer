@@ -466,43 +466,76 @@ The mod shows files, not agents, so it has no agent statuses.
   `{file, viewerTab: true, handoff?, space?}`.
 - `keys.json` (repository root): `{"global": {"cmd-o": "mod.open:side-viewer"}}`, the key
   `install.sh` merges into the person's.
+- `scripts/keys-merge.js`: merging `keys.json`, with `keys-merge.test.mjs` beside it.
+  `install.sh` runs it with `node`; it is install-time code, so it sits outside the mod
+  folder and is not copied into the app home.
 - `mods/side-viewer/main.js`: the one `View`: state, reads, requests, the watch, edits and
-  saves, the language read, the tab and shell commands' wiring. Drawing is in `header.js`,
-  `markdown-view.js`, `code-card.js`, `code-view.js`, `image-view.js`, `notice-view.js`;
-  `markdown-document.js` keeps the markdown rendering's chunk views (`MarkdownChunk`, one
-  nested `View` per chunk), `markdown-image-loader.js` makes the copies of pictures in markdown, `shell-pane.js` runs
-  `>_`, `picker-view.js` is the path picker (`PathPicker`: its state, the reads behind it,
-  keys and drawing), `open-beside.js` opens a file beside a conversation for a cmd-click
-  and a pick (the request, the wait for an answer, the split), and `file-access.js` is
-  every touch of the shown files: `accessOf(machine)`
-  gives one access per machine with `read`, `run`, `exists`, `home`, `mark` (`cksum`),
-  `copy` (picture bytes), `key` (copy names) and `write` (saves, this Mac's and another
-  machine's). The decisions sit in modules without `herdr` imports, so `node --test` runs them:
-  `views.js` (extension → view and language, size limits, the probe script, which views
-  switch and take typing, the editor options), `document.js` (notices, header label),
-  `history.js`, `request.js` (the handoff from `open-beside.js`), `links.js` (link clicks
-  in the markdown view, watch decisions), `link-target.js` (a cmd-click's conversation and
-  file, the link rule's pattern), `image-copies.js`
-  (image check by first bytes, copy names, sizes, cleanup), `edit-state.js` (unsaved edits,
-  disk changes, save results, the header's status, handing edits to a tab, checkbox clicks),
-  `markdown-blocks.js` (markdown → blocks; `literalStart` keeps a heading or cell that starts
-  like a list one line of text), `markdown-chunks.js` (blocks → chunks of about
-  4000 characters, a chunk's first code card, the per-copy parse memo), `code-blocks.js` (fence language → label,
-  colors, shell; wrapped rows and editor height; card fill), `markdown-images.js` (picture
-  paths and sizes), `svg-preview.js` (edited svg previews), `terminal-insert.js` (`>_`'s
-  folder, shell state, commands, notices), `sent-conversation.js` (the shared-state keys
-  `side-viewer.conversations` and `side-viewer.openings`; taking an opening once,
-  remembering, forgetting and finding a tab's sent conversation), `viewer-tab.js` (props, handoff file, tab
-  placement and name), `checkbox.js` (turning over a task line), `i18n.js` (the language
-  from `AppleLanguages`, the asking-again delays, the translator `tr`), `machine.js` (the
-  space value, the viewer's machine, the existence and home commands and their answers,
-  `FIND_HC`, the header's actions), `remote-results.js` (`cksum` marks, refusal kinds,
-  `unavailable`, remote save failures), `path-picker.js` (candidates from terminal text,
-  `CHECK_LIMIT` 200 and `PICK_LIMIT` 30, the filter, the conversation to read, where a pick
-  opens), `keys-merge.js` (merging `keys.json`). Each has a `*.test.mjs`. `links.js` also
-  decides remote links, `request.js` matches a request's space to the viewer's, and
-  `edit-state.js` holds remote save failures.
-- The words on screen, each a `{ en, ko }` table whose keys start with its area:
+  saves, the language read, the tab and shell commands' wiring. It and `link.js` are the
+  entry files Herdr looks for at the mod root, beside `mod.json` and `extensions.json`; they
+  import from the folders below, and nothing imports them.
+- `mods/side-viewer/core/`: the decisions. Nothing in it imports `herdr`, `gpui-*` or
+  `adapters/`, so `node --test` loads its modules; each test sits beside its module.
+  - `core/domain/`, the rules on a shown file and its text: `views.js` (extension → view
+    and language, size limits, what a file's probe stops, which views switch and take
+    typing, the editor options), `document.js` (notices, header label), `history.js`, `links.js` (link
+    clicks in the markdown view, remote links among them, watch decisions), `edit-state.js`
+    (unsaved edits, disk changes, save results and remote save failures, the header's status,
+    handing edits to a tab, checkbox clicks), `markdown-blocks.js` (markdown → blocks;
+    `literalStart` keeps a heading or cell that starts like a list one line of text),
+    `checkbox.js` (turning over a task line).
+  - `core/app/`, what the viewer, the path picker and the link handler decide around a
+    file, a machine and a conversation: `request.js` (the handoff from `open-beside.js`, and
+    whether a request's space is the viewer's), `link-target.js` (a cmd-click's conversation
+    and file, the link rule's pattern), `file-probe.js` (the command that asks a
+    machine for a file's size, time and first bytes before anything reads it, and its
+    answer), `image-copies.js` (image check and size by first bytes, copy names, cleanup),
+    `markdown-images.js` (the pictures alone on their line and the file each points at), `svg-preview.js`
+    (edited svg previews), `terminal-insert.js` (`>_`'s folder, shell state, commands,
+    notices), `sent-conversation.js` (the shared-state keys `side-viewer.conversations` and
+    `side-viewer.openings`; taking an opening once, remembering, forgetting and finding a
+    tab's sent conversation), `viewer-tab.js` (props, handoff file, tab placement and name),
+    `machine.js` (the space value, the viewer's machine, the existence and home commands and
+    their answers, `FIND_HC`, the header's actions), `path-picker.js` (candidates from
+    terminal text, `CHECK_LIMIT` 200 and `PICK_LIMIT` 30, the filter, the conversation to
+    read, where a pick opens).
+  - `core/ports/`, what an answer or a refusal from outside means: `remote-results.js`
+    (`cksum` marks, refusal kinds, `unavailable`, remote save failures), `write-refusal.js`
+    (a refused `writeTextFile` on this Mac: changed, permission, large or other).
+  - `core/i18n/`, the language and the words: `i18n.js` (the language from
+    `AppleLanguages`, the asking-again delays, the translator `tr`) and the `messages-*.js`
+    tables (below).
+- `mods/side-viewer/adapters/in/`: the screens, drawn with `gpui-kit` and `gpui-base`.
+  - `viewer/`, the viewer's drawing: `header.js`, `markdown-view.js`, `code-card.js`,
+    `code-view.js`, `image-view.js`, and `markdown-document.js`, which keeps the markdown
+    rendering's chunk views (`MarkdownChunk`, one nested `View` per chunk).
+  - `picker/`, the path picker: `picker-view.js` (`PathPicker`: its state, the reads behind
+    it, keys and drawing).
+  - `shared/`, what the viewer and the picker both draw: `notice-view.js` (notices and the
+    loading arc).
+  - `logic/`, the screens' pure calculations, tested like `core/`: `markdown-chunks.js`
+    (blocks → chunks of about 4000 characters, a chunk's first code card, the per-copy parse
+    memo), `code-blocks.js` (fence language → label, colors, shell; wrapped rows and editor
+    height; card fill), `image-box.js` (the size a picture is drawn at: fitted to the room,
+    and at most 420 high in a markdown document), `picker-size.js` (the path picker card's
+    frame, its width in the window and its list's height, at Herdr's zoom).
+- `mods/side-viewer/adapters/out/`: the reads, writes and commands that `main.js`, the link
+  handler and the screens call. `file-access.js` is every touch of the shown files:
+  `accessOf(machine)` gives one access per machine with `read`, `run`, `exists`, `home`,
+  `mark` (`cksum`), `copy` (picture bytes), `key` (copy names) and `write` (saves, this
+  Mac's and another machine's). `open-beside.js` opens a file beside a conversation for a
+  cmd-click and a pick (the request, the wait for an answer, the split),
+  `markdown-image-loader.js` makes the copies of pictures in markdown, and `shell-pane.js`
+  runs `>_`.
+- Import direction, `adapters/in` → `core` ← `adapters/out`, checked by
+  `mods/side-viewer/layers.test.mjs` under `node --test`. Screens may import out adapters
+  directly; out adapters never import screens. In `core/`, `domain/` imports only
+  `domain/`, `i18n/` and `ports/`, `app/` any of `core/`, and `ports/` and `i18n/` only
+  their own folder. `adapters/in/logic/` imports only `core/` and `logic/`. `core/` and
+  `adapters/in/logic/` import no bare name (`herdr`, `gpui-*`, `node:*`, `fs/promises`):
+  they do no I/O, and `node --test` loads them without Herdr. Nothing imports a root file.
+  The test also fails on a module outside the folders above, a relative import that names
+  no file, an import cycle, and a test that does not sit beside its module.
+- The words on screen, in `core/i18n/`, each a `{ en, ko }` table whose keys start with its area:
   `messages-header.js` (`header.`: the switch, buttons, tooltips and the status),
   `messages-body.js` (`body.`: the notices and the picture error), `messages-alerts.js`
   (`alerts.`: the `>_`, new-tab and remote link notifications), `messages-picker.js`
@@ -519,11 +552,11 @@ The mod shows files, not agents, so it has no agent statuses.
 - `mods/side-viewer/link.js`: `handleLink`, the link handler mod.json's `link_handlers`
   turns on. It asks Herdr (`panes`, `appHome`, `readTextFile`, file-access.js) and leaves
   the decisions to link-target.js and the opening to open-beside.js.
-- Icons: `new-tab.svg`, `default-app.svg`, `finder.svg` (header, 14px), `copy.svg`,
+- Icons, in `mods/side-viewer/icons/`: `new-tab.svg`, `default-app.svg`, `finder.svg` (header, 14px), `copy.svg`,
   `check.svg`, `terminal.svg` (cards, 16px), 16×16, `checkbox-check.svg` (a checked
   box's mark, 10×10 with a 1.8 stroke), stroked in `currentColor`, and `spinner.svg` (the
   turning arc: 16px in the viewer, 14px in the picker, turned by `.spin(800)`), drawn with
-  `svg("mods/side-viewer/<name>.svg")`. The "rendering | source" switch is two text cells,
+  `svg("mods/side-viewer/icons/<name>.svg")`. The "rendering | source" switch is two text cells,
   with no icon.
 - `herdr` functions: `props`, `readTextFile`, `writeTextFile`, `nextCommand`, `home`,
   `appHome`, `theme`, `settings`, `exec`, `watchFolder`, `run`, `spaces`, `focused`,
@@ -572,8 +605,8 @@ The mod shows files, not agents, so it has no agent statuses.
 - `install.sh`: stops before changing anything unless it runs on macOS, finds `herdr-app` on
   `PATH`, and `herdr-app --version` is 0.1.17 or newer. It runs `herdr-app check` on the mod
   folder, then copies the mod folder into the app home with `rsync -a --delete`, so files an
-  older version left there go (`keys-merge.js` goes along, unused there). Then, under
-  `Shortcut keys`, `node` runs `keys-merge.js` on the app home's `keys.json` and the
+  older version left there go. Then, under
+  `Shortcut keys`, `node` runs `scripts/keys-merge.js` on the app home's `keys.json` and the
   repository's: a key already bound the same is left (`already there.`), a key bound to
   another action in any section is left and reported, a missing, invalid or non-object
   `keys.json` is left and the lines to add are printed, and a changed file is written
@@ -747,7 +780,7 @@ Platform:
   a sentence throws when it gets no `tr`, so its unit tests fail on a call that leaves it out;
   tests pass `translator("en")` or `translator("ko")` themselves. `i18n.test.mjs` also reads
   the sources for the wiring that unit tests do not run (`main.js`, `shell-pane.js`, the views).
-- CI (`.github/workflows/test.yml`) runs `node --test mods/side-viewer/` on macOS for every
+- CI (`.github/workflows/test.yml`) runs `node --test mods/side-viewer/ scripts/` on macOS for every
   push and pull request. `herdr-app check mods/side-viewer` and `scripts/render-budget.sh`
   need the app, so they stay local steps.
 - `setShared` redraws every mod, which is how one viewer's language read reaches all of
@@ -908,7 +941,7 @@ its relative path with ` 파일.` after a space, and a bare file name, `RECIPE.m
     `Finder에서 보기`.
 13. In Finder, open one of the markdown files: it opens in its default app, and no side
     viewer opens or changes.
-14. `node --test mods/side-viewer/` passes with no failures, and `scripts/render-budget.sh`
+14. `node --test mods/side-viewer/ scripts/` passes with no failures, and `scripts/render-budget.sh`
     passes: the viewer's column and the largest chunk of a 67 KB document each draw in at
     most 25 ms.
 

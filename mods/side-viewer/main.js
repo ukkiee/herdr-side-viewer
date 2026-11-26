@@ -11,40 +11,41 @@
 // The decisions live in modules without Herdr imports, each with its own tests: document.js,
 // views.js, image-copies.js, svg-preview.js, history.js, request.js, links.js,
 // edit-state.js, viewer-tab.js, checkbox.js, markdown-blocks.js, code-blocks.js,
-// markdown-images.js, terminal-insert.js, sent-conversation.js, machine.js and
-// remote-results.js.
+// markdown-images.js, terminal-insert.js, sent-conversation.js, machine.js,
+// remote-results.js and file-probe.js.
 import { View, div } from "gpui-kit";
 import { v_flex, EditorState } from "gpui-base";
 import { props, readTextFile, writeTextFile, nextCommand, home, appHome, theme, settings, exec, watchFolder, run, spaces, focused, panes, notify, shared, setShared, machines, closeOverlay } from "herdr";
 // Herdr's built-in module: an image's size is read from its bytes, which readTextFile cannot give.
 import * as fs from "fs/promises";
-import { contentOf, failedContentOf } from "./document.js";
-import { failureOf, unavailable } from "./remote-results.js";
-import { viewOf, blockerOf, readProbe, PROBE, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, editedContentOf, blankSvg, sourceOnlySvg, rendersEmpty } from "./views.js";
-import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, statusOf, discarded, overwritten, startSave, takeEdit, putEdit, checkboxToggled, writeFailed } from "./edit-state.js";
-import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab, unplacedNotice } from "./viewer-tab.js";
-import { toggleCheckbox } from "./checkbox.js";
-import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, LIST } from "./image-copies.js";
-import { PREVIEW_FOLDER, previewName, pictureOf } from "./svg-preview.js";
-import { start, open, back, canGoBack } from "./history.js";
-import { takeRequest } from "./request.js";
-import { watchedFolder, linkAction, touches, unshownNotice } from "./links.js";
-import { renderHeader } from "./header.js";
-import { renderMarkdown, renderChunk } from "./markdown-view.js";
-import { MarkdownDocument } from "./markdown-document.js";
-import { parseMemo, parsedOf } from "./markdown-chunks.js";
-import { CodeCards } from "./code-card.js";
-import { ShellPane } from "./shell-pane.js";
-import { renderCode } from "./code-view.js";
-import { renderImage } from "./image-view.js";
-import { renderNotice } from "./notice-view.js";
-import { MarkdownImages } from "./markdown-image-loader.js";
-import { LANGS, translator, systemLang, askAgainAfter } from "./i18n.js";
-import { machineOf } from "./machine.js";
-import { accessOf } from "./file-access.js";
-import { openBeside } from "./open-beside.js";
-import { CONVERSATIONS_KEY, OPENINGS_KEY, afterStart, afterRequest } from "./sent-conversation.js";
-import { PathPicker } from "./picker-view.js";
+import { contentOf, failedContentOf } from "./core/domain/document.js";
+import { failureOf, unavailable } from "./core/ports/remote-results.js";
+import { readProbe, PROBE } from "./core/app/file-probe.js";
+import { viewOf, blockerOf, showsLoading, refreshOf, waitsForRead, settledProbe, sameProbe, editable, editorOf, imageState, editedContentOf, blankSvg, sourceOnlySvg, rendersEmpty } from "./core/domain/views.js";
+import { noEdits, typed, unsaved, shownText, saveOf, saved, diskRead, statusOf, discarded, overwritten, startSave, takeEdit, putEdit, checkboxToggled, writeFailed } from "./core/domain/edit-state.js";
+import { handoffFile, handoffId, handoffText, handoffFrom, tabProps, viewerTabOf, tabName, placeAfter, newTabOf, ownTab, unplacedNotice } from "./core/app/viewer-tab.js";
+import { toggleCheckbox } from "./core/domain/checkbox.js";
+import { kindOf, copyName, sizeOf, staleCopies, olderCopies, FOLDER, LIST } from "./core/app/image-copies.js";
+import { PREVIEW_FOLDER, previewName, pictureOf } from "./core/app/svg-preview.js";
+import { start, open, back, canGoBack } from "./core/domain/history.js";
+import { takeRequest } from "./core/app/request.js";
+import { watchedFolder, linkAction, touches, unshownNotice } from "./core/domain/links.js";
+import { renderHeader } from "./adapters/in/viewer/header.js";
+import { renderMarkdown, renderChunk } from "./adapters/in/viewer/markdown-view.js";
+import { MarkdownDocument } from "./adapters/in/viewer/markdown-document.js";
+import { parseMemo, parsedOf } from "./adapters/in/logic/markdown-chunks.js";
+import { CodeCards } from "./adapters/in/viewer/code-card.js";
+import { ShellPane } from "./adapters/out/shell-pane.js";
+import { renderCode } from "./adapters/in/viewer/code-view.js";
+import { renderImage } from "./adapters/in/viewer/image-view.js";
+import { renderNotice } from "./adapters/in/shared/notice-view.js";
+import { MarkdownImages } from "./adapters/out/markdown-image-loader.js";
+import { LANGS, translator, systemLang, askAgainAfter } from "./core/i18n/i18n.js";
+import { machineOf } from "./core/app/machine.js";
+import { accessOf } from "./adapters/out/file-access.js";
+import { openBeside } from "./adapters/out/open-beside.js";
+import { CONVERSATIONS_KEY, OPENINGS_KEY, afterStart, afterRequest } from "./core/app/sent-conversation.js";
+import { PathPicker } from "./adapters/in/picker/picker-view.js";
 
 // The mod's name, as `<mod>.<command>` reaches its showing copies.
 const MOD = "side-viewer";

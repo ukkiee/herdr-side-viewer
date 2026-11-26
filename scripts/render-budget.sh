@@ -27,11 +27,11 @@ measure() {
   sed "s/@PART@/$part/" > "$probe/main.js" <<'EOF'
 import { View } from "gpui-kit";
 import { theme } from "herdr";
-import { renderMarkdown, renderChunk } from "./markdown-view.js";
-import { MarkdownDocument } from "./markdown-document.js";
-import { sizeOf, parseMemo, parsedOf } from "./markdown-chunks.js";
-import { CodeCards } from "./code-card.js";
-import { translator } from "./i18n.js";
+import { renderMarkdown, renderChunk } from "./adapters/in/viewer/markdown-view.js";
+import { MarkdownDocument } from "./adapters/in/viewer/markdown-document.js";
+import { sizeOf, parseMemo, parsedOf } from "./adapters/in/logic/markdown-chunks.js";
+import { CodeCards } from "./adapters/in/viewer/code-card.js";
+import { translator } from "./core/i18n/i18n.js";
 import { DOC, FILE } from "./budget-fixture.js";
 
 const WANT = { file: FILE, text: DOC, generation: 1, cards: 0, lang: "en" };

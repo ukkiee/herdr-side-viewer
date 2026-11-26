@@ -43,7 +43,7 @@ echo "Shortcut keys ($keys):"
 if ! command -v node >/dev/null 2>&1; then
   echo "node not found: keys.json was not changed. Add these keys to it by hand:"
   cat "$here/keys.json"
-elif ! node --input-type=module - "$keys" "$here/keys.json" "$here/mods/side-viewer/keys-merge.js" <<'EOF'
+elif ! node --input-type=module - "$keys" "$here/keys.json" "$here/scripts/keys-merge.js" <<'EOF'
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";

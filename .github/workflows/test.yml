@@ -17,4 +17,4 @@ jobs:
         with:
           node-version: 26
       # `herdr-app check mods/side-viewer` is left out: it needs the Herdr app installed.
-      - run: node --test mods/side-viewer/
+      - run: node --test mods/side-viewer/ scripts/

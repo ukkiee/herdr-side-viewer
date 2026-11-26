@@ -13,8 +13,9 @@ It takes the click as a link handler, so it needs Herdr 0.1.17 or newer.
 
 ## Working here
 
-- The mod is plain JS under `mods/side-viewer/`: no dependencies, no build step. Decisions sit in modules without `herdr` imports, each with a `*.test.mjs`.
+- The mod is plain JS under `mods/side-viewer/`: no dependencies, no build step.
+- `mods/side-viewer/` is ports and adapters: `core/` (`domain/`, `app/`, `ports/`, `i18n/`) holds the decisions, `adapters/in/` the screens (`viewer/`, `picker/`, `shared/`, and `logic/` for their pure calculations), `adapters/out/` file access, the opening request and the shell pane; `main.js`, `link.js`, `mod.json`, `extensions.json` and `icons/` sit at the mod root. Imports go `adapters/in` → `core` ← `adapters/out`: `core/` imports no `herdr`, `gpui-*` or `adapters/`, screens may import out adapters directly, and nothing imports a root file. `mods/side-viewer/layers.test.mjs` fails a wrong import, a cycle or a test away from its module. A test sits beside its module; the folder rules are in RECIPE.md, Built from. Install-time code (`keys-merge.js`) sits outside the mod, in `scripts/`.
 - The Herdr mod authoring guide is outside this repo, at `~/.config/herdr-app/AGENTS.md`. Read it before writing mod code.
-- Full offline check: `node --test mods/side-viewer/`, then `herdr-app check mods/side-viewer`, then
+- Full offline check: `node --test mods/side-viewer/ scripts/`, then `herdr-app check mods/side-viewer`, then
   `scripts/render-budget.sh` (Herdr stops a `render()` past 50 ms; RECIPE.md, Watch out).
 - Install: `./install.sh` (checks Herdr's version and the mod, copies the mod into the app home, merges the cmd-o key).
