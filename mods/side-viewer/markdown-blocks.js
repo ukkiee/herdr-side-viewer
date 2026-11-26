@@ -321,3 +321,9 @@ export function withFootnoteMarks(text, footnotes) {
     return number === undefined ? whole : String(number).replace(/\d/g, (digit) => SUPERSCRIPT[digit]);
   });
 }
+
+// Text that must stay one line of text inside a TextView, a heading's or a table cell's: a
+// leading "1." or "-" would start a list. CommonMark escapes only punctuation, so after a
+// number it is the dot or parenthesis that is escaped (1\.); \1. would show its backslash.
+export const literalStart = (text) => text.replace(/^(?:([#>+*-])|(\d+)([.)]))(?=\s|$)/,
+  (_, mark, number, close) => (mark ? `\\${mark}` : `${number}\\${close}`));

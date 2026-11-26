@@ -484,7 +484,8 @@ The mod shows files, not agents, so it has no agent statuses.
   file, the link rule's pattern), `image-copies.js`
   (image check by first bytes, copy names, sizes, cleanup), `edit-state.js` (unsaved edits,
   disk changes, save results, the header's status, handing edits to a tab, checkbox clicks),
-  `markdown-blocks.js` (markdown → blocks), `code-blocks.js` (fence language → label,
+  `markdown-blocks.js` (markdown → blocks; `literalStart` keeps a heading or cell that starts
+  like a list one line of text), `code-blocks.js` (fence language → label,
   colors, shell; wrapped rows and editor height; card fill), `markdown-images.js` (picture
   paths and sizes), `svg-preview.js` (edited svg previews), `terminal-insert.js` (`>_`'s
   folder, shell state, commands, notices), `sent-conversation.js` (the shared-state keys

@@ -1,7 +1,7 @@
 // node --test: splitting a markdown document into the blocks the markdown view draws.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseMarkdown, withFootnoteMarks } from "./markdown-blocks.js";
+import { parseMarkdown, withFootnoteMarks, literalStart } from "./markdown-blocks.js";
 
 const blocks = (text) => parseMarkdown(text).blocks;
 
@@ -195,4 +195,22 @@ test("a line of = or - under a paragraph makes it a heading", () => {
     { type: "heading", level: 1, text: "Title" },
     { type: "heading", level: 2, text: "Sub" },
   ]);
+});
+
+test("a heading or cell that starts like a list or heading stays one line of text", () => {
+  // CommonMark escapes only punctuation: "\\1." is a backslash and "1.", so the dot is escaped.
+  assert.equal(literalStart("1. 수락 전 HTTP 오류"), "1\\. 수락 전 HTTP 오류");
+  assert.equal(literalStart("12) twelve"), "12\\) twelve");
+  assert.equal(literalStart("3."), "3\\.");
+  assert.equal(literalStart("- dash"), "\\- dash");
+  assert.equal(literalStart("# hash"), "\\# hash");
+  assert.equal(literalStart("> quote"), "\\> quote");
+  assert.equal(literalStart("+ plus"), "\\+ plus");
+  assert.equal(literalStart("* star"), "\\* star");
+});
+
+test("text that would not start a block is left as written", () => {
+  for (const text of ["1.5 ratio", "B01 · 언제", "-dash", "#tag", "plain", ""]) {
+    assert.equal(literalStart(text), text);
+  }
 });

@@ -23,7 +23,7 @@ import { v_flex, h_flex, TextView } from "gpui-base";
 import { home } from "herdr";
 import { labelOf, noticeFor } from "./document.js";
 import { rendersEmpty } from "./views.js";
-import { parseMarkdown, withFootnoteMarks } from "./markdown-blocks.js";
+import { parseMarkdown, withFootnoteMarks, literalStart } from "./markdown-blocks.js";
 import { renderCodeCard } from "./code-card.js";
 import { imageBoxOf } from "./markdown-images.js";
 import { wordsOf } from "./i18n.js";
@@ -106,15 +106,12 @@ function renderInline(ctx, key, text) {
     .selectable(true).on_link_click((url, cx) => ctx.onLink(url, cx));
 }
 
-// Text that must stay one paragraph inside a TextView: a leading "1." or "-" would start a list.
-const escapeStart = (text) => text.replace(/^([#>+*-]|\d+[.)])(?=\s|$)/, "\\$1");
-
 // Sizes 24, 19, 16 for levels 1 to 3, body size for the rest; bold, no underline. A heading
 // below other blocks gets a little more room above it.
 function renderHeading(ctx, block, key, index) {
   return div().w_full().min_w(0).text_size(HEADING_SIZE[block.level] ?? BODY).font_semibold()
     .when(index > 0, (el) => el.mt(block.level <= 2 ? 10 : 4))
-    .child(renderInline(ctx, key, escapeStart(block.text)));
+    .child(renderInline(ctx, key, literalStart(block.text)));
 }
 
 function renderParagraph(ctx, block, key) {
@@ -183,7 +180,7 @@ function renderTable(ctx, block, key) {
 function renderCell(ctx, key, text) {
   const shown = withFootnoteMarks(text, ctx.footnotes);
   if (!/[*_`~[\]<>\\&]/.test(shown)) return shown;
-  return renderInline(ctx, key, escapeStart(text));
+  return renderInline(ctx, key, literalStart(text));
 }
 
 function renderRule(ctx) {
