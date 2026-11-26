@@ -1,0 +1,30 @@
+# On every push and pull request: oxlint (.oxlintrc.json, warnings fail), then the full
+# offline check (tools/check.mjs) with bun. macOS, as on the Macs that use the mod: the tests
+# run `sh`, `stat` and `od` there. The runner has no Herdr app, so tools/check.mjs reports
+# `herdr-app check` and the render budget as skipped. Last, install.test.mjs runs again under
+# node: people install with `node install.mjs` and need no bun.
+name: check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.5
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun tools/check.mjs
+      - run: node --test install.test.mjs

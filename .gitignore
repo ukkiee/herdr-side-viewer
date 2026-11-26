@@ -3,3 +3,4 @@ mods/**/gpui-kit.d.ts
 mods/**/jsconfig.json
 
 .DS_Store
+node_modules/

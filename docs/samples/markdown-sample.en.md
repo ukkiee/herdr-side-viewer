@@ -40,7 +40,7 @@ export function greet(name) {
 ```
 
 ```sh
-node --test mods/side-viewer/
+bun tools/check.mjs
 herdr-app check mods/side-viewer
 ```
 

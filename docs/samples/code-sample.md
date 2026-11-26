@@ -5,7 +5,7 @@
 ## 셸 명령
 
 ```sh
-node --test mods/side-viewer/
+bun tools/check.mjs
 herdr-app check mods/side-viewer
 ```
 
@@ -71,7 +71,7 @@ herdr-app do pane.split --direction right --mod side-viewer --props '{"file":"/U
 1. 먼저 검사를 돌린다.
 
    ```sh
-   node --test mods/side-viewer/
+   bun tools/check.mjs
    ```
 
 2. 그다음 설치한다.

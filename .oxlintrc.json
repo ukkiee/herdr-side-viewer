@@ -1,0 +1,309 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "import",
+    "unicorn",
+    "oxc"
+  ],
+  "rules": {
+    "import/no-cycle": "error"
+  },
+  "overrides": [
+    {
+      "files": [
+        "mods/side-viewer/**/*.js"
+      ],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "checkGlobalObject": true,
+            "globals": [
+              {
+                "name": "setTimeout",
+                "message": "QuickJS mods have no setTimeout: use cx.timer.after"
+              },
+              {
+                "name": "setInterval",
+                "message": "QuickJS mods have no setInterval: use cx.timer.every"
+              },
+              {
+                "name": "Intl",
+                "message": "QuickJS mods have no Intl"
+              },
+              "navigator",
+              "process"
+            ]
+          }
+        ],
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "Promise",
+            "property": "race",
+            "message": "In QuickJS the winner's value stays held until the losing promise settles"
+          },
+          {
+            "object": "globalThis",
+            "property": "setTimeout",
+            "message": "QuickJS mods have no setTimeout: use cx.timer.after"
+          },
+          {
+            "object": "globalThis",
+            "property": "setInterval",
+            "message": "QuickJS mods have no setInterval: use cx.timer.every"
+          },
+          {
+            "object": "globalThis",
+            "property": "Intl",
+            "message": "QuickJS mods have no Intl"
+          },
+          {
+            "object": "globalThis",
+            "property": "navigator",
+            "message": "QuickJS mods have no navigator"
+          },
+          {
+            "object": "globalThis",
+            "property": "process",
+            "message": "QuickJS mods have no process"
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "mods/side-viewer/main.js",
+        "mods/side-viewer/link.js"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^\\./(main|link)\\.js$",
+                "message": "main.js and link.js are the entry files Herdr loads: nothing imports them"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "mods/side-viewer/core/domain/**/*.js"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^[^.]",
+                "message": "core/domain runs under node --test and inside Herdr's QuickJS, so it imports only relative paths: no herdr, gpui-*, node:* or fs/promises"
+              },
+              {
+                "group": [
+                  "**/app/**"
+                ],
+                "message": "core/domain holds the rules app/ uses, so it imports only domain/, i18n/ and ports/"
+              },
+              {
+                "group": [
+                  "**/adapters/**"
+                ],
+                "message": "core/domain is core: it does not know the adapters, which import it"
+              },
+              {
+                "regex": "^(\\.\\./)+(main|link)\\.js$",
+                "message": "main.js and link.js are the entry files Herdr loads: nothing imports them"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "mods/side-viewer/core/app/**/*.js"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^[^.]",
+                "message": "core/app runs under node --test and inside Herdr's QuickJS, so it imports only relative paths: no herdr, gpui-*, node:* or fs/promises"
+              },
+              {
+                "group": [
+                  "**/adapters/**"
+                ],
+                "message": "core/app is core: it does not know the adapters, which import it"
+              },
+              {
+                "regex": "^(\\.\\./)+(main|link)\\.js$",
+                "message": "main.js and link.js are the entry files Herdr loads: nothing imports them"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "mods/side-viewer/core/ports/**/*.js"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^[^.]",
+                "message": "core/ports runs under node --test and inside Herdr's QuickJS, so it imports only relative paths: no herdr, gpui-*, node:* or fs/promises"
+              },
+              {
+                "group": [
+                  "**/domain/**",
+                  "**/app/**",
+                  "**/i18n/**"
+                ],
+                "message": "core/ports describes what the outside world answers and imports only ports/, so domain/ and app/ can both use it"
+              },
+              {
+                "group": [
+                  "**/adapters/**"
+                ],
+                "message": "core/ports is core: it does not know the adapters, which import it"
+              },
+              {
+                "regex": "^(\\.\\./)+(main|link)\\.js$",
+                "message": "main.js and link.js are the entry files Herdr loads: nothing imports them"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "mods/side-viewer/core/i18n/**/*.js"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^[^.]",
+                "message": "core/i18n runs under node --test and inside Herdr's QuickJS, so it imports only relative paths: no herdr, gpui-*, node:* or fs/promises"
+              },
+              {
+                "group": [
+                  "**/domain/**",
+                  "**/app/**",
+                  "**/ports/**"
+                ],
+                "message": "core/i18n holds only the words and imports only i18n/, so every layer can use it"
+              },
+              {
+                "group": [
+                  "**/adapters/**"
+                ],
+                "message": "core/i18n is core: it does not know the adapters, which import it"
+              },
+              {
+                "regex": "^(\\.\\./)+(main|link)\\.js$",
+                "message": "main.js and link.js are the entry files Herdr loads: nothing imports them"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "mods/side-viewer/adapters/in/logic/**/*.js"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^[^.]",
+                "message": "adapters/in/logic runs under node --test and inside Herdr's QuickJS, so it imports only relative paths: no herdr, gpui-*, node:* or fs/promises"
+              },
+              {
+                "group": [
+                  "**/viewer/**",
+                  "**/picker/**",
+                  "**/shared/**",
+                  "**/out/**"
+                ],
+                "message": "adapters/in/logic is the screens' pure calculations: it imports only core/ and logic/, so it runs under node --test"
+              },
+              {
+                "regex": "^(\\.\\./)+(main|link)\\.js$",
+                "message": "main.js and link.js are the entry files Herdr loads: nothing imports them"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "mods/side-viewer/adapters/in/viewer/**/*.js",
+        "mods/side-viewer/adapters/in/picker/**/*.js",
+        "mods/side-viewer/adapters/in/shared/**/*.js"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^(\\.\\./)+(main|link)\\.js$",
+                "message": "main.js and link.js are the entry files Herdr loads: nothing imports them"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "mods/side-viewer/adapters/out/**/*.js"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "**/in/**"
+                ],
+                "message": "adapters/out serves the core and the screens: it never imports adapters/in"
+              },
+              {
+                "group": [
+                  "gpui-*"
+                ],
+                "message": "adapters/out draws nothing: gpui-* belongs to the screens in adapters/in"
+              },
+              {
+                "regex": "^(\\.\\./)+(main|link)\\.js$",
+                "message": "main.js and link.js are the entry files Herdr loads: nothing imports them"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

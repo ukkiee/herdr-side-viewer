@@ -296,7 +296,7 @@ There is no switch.
   has not taken it. The line that teaches the shell writes that press's mark and its keymap to
   `<machine>_<terminal>.keymap` beside it, which the viewer reads and deletes once the shell
   has taken the command.
-- **Herdr's keys**: `install.sh` adds `cmd-o` to Herdr's `keys.json` (see [Install](#install)).
+- **Herdr's keys**: `install.mjs` adds `cmd-o` to Herdr's `keys.json` (see [Install](#install)).
 - **Herdr's layout**: Herdr adds `side-viewer` to the `link_handlers` of the personal layout
   in use (see [Turn on cmd-click](#turn-on-cmd-click)).
 - **Terminal**: the `>_` button opens a zsh pane and types into it through Herdr's `hc`
@@ -330,20 +330,22 @@ How it is built and what to watch for: [RECIPE.md](RECIPE.md).
 
 ## Install
 
-Needs macOS, the Herdr app **0.1.17 or newer** (`herdr-app` on your `PATH`), and a
-**personal layout** (see [Turn on cmd-click](#turn-on-cmd-click)). Node is optional: it
-merges the `cmd-o` key.
+Needs macOS, the Herdr app **0.1.17 or newer** (`herdr-app` on your `PATH`), **Node** to
+run the installer, and a **personal layout** (see [Turn on cmd-click](#turn-on-cmd-click)).
 
 ```sh
 git clone https://github.com/ukkiee/herdr-side-viewer
-cd herdr-side-viewer && ./install.sh
+cd herdr-side-viewer && node install.mjs
 ```
 
-`install.sh` checks the Herdr version (`herdr-app --version`), runs `herdr-app check` on the
-mod, and copies the mod into `~/.config/herdr-app/mods/side-viewer` (or `$HERDR_APP_HOME`),
-taking out files an older version left there. An older Herdr or a failed check stops it
+`install.mjs` checks the Herdr version (`herdr-app --version`), runs `herdr-app check` on the
+mod, and copies the mod into `~/.config/herdr-app/mods/side-viewer` (or `$HERDR_APP_HOME`):
+it writes only the files that changed, leaves out the tests, and takes out files an older
+version left there. An older Herdr or a failed check stops it
 before anything is copied, and the mod that was installed stays as it was; for an older
-Herdr it says `Side Viewer needs Herdr 0.1.17 or newer`. It also prints a note when the
+Herdr it says `Side Viewer needs Herdr 0.1.17 or newer`. It also stops, changing nothing,
+when `mods/side-viewer` in the app home is a symlink (for example to this checkout, for
+live development); remove the link to install a copy. It also prints a note when the
 layout in use is one Herdr ships, when the Herdr window is not open (the layout is then not
 checked), and when the router app of an older version is still installed (see
 [Upgrading from the router](#upgrading-from-the-router)). **Run it again after `git pull`
@@ -363,7 +365,7 @@ Herdr sees Side Viewer on a personal layout, it adds the mod to that layout's ro
 
 ### The cmd-o shortcut
 
-`install.sh` also merges the path picker's key into Herdr's `keys.json`:
+`install.mjs` also merges the path picker's key into Herdr's `keys.json`:
 `"cmd-o": "mod.open:side-viewer"` under `global`. It prints what it did under
 `Shortcut keys`.
 
@@ -371,7 +373,7 @@ Herdr sees Side Viewer on a personal layout, it adds the mod to that layout's ro
 - **`cmd-o` bound to something else**, in any section (`global`, `terminal`, `layout:*`,
   `mod:*`): left as it is, and the output says so. Bind `mod.open:side-viewer` to another
   key yourself.
-- **No `keys.json` yet, a `keys.json` that isn't valid JSON, or no Node**: nothing is
+- **No `keys.json` yet, or a `keys.json` that isn't valid JSON**: nothing is
   changed and the output shows the line to add by hand.
 - Other keys are never touched, and a `keys.json` that is a link stays a link.
 
@@ -396,7 +398,7 @@ record it gives them back from is of no use without the app.
 2. In each window pick the app that line names, **not Side Viewer Router**.
 3. Extensions no other app claims (`rbw` and `cp`, for example) stay with the router until
    the app is deleted.
-4. Delete `~/Applications/Side Viewer Router.app`, then run `./install.sh`.
+4. Delete `~/Applications/Side Viewer Router.app`, then run `node install.mjs`.
 
 ## Extensions
 

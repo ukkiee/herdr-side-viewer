@@ -465,16 +465,14 @@ The mod shows files, not agents, so it has no agent statuses.
   it, also without its `<machine>/` prefix. A viewer tab's props are
   `{file, viewerTab: true, handoff?, space?}`.
 - `keys.json` (repository root): `{"global": {"cmd-o": "mod.open:side-viewer"}}`, the key
-  `install.sh` merges into the person's.
-- `scripts/keys-merge.js`: merging `keys.json`, with `keys-merge.test.mjs` beside it.
-  `install.sh` runs it with `node`; it is install-time code, so it sits outside the mod
-  folder and is not copied into the app home.
+  `install.mjs` merges into the person's.
 - `mods/side-viewer/main.js`: the one `View`: state, reads, requests, the watch, edits and
   saves, the language read, the tab and shell commands' wiring. It and `link.js` are the
   entry files Herdr looks for at the mod root, beside `mod.json` and `extensions.json`; they
   import from the folders below, and nothing imports them.
 - `mods/side-viewer/core/`: the decisions. Nothing in it imports `herdr`, `gpui-*` or
-  `adapters/`, so `node --test` loads its modules; each test sits beside its module.
+  `adapters/`, so `bun test` and `node --test` load its modules; each test sits beside
+  its module.
   - `core/domain/`, the rules on a shown file and its text: `views.js` (extension → view
     and language, size limits, what a file's probe stops, which views switch and take
     typing, the editor options), `document.js` (notices, header label), `history.js`, `links.js` (link
@@ -526,15 +524,23 @@ The mod shows files, not agents, so it has no agent statuses.
   cmd-click and a pick (the request, the wait for an answer, the split),
   `markdown-image-loader.js` makes the copies of pictures in markdown, and `shell-pane.js`
   runs `>_`.
-- Import direction, `adapters/in` → `core` ← `adapters/out`, checked by
-  `mods/side-viewer/layers.test.mjs` under `node --test`. Screens may import out adapters
-  directly; out adapters never import screens. In `core/`, `domain/` imports only
-  `domain/`, `i18n/` and `ports/`, `app/` any of `core/`, and `ports/` and `i18n/` only
-  their own folder. `adapters/in/logic/` imports only `core/` and `logic/`. `core/` and
-  `adapters/in/logic/` import no bare name (`herdr`, `gpui-*`, `node:*`, `fs/promises`):
-  they do no I/O, and `node --test` loads them without Herdr. Nothing imports a root file.
-  The test also fails on a module outside the folders above, a relative import that names
-  no file, an import cycle, and a test that does not sit beside its module.
+- Import direction, `adapters/in` → `core` ← `adapters/out`, checked by oxlint
+  (`bun run lint`, `.oxlintrc.json`). Screens may import out adapters directly; out
+  adapters never import screens, and import no `gpui-*` (they draw nothing). In `core/`,
+  `domain/` imports only `domain/`, `i18n/` and `ports/`, `app/` any of `core/`, and
+  `ports/` and `i18n/` only their own folder. `adapters/in/logic/` imports only `core/` and
+  `logic/`. `core/` and `adapters/in/logic/` import no bare name (`herdr`, `gpui-*`,
+  `node:*`, `fs/promises`): they do no I/O, and the tests load them without Herdr. Nothing
+  imports a root file (`main.js`, `link.js`). The lint also fails an import cycle
+  (`import/no-cycle`, which covers the `*.test.mjs` files too; the folder rules leave them
+  out). Each folder's import rules sit whole in one override: a later override that sets the
+  same rule for a file replaces the earlier one rather than adding to it.
+  `tools/mod-folders.test.mjs` checks what the lint cannot see: a module outside the folders
+  above, a test that does not sit beside its module, and a relative import or `new URL`
+  that names no file. A relative import in a mod `.js` file is written in its shortest form
+  (no `./../`, `a/../b`, `/./` or `//`) and names a shipped mod file: not a `.test.mjs`,
+  not `main.js` or `link.js`, never above the mod root. The lint's folder rules match the
+  import as written, so they rely on that form.
 - The words on screen, in `core/i18n/`, each a `{ en, ko }` table whose keys start with its area:
   `messages-header.js` (`header.`: the switch, buttons, tooltips and the status),
   `messages-body.js` (`body.`: the notices and the picture error), `messages-alerts.js`
@@ -579,8 +585,8 @@ The mod shows files, not agents, so it has no agent statuses.
   for `>_` also `sh -l -c` (the zsh lookup), `sh` with `mkdir`, `chmod`, `printf` (the
   handoff file), `rm` and that machine's zsh in the shell pane,
   and on this Mac `sh` with `hc` (`hc file write --on`, `hc exec --on … cat`, the `hc` on
-  `PATH`, else `~/.local/bin/hc`), `mkdir`, `chmod`, `find`, `mv`. `install.sh` uses
-  `uname`, `herdr-app`, `awk`, `sed`, `rsync`, and `node` to merge `keys.json`.
+  `PATH`, else `~/.local/bin/hc`), `mkdir`, `chmod`, `find`, `mv`. `install.mjs` runs
+  under `node` and runs `herdr-app` (`--version`, `check`, `status`).
 - Files outside the mod folder, all under the app home's `data/side-viewer/`:
   `request.json` (`{"id","file","at","space","conversation"}`, from `open-beside.js` for a
   cmd-click or a pick), `answer-<id>`,
@@ -602,26 +608,66 @@ The mod shows files, not agents, so it has no agent statuses.
   600, both set on every write, deleted the same way), and its prepare line
   `~/.cache/side-viewer/shell/<terminal>.keymap` beside it (read and deleted the same way);
   nothing of it lands in this Mac's data folder.
-- `install.sh`: stops before changing anything unless it runs on macOS, finds `herdr-app` on
-  `PATH`, and `herdr-app --version` is 0.1.17 or newer. It runs `herdr-app check` on the mod
-  folder, then copies the mod folder into the app home with `rsync -a --delete`, so files an
-  older version left there go. Then, under
-  `Shortcut keys`, `node` runs `scripts/keys-merge.js` on the app home's `keys.json` and the
-  repository's: a key already bound the same is left (`already there.`), a key bound to
-  another action in any section is left and reported, a missing, invalid or non-object
-  `keys.json` is left and the lines to add are printed, and a changed file is written
-  beside the real one and renamed over it, so a link stays a link. Without `node` it prints
-  the repository's `keys.json`. Last, it prints a note when the layout `herdr-app status`
-  names is one Herdr ships (`main`, `terminals`, `win98`: clone it with `herdr-app do
-  layout.clone --name <layout>`), when the window is not open (the layout was not checked),
-  and when the router app of an older version is still at `~/Applications/Side Viewer
-  Router.app` (or `$SIDE_VIEWER_ROUTER_APP`, where an older install put it).
+- `package.json`, `bun.lock`: the development tools, not the mod. Scripts `lint`
+  (`oxlint --deny-warnings`), `test` (`bun tools/check.mjs`) and `check` (`bun run lint &&
+  bun tools/check.mjs`); one dev dependency, `oxlint` 1.95.0, the repository's only
+  dependency. `bun.lock` is committed and `node_modules/` is ignored; `bun install` once
+  first.
+- `.oxlintrc.json`: the lint rules, warnings failing. Besides the import direction above,
+  every `.js` under `mods/side-viewer/` fails on a global QuickJS lacks (`setTimeout`,
+  `setInterval`, `Intl`, `navigator`, `process`), also through `globalThis`, `self` or
+  `window` (`checkGlobalObject`) and when destructured from `globalThis`
+  (`no-restricted-properties`), and on `Promise.race` (written as such: `globalThis.Promise.race`
+  is not caught).
+- `tools/`: `check.mjs`, the full offline check: the tests (`bun test` over the
+  repository under bun, `node --test` under node), then `herdr-app check mods/side-viewer`,
+  then the render budget; one line per step (`PASS`, `FAIL` or `skipped`), exit 1 when a
+  step fails. Without `herdr-app` on `PATH` the two Herdr steps are skipped, not failed.
+  `render-budget.mjs [mod-dir]` draws a 67 KB document in `herdr-app check` on a temporary
+  copy of the mod and fails when a `render()` is interrupted or a draw takes more than
+  `LIMIT_MS`: 25 when unset or empty, else a positive whole number of milliseconds, or it
+  exits 2 before measuring. The copy follows links, `mod-dir` itself included, so a linked
+  `mod-dir` or `main.js` is never written to. It needs `herdr-app` on `PATH`. Both run under `bun` or `node`.
+  `mod-folders.test.mjs`, the folder rules above.
+- `install.mjs` (repository root), with `install.test.mjs` beside it: the installer. It runs
+  with `node` alone, no bun; it is install-time code, so it sits outside the mod folder and
+  is not copied into the app home. It stops before changing anything unless it runs on
+  macOS, finds `herdr-app` on `PATH`, `herdr-app --version` is 0.1.17 or newer, and
+  `herdr-app check` passes on the repository's mod folder. It also stops before writing when
+  the app home's `mods/side-viewer` is a symlink (for example to this repository's mod, for
+  live development: remove the link to install a copy) or overlaps the repository's mod;
+  links above it (a linked app home or `mods` folder) are followed, links inside it are
+  replaced, never followed. It then makes the app home's
+  `mods/side-viewer/` (`$HERDR_APP_HOME`, else `~/.config/herdr-app`) hold what the
+  repository's does, the `*.test.mjs` files left out: only a file whose bytes differ is
+  written, first under a hidden temporary name beside its target, and the renames come after
+  the last write, so a write that fails leaves every file already there whole (Herdr reloads
+  the mod on each saved file, not on the hidden ones). What the repository does not hold is
+  removed after the writes. Temporary names are created exclusively, and only the ones this
+  run made are cleaned up. On a volume that ignores case, an entry whose name changes only in
+  case is renamed, not removed. An entry that turns from a file into a folder or back is
+  removed before the write; a run that fails there finishes when run again.
+  `gpui-kit.d.ts` and `jsconfig.json`, which `herdr-app check`
+  writes into the repository's mod folder, go over like any file; Herdr does not reload on
+  them. It prints `N files updated, M already the same.`, with `, K removed` before the
+  period when it removed any. Then, under `Shortcut keys`, `mergeKeys` merges the
+  repository's `keys.json` into the app home's: a key already bound the same is left
+  (`already there.`), a key bound to another action in any section is left and reported, a
+  missing, invalid or non-object `keys.json` is left and the lines to add are printed, and
+  `replaceKeys` writes a changed file beside the real one and renames it over it, so a link
+  stays a link. A `keys.json` that cannot be merged otherwise (a failed write) prints the
+  error on stderr, then the repository's keys to add by hand. Last, it prints a note when
+  the layout `herdr-app status` names is one Herdr ships (`main`, `terminals`, `win98`:
+  clone it with `herdr-app do layout.clone --name <layout>`), when the window is not open
+  (the layout was not checked), and when the router app of an older version is still at
+  `~/Applications/Side Viewer Router.app` (or `$SIDE_VIEWER_ROUTER_APP`, where an older
+  install put it), then `Installed.`.
   That app was the default app for some extensions, so it gives them back before it is
   deleted: `"$HOME/Applications/Side Viewer Router.app/Contents/MacOS/SideViewerRouter"
   --restore`, then pick the original app, not Side Viewer Router, in each macOS
   confirmation window it brings up, one per file type; deleting it first leaves the
   extensions with no record to give back. Extensions no other app claims (`rbw`, `cp`) stay
-  with it until it is deleted. Then delete the app and run `./install.sh` again.
+  with it until it is deleted. Then delete the app and run `node install.mjs` again.
 
 ## Watch out
 
@@ -780,9 +826,11 @@ Platform:
   a sentence throws when it gets no `tr`, so its unit tests fail on a call that leaves it out;
   tests pass `translator("en")` or `translator("ko")` themselves. `i18n.test.mjs` also reads
   the sources for the wiring that unit tests do not run (`main.js`, `shell-pane.js`, the views).
-- CI (`.github/workflows/test.yml`) runs `node --test mods/side-viewer/ scripts/` on macOS for every
-  push and pull request. `herdr-app check mods/side-viewer` and `scripts/render-budget.sh`
-  need the app, so they stay local steps.
+- CI (`.github/workflows/check.yml`) runs on macOS for every push and pull request, with
+  Bun 1.4.5 and Node 26: `bun install --frozen-lockfile`, `bun run lint`,
+  `bun tools/check.mjs`, then `node --test install.test.mjs`, since people install with
+  `node`. `herdr-app check mods/side-viewer` and the render budget need the app, so
+  `tools/check.mjs` reports them as skipped there and they stay local steps.
 - `setShared` redraws every mod, which is how one viewer's language read reaches all of
   them; there is no per-copy language. Whether `side-viewer.lang` survives an app restart
   was not seen: if it doesn't, a viewer can show English for a moment until its own read.
@@ -852,7 +900,7 @@ Limits and assumptions:
   no cmd+E, no `{{placeholders}}`. A cmd-click on a path with an extension outside
   `extensions.json` (`txt`, say) opens it in its default app on this Mac, and does nothing
   in a remote space.
-- Herdr 0.1.17 or newer (`install.sh` refuses an older one), and a personal layout whose
+- Herdr 0.1.17 or newer (`install.mjs` refuses an older one), and a personal layout whose
   `link_handlers` names `side-viewer`. In a layout without it a cmd-click goes to Herdr's
   usual opener, and only the path picker reaches the viewer.
 - Remote spaces on Linux and macOS machines only; a Windows machine gets its notice, and a
@@ -885,7 +933,7 @@ preferred language Korean); steps 42 and 43 check English.
 ### Install and cmd-click on this Mac
 
 Set up: Herdr 0.1.17 or newer, a personal layout in use (clone a shipped one with
-`herdr-app do layout.clone --name <name>` first), and `./install.sh` run. Have an agent's conversation
+`herdr-app do layout.clone --name <name>` first), and `node install.mjs` run. Have an agent's conversation
 in Herdr print the paths of a markdown file, a code file and an image, as an absolute
 path, a relative path, a path with a line number (`app.ts:12`), a `~/` path and a path in
 code formatting. Have it also print, each followed by a space or the end of the line, the
@@ -893,7 +941,8 @@ absolute path of a `.txt` file, `/tmp/side-viewer-nope.md` (no such file), the m
 file's absolute path with `를` stuck to its end, the same path with ` 를` after a space,
 its relative path with ` 파일.` after a space, and a bare file name, `RECIPE.md`.
 
-1. `./install.sh` prints `check passed`, under `Shortcut keys` the line
+1. `node install.mjs` prints `check passed`, `N files updated, M already the same.`, under
+   `Shortcut keys` the line
    `cmd-o → "mod.open:side-viewer" (global)` (or the same ending in `: already there.`, or
    why it was left), and `Installed.`, with no note about the layout. With a shipped layout
    in use it also prints `Note: the layout in use, '<name>', is one Herdr ships, …` and the
@@ -941,9 +990,9 @@ its relative path with ` 파일.` after a space, and a bare file name, `RECIPE.m
     `Finder에서 보기`.
 13. In Finder, open one of the markdown files: it opens in its default app, and no side
     viewer opens or changes.
-14. `node --test mods/side-viewer/ scripts/` passes with no failures, and `scripts/render-budget.sh`
-    passes: the viewer's column and the largest chunk of a 67 KB document each draw in at
-    most 25 ms.
+14. `bun tools/check.mjs` (or `bun run check`, which runs the lint first) prints `PASS` for
+    `bun test`, `herdr-app check mods/side-viewer` and `render budget`, and exits 0: the
+    viewer's column and the largest chunk of a 67 KB document each draw in at most 25 ms.
 
 ### Editing, cards, tabs and language
 
@@ -1133,10 +1182,10 @@ each followed by a space or the end of the line. Keep a terminal open for the sh
 Steps 45–50 are in a space on this Mac, with the setup above. Steps 51–63 are done twice:
 in a space on a Linux machine and in a space on another Mac, each a machine connected to
 Herdr (`hc machine ls` names them). A Windows machine is not checked here; its notice is
-covered by `node --test` only.
+covered by the tests only.
 
 45. `grep -n cmd-o ~/.config/herdr-app/keys.json` shows `"cmd-o": "mod.open:side-viewer"`
-    inside `global`. Note `shasum ~/.config/herdr-app/keys.json`, run `./install.sh` again:
+    inside `global`. Note `shasum ~/.config/herdr-app/keys.json`, run `node install.mjs` again:
     under `Shortcut keys` it prints `cmd-o → "mod.open:side-viewer" (global): already
     there.`, and the `shasum` is unchanged.
 46. In the conversation that printed the paths for steps 3–5, run
@@ -1320,7 +1369,7 @@ conversation (step 32).
 
 ### Two conversations in one tab
 
-Step 65 is in a space on this Mac, with the mod installed from this checkout (`./install.sh`).
+Step 65 is in a space on this Mac, with the mod installed from this checkout (`node install.mjs`).
 In one tab put two agent conversations side by side, A started in `~/side-viewer-check` and
 B in the repository, and have each print the absolute path of the repository's
 `docs/samples/code-sample.md` and one path of its own that the other did not print. Close

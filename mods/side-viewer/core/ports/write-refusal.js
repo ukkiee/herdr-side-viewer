@@ -7,7 +7,7 @@
 // "large", or "other". Matched on Herdr's wording in mod_files.rs and Rust's io errors.
 export function refusalOf(error) {
   const message = messageOf(error);
-  if (/^The file changed /.test(message)) return "changed";
+  if (message.startsWith("The file changed ")) return "changed";
   if (/exceeds 1 MiB/.test(message)) return "large";
   if (/\(os error (13|1|30)\)/.test(message)) return "permission";
   return "other";

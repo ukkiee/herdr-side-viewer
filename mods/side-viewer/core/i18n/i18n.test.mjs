@@ -194,7 +194,10 @@ function partTables() {
     const text = codeOf(name);
     for (const m of text.matchAll(/\b(\w+)\s*=\s*\{/g)) {
       let depth = 1, at = m.index + m[0].length;
-      while (depth > 0 && at < text.length) depth += text[at] === "{" ? 1 : text[at] === "}" ? -1 : 0, at++;
+      while (depth > 0 && at < text.length) {
+        depth += text[at] === "{" ? 1 : text[at] === "}" ? -1 : 0;
+        at++;
+      }
       const entries = [...text.slice(m.index + m[0].length, at - 1).matchAll(ARROW)].map((e) => paramsOf(e[2])).filter((def) => def.takesTr);
       if (entries.length) add(found, m[1], name, { takesTr: true, entries });
     }
@@ -234,7 +237,10 @@ test("every call of a part that words a sentence passes the viewer's translator"
       if (!part) continue;
       // The call's arguments, up to its closing parenthesis.
       let depth = 1, at = m.index + m[0].length;
-      while (depth > 0 && at < text.length) depth += text[at] === "(" ? 1 : text[at] === ")" ? -1 : 0, at++;
+      while (depth > 0 && at < text.length) {
+        depth += text[at] === "(" ? 1 : text[at] === ")" ? -1 : 0;
+        at++;
+      }
       const args = text.slice(m.index + m[0].length, at - 1);
       // A definition, not a call: `function noticeFor(state, tr) {`, `async put(…, tr, cx) {`.
       if (/^\s*\{/.test(text.slice(at))) continue;
